@@ -1,46 +1,73 @@
 /* ============================================
    BusinessVance Services Manager - Frontend CSS
+   Matches reference design: Navy #0A2647, Orange #F4A261, Teal #2A9D8F
    ============================================ */
 
 /* Page Wrapper */
 .bv-page-wrapper {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    color: #1f2937;
+    color: #333333;
     line-height: 1.6;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    background: #ffffff;
 }
 
 /* ---- HEADER ---- */
 .bv-header {
-    background: linear-gradient(135deg, #002B5C 0%, #003d7a 100%);
+    background: linear-gradient(135deg, #0A2647 0%, #144272 100%);
     padding: 0;
-    box-shadow: 0 4px 20px rgba(0, 43, 92, 0.3);
+    position: relative;
+    overflow: hidden;
+}
+
+.bv-header::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #F4A261, #2A9D8F, #F4A261);
 }
 
 .bv-header-inner {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 24px 24px;
+    padding: 48px 24px 44px;
+    text-align: center;
+}
+
+.bv-header-stars {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.bv-header-stars svg {
+    color: #F4A261;
 }
 
 .bv-header-brand {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
 }
 
 .bv-shield-logo {
-    width: 56px;
-    height: 56px;
-    background: rgba(212, 175, 55, 0.15);
-    border: 2px solid #D4AF37;
-    border-radius: 12px;
+    width: 72px;
+    height: 72px;
+    background: rgba(244, 162, 97, 0.12);
+    border: 2px solid #F4A261;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #D4AF37;
+    color: #F4A261;
+    position: relative;
 }
 
 .bv-brand-text {
@@ -48,39 +75,65 @@
 }
 
 .bv-brand-name {
-    font-size: 28px;
+    font-size: 36px;
     font-weight: 800;
     margin: 0;
-    letter-spacing: -0.5px;
+    letter-spacing: 3px;
     color: #fff;
 }
 
 .bv-brand-tagline {
-    margin: 2px 0 0 0;
-    font-size: 12px;
+    margin: 0;
+    font-size: 13px;
     font-weight: 700;
-    color: #D4AF37;
-    letter-spacing: 3px;
+    color: #F4A261;
+    letter-spacing: 4px;
+}
+
+.bv-brand-description {
+    margin: 16px auto 0;
+    max-width: 600px;
+    font-size: 15px;
+    color: rgba(255, 255, 255, 0.7);
+    line-height: 1.6;
 }
 
 /* ---- SECTION HEADERS ---- */
 .bv-section-header {
     text-align: center;
-    margin-bottom: 40px;
-    padding: 0 20px;
+    margin-bottom: 36px;
 }
 
-.bv-section-title {
-    font-size: 32px;
+.bv-section-banner {
+    display: inline-block;
+    background: #0A2647;
+    color: #fff;
+    padding: 10px 32px;
+    font-size: 18px;
     font-weight: 800;
-    color: #002B5C;
-    margin: 0 0 8px 0;
+    letter-spacing: 2px;
+    border-radius: 6px 6px 0 0;
+    margin: 0;
 }
 
-.bv-section-subtitle {
-    font-size: 16px;
-    color: #6b7280;
+.bv-section-sub {
+    display: inline-block;
+    background: #F4A261;
+    color: #fff;
+    padding: 6px 24px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 3px;
     margin: 0;
+}
+
+.bv-section-sub-alt {
+    color: #F4A261;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: 12px;
 }
 
 /* ---- SERVICES SECTION ---- */
@@ -92,12 +145,12 @@
     box-sizing: border-box;
 }
 
-/* Desktop Table */
+/* ---- TABLE (Desktop) ---- */
 .bv-table-wrapper {
     background: #fff;
-    border-radius: 12px;
+    border-radius: 8px;
     overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
     border: 1px solid #e5e7eb;
 }
 
@@ -107,133 +160,166 @@
 }
 
 .bv-services-table thead {
-    background: #f8f9fa;
+    background: #0A2647;
 }
 
 .bv-services-table thead th {
     padding: 14px 20px;
     text-align: left;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: #6b7280;
-    border-bottom: 2px solid #e5e7eb;
+    letter-spacing: 1.5px;
+    color: #ffffff;
+    border: none;
+}
+
+.bv-services-table thead th:last-child {
+    text-align: center;
 }
 
 .bv-services-table tbody tr {
     transition: background-color 0.15s;
-    border-bottom: 1px solid #f3f4f6;
 }
 
-.bv-services-table tbody tr:last-child {
-    border-bottom: none;
+.bv-services-table tbody tr:nth-child(even) {
+    background-color: #F8F9FA;
 }
 
 .bv-services-table tbody tr:hover {
-    background-color: #fafafa;
+    background-color: #eef2f7;
 }
 
 .bv-services-table td {
-    padding: 16px 20px;
+    padding: 14px 20px;
     vertical-align: middle;
+    border-bottom: 1px solid #f0f0f0;
 }
 
-.bv-col-service {
-    width: 60%;
+.bv-services-table tbody tr:last-child td {
+    border-bottom: none;
 }
 
-.bv-col-price {
-    width: 20%;
-}
-
-.bv-col-action {
-    width: 20%;
-    text-align: right;
-}
-
+/* Service column */
 .bv-service-info {
     display: flex;
-    align-items: flex-start;
-    gap: 14px;
+    align-items: center;
+    gap: 12px;
 }
 
 .bv-service-icon {
-    width: 44px;
-    height: 44px;
-    min-width: 44px;
-    background: linear-gradient(135deg, #002B5C, #004080);
-    color: #D4AF37;
-    border-radius: 10px;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    background: linear-gradient(135deg, #0A2647, #144272);
+    color: #F4A261;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-.bv-service-details {
-    flex: 1;
-}
-
 .bv-service-name {
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 700;
-    color: #002B5C;
-    margin-bottom: 4px;
+    color: #0A2647;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0;
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
     gap: 8px;
-}
-
-.bv-service-desc {
-    font-size: 13px;
-    color: #6b7280;
-    line-height: 1.5;
-}
-
-.bv-service-price {
-    font-size: 18px;
-    font-weight: 800;
-    color: #002B5C;
 }
 
 .bv-featured-badge {
     display: inline-block;
-    background: linear-gradient(135deg, #D4AF37, #F0D060);
+    background: linear-gradient(135deg, #F4A261, #E76F51);
     color: #fff;
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 700;
-    padding: 2px 10px;
-    border-radius: 12px;
-    text-shadow: 0 1px 1px rgba(0,0,0,0.15);
-    white-space: nowrap;
+    padding: 2px 8px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Description column */
+.bv-service-desc {
+    font-size: 13px;
+    color: #666;
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* Price column */
+.bv-col-price {
+    text-align: center;
+    width: 200px;
+}
+
+.bv-price-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.bv-service-price {
+    font-size: 15px;
+    font-weight: 800;
+    color: #0A2647;
 }
 
 /* ---- BUTTONS ---- */
 .bv-btn {
     display: inline-block;
-    padding: 10px 24px;
-    border-radius: 8px;
-    font-size: 14px;
+    padding: 8px 20px;
+    border-radius: 6px;
+    font-size: 12px;
     font-weight: 700;
     text-decoration: none;
     text-align: center;
     cursor: pointer;
     transition: all 0.2s;
     border: none;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
     line-height: 1.4;
 }
 
 .bv-btn-gold {
-    background: linear-gradient(135deg, #D4AF37, #C4A02E);
+    background: linear-gradient(135deg, #F4A261, #E76F51);
     color: #fff !important;
-    box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3);
-    text-shadow: 0 1px 2px rgba(0,0,0,0.15);
+    box-shadow: 0 2px 8px rgba(244, 162, 97, 0.35);
 }
 
 .bv-btn-gold:hover {
-    background: linear-gradient(135deg, #C4A02E, #B08F26);
-    box-shadow: 0 4px 12px rgba(212, 175, 55, 0.4);
+    background: linear-gradient(135deg, #E76F51, #E05A3A);
+    box-shadow: 0 4px 14px rgba(244, 162, 97, 0.45);
+    transform: translateY(-1px);
+    color: #fff !important;
+}
+
+.bv-btn-teal {
+    background: linear-gradient(135deg, #2A9D8F, #21867A);
+    color: #fff !important;
+    box-shadow: 0 2px 8px rgba(42, 157, 143, 0.3);
+}
+
+.bv-btn-teal:hover {
+    background: linear-gradient(135deg, #21867A, #1A7068);
+    transform: translateY(-1px);
+    color: #fff !important;
+}
+
+.bv-btn-navy {
+    background: linear-gradient(135deg, #0A2647, #144272);
+    color: #fff !important;
+    box-shadow: 0 2px 8px rgba(10, 38, 71, 0.3);
+}
+
+.bv-btn-navy:hover {
+    background: linear-gradient(135deg, #144272, #1a5276);
     transform: translateY(-1px);
     color: #fff !important;
 }
@@ -241,47 +327,51 @@
 .bv-btn-block {
     display: block;
     width: 100%;
-    padding: 14px 24px;
+    padding: 12px 24px;
 }
 
 .bv-btn-sm {
-    padding: 8px 16px;
-    font-size: 13px;
+    padding: 6px 14px;
+    font-size: 11px;
 }
 
 /* ---- MOBILE CARDS ---- */
 .bv-mobile-cards {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
 }
 
 .bv-service-card {
     background: #fff;
     border: 1px solid #e5e7eb;
-    border-radius: 12px;
+    border-radius: 8px;
     padding: 16px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
     transition: box-shadow 0.2s;
 }
 
+.bv-service-card:nth-child(even) {
+    background: #F8F9FA;
+}
+
 .bv-service-card:hover {
-    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
 }
 
 .bv-card-header {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 12px;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 
 .bv-card-icon {
     width: 40px;
     height: 40px;
     min-width: 40px;
-    background: linear-gradient(135deg, #002B5C, #004080);
-    color: #D4AF37;
+    background: linear-gradient(135deg, #0A2647, #144272);
+    color: #F4A261;
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -289,21 +379,24 @@
 }
 
 .bv-card-name {
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 700;
-    color: #002B5C;
-    margin: 0 0 4px 0;
+    color: #0A2647;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin: 0;
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
     gap: 6px;
+    flex-wrap: wrap;
 }
 
 .bv-card-desc {
     font-size: 13px;
-    color: #6b7280;
-    margin: 0;
+    color: #666;
+    margin: 0 0 12px 0;
     line-height: 1.4;
+    padding-left: 52px;
 }
 
 .bv-card-footer {
@@ -311,36 +404,35 @@
     align-items: center;
     justify-content: space-between;
     padding-top: 12px;
-    border-top: 1px solid #f3f4f6;
+    border-top: 1px solid #eee;
 }
 
 .bv-card-price {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 800;
-    color: #002B5C;
+    color: #0A2647;
 }
 
 /* ---- PLANS SECTION ---- */
 .bv-plans-section {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 50px 24px 60px;
+    padding: 60px 24px;
     width: 100%;
     box-sizing: border-box;
-    background: #f8f9fa;
 }
 
 .bv-plans-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 24px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
     align-items: stretch;
 }
 
 .bv-plan-card {
     background: #fff;
     border: 2px solid #e5e7eb;
-    border-radius: 16px;
+    border-radius: 12px;
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -354,7 +446,8 @@
 }
 
 .bv-plan-featured {
-    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 20px rgba(10, 38, 71, 0.15);
+    border-color: #264653;
 }
 
 .bv-plan-popular {
@@ -362,31 +455,34 @@
     top: 0;
     right: 0;
     padding: 6px 16px;
-    border-radius: 0 14px 0 12px;
+    border-radius: 0 10px 0 10px;
     color: #fff;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 800;
-    letter-spacing: 1px;
+    letter-spacing: 1.5px;
     z-index: 1;
 }
 
 .bv-plan-header {
     padding: 28px 24px 20px;
     color: #fff;
+    text-align: center;
 }
 
 .bv-plan-name {
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 800;
     margin: 0 0 6px 0;
     color: #fff;
+    letter-spacing: 2px;
 }
 
 .bv-plan-subtitle {
-    font-size: 14px;
+    font-size: 13px;
     margin: 0;
     opacity: 0.85;
     color: #fff;
+    font-style: italic;
 }
 
 .bv-plan-price-wrap {
@@ -398,7 +494,8 @@
 .bv-plan-price {
     font-size: 32px;
     font-weight: 900;
-    color: #002B5C;
+    color: #0A2647;
+    letter-spacing: -0.5px;
 }
 
 .bv-plan-features {
@@ -416,9 +513,9 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px 0;
-    font-size: 14px;
-    color: #374151;
+    padding: 7px 0;
+    font-size: 13px;
+    color: #444;
     border-bottom: 1px solid #f3f4f6;
 }
 
@@ -427,7 +524,7 @@
 }
 
 .bv-plan-features li svg {
-    color: #008080;
+    color: #2A9D8F;
     flex-shrink: 0;
 }
 
@@ -437,7 +534,7 @@
 
 /* ---- FOOTER ---- */
 .bv-footer {
-    background: linear-gradient(135deg, #002B5C 0%, #001a3d 100%);
+    background: linear-gradient(135deg, #0A2647 0%, #071a33 100%);
     color: #fff;
     margin-top: auto;
 }
@@ -445,13 +542,13 @@
 .bv-footer-inner {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 40px 24px;
+    padding: 40px 24px 30px;
 }
 
 .bv-trust-badges {
     display: flex;
     justify-content: center;
-    gap: 32px;
+    gap: 40px;
     flex-wrap: wrap;
     margin-bottom: 30px;
     padding-bottom: 30px;
@@ -461,19 +558,20 @@
 .bv-trust-badge {
     display: flex;
     align-items: center;
-    gap: 8px;
-    color: rgba(255,255,255,0.8);
-    font-size: 14px;
-    font-weight: 500;
+    gap: 10px;
+    color: rgba(255,255,255,0.85);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
 }
 
 .bv-trust-badge svg {
-    color: #D4AF37;
+    color: #F4A261;
 }
 
 .bv-footer-contact {
     text-align: center;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
 }
 
 .bv-footer-contact p {
@@ -484,7 +582,8 @@
 
 .bv-footer-contact strong {
     color: #fff;
-    font-size: 16px;
+    font-size: 15px;
+    letter-spacing: 1px;
 }
 
 .bv-footer-copyright {
@@ -493,7 +592,7 @@
 
 .bv-footer-copyright p {
     margin: 0;
-    color: rgba(255,255,255,0.4);
+    color: rgba(255,255,255,0.35);
     font-size: 12px;
 }
 
@@ -516,30 +615,36 @@
     }
 
     .bv-header-inner {
-        padding: 16px;
+        padding: 32px 16px 28px;
     }
 
     .bv-shield-logo {
-        width: 44px;
-        height: 44px;
-        border-radius: 8px;
+        width: 56px;
+        height: 56px;
     }
 
     .bv-brand-name {
-        font-size: 22px;
+        font-size: 26px;
+        letter-spacing: 2px;
     }
 
     .bv-brand-tagline {
         font-size: 10px;
-        letter-spacing: 2px;
+        letter-spacing: 3px;
     }
 
-    .bv-section-title {
-        font-size: 24px;
+    .bv-brand-description {
+        font-size: 13px;
     }
 
-    .bv-section-subtitle {
+    .bv-section-banner {
         font-size: 14px;
+        padding: 8px 20px;
+    }
+
+    .bv-section-sub {
+        font-size: 10px;
+        padding: 5px 16px;
     }
 
     .bv-services-section,
@@ -553,7 +658,7 @@
     }
 
     .bv-plan-name {
-        font-size: 20px;
+        font-size: 18px;
     }
 
     .bv-plan-price {
@@ -561,7 +666,7 @@
     }
 
     .bv-trust-badges {
-        gap: 16px;
+        gap: 20px 32px;
         flex-direction: column;
         align-items: center;
     }
@@ -574,7 +679,15 @@
 
 @media (min-width: 769px) and (max-width: 1024px) {
     .bv-plans-grid {
-        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-        gap: 20px;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+    }
+
+    .bv-services-table td {
+        padding: 10px 12px;
+    }
+
+    .bv-service-desc {
+        font-size: 12px;
     }
 }
