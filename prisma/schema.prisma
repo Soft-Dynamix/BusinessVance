@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  color     String   @default("#002B5C")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  services  Service[]
+  plans     Plan[]
+}
+
+model Service {
+  id                String   @id @default(cuid())
+  name              String
+  slug              String   @unique
+  description       String
+  price             Float
+  icon              String   @default("FileText")
+  buttonLabel       String   @default("ADD TO CART")
+  buttonType        String   @default("cart") // cart | quote | booking | link
+  buttonUrl         String   @default("")
+  woocommerceProductId String @default("")
+  categoryId        String?
+  visible           Boolean  @default(true)
+  featured          Boolean  @default(false)
+  displayOrder      Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  category          Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+}
+
+model Plan {
+  id                String   @id @default(cuid())
+  name              String
+  subtitle          String   @default("")
+  price             Float
+  color             String   @default("#002B5C") // primary color for the card
+  buttonLabel       String   @default("GET STARTED")
+  buttonType        String   @default("cart") // cart | link
+  buttonUrl         String   @default("")
+  woocommerceProductId String @default("")
+  categoryId        String?
+  visible           Boolean  @default(true)
+  featured          Boolean  @default(false)
+  displayOrder      Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  category          Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  features          PlanFeature[]
+}
+
+model PlanFeature {
+  id        String   @id @default(cuid())
+  text      String
+  planId    String
+  createdAt DateTime @default(now())
+
+  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+}
