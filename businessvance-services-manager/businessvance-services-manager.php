@@ -25,6 +25,27 @@ define( 'BV_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'BV_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'BV_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
 
+// Include the activator early so activation hooks can use it
+require_once BV_PLUGIN_DIR . 'includes/class-bv-activator.php';
+
+/**
+ * Plugin activation callback (standalone, not dependent on singleton)
+ */
+function bv_plugin_activate() {
+    $activator = new BV_Activator();
+    $activator->activate();
+}
+register_activation_hook( __FILE__, 'bv_plugin_activate' );
+
+/**
+ * Plugin deactivation callback
+ */
+function bv_plugin_deactivate() {
+    $activator = new BV_Activator();
+    $activator->deactivate();
+}
+register_deactivation_hook( __FILE__, 'bv_plugin_deactivate' );
+
 /**
  * Main plugin class
  */
@@ -32,9 +53,6 @@ final class BusinessVance_Services_Manager {
 
     /** @var BusinessVance_Services_Manager singleton instance */
     private static $instance = null;
-
-    /** @var BV_Activator */
-    public $activator;
 
     /** @var BV_Admin */
     public $admin;
@@ -53,39 +71,25 @@ final class BusinessVance_Services_Manager {
     }
 
     /**
-     * Constructor
+     * Constructor — runs at plugin load time
      */
     private function __construct() {
         $this->includes();
-        $this->init_hooks();
+        $this->init_components();
     }
 
     /**
      * Include required files
      */
     private function includes() {
-        require_once BV_PLUGIN_DIR . 'includes/class-bv-activator.php';
         require_once BV_PLUGIN_DIR . 'includes/class-bv-admin.php';
         require_once BV_PLUGIN_DIR . 'includes/class-bv-shortcodes.php';
     }
 
     /**
-     * Initialize hooks
+     * Initialize plugin components immediately (not deferred)
      */
-    private function init_hooks() {
-        // Activation / Deactivation
-        register_activation_hook( __FILE__, array( $this->activator, 'activate' ) );
-        register_deactivation_hook( __FILE__, array( $this->activator, 'deactivate' ) );
-
-        // Initialize components
-        add_action( 'plugins_loaded', array( $this, 'init_components' ) );
-    }
-
-    /**
-     * Initialize plugin components
-     */
-    public function init_components() {
-        $this->activator  = new BV_Activator();
+    private function init_components() {
         $this->admin      = new BV_Admin();
         $this->shortcodes = new BV_Shortcodes();
     }
