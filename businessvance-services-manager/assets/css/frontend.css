@@ -1,0 +1,355 @@
+/**
+ * BusinessVance Services Manager — Frontend Styles
+ *
+ * @package BusinessVance_Services_Manager
+ * @since   1.0.0
+ */
+
+/* ── Container ─────────────────────────────────────────────────────────── */
+.bv-frontend-wrap {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px 0 40px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+}
+
+/* ── Page Header ───────────────────────────────────────────────────────── */
+.bv-page-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+.bv-title {
+    font-size: 32px;
+    font-weight: 700;
+    color: #002B5C;
+    margin: 0;
+}
+
+/* ── Category Filter ───────────────────────────────────────────────────── */
+.bv-category-filter {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 30px;
+}
+.bv-cat-btn {
+    padding: 8px 20px;
+    border: 2px solid #ddd;
+    border-radius: 25px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    color: #333;
+    transition: all 0.2s;
+}
+.bv-cat-btn:hover,
+.bv-cat-btn-active {
+    background: #002B5C;
+    border-color: #002B5C;
+    color: #fff;
+}
+
+/* ── Services Table ────────────────────────────────────────────────────── */
+.bv-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.bv-services-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+.bv-services-table thead {
+    background: #002B5C;
+    color: #fff;
+}
+.bv-services-table th {
+    padding: 14px 18px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.bv-services-table td {
+    padding: 16px 18px;
+    border-bottom: 1px solid #eee;
+    vertical-align: middle;
+}
+.bv-services-table tbody tr:hover {
+    background: #f8f9fa;
+}
+.bv-services-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.bv-col-service {
+    min-width: 250px;
+}
+.bv-col-price {
+    min-width: 120px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.bv-col-action {
+    min-width: 160px;
+    text-align: right;
+}
+
+.bv-service-name {
+    font-weight: 600;
+    font-size: 15px;
+    color: #1a1a1a;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.bv-service-desc {
+    font-size: 13px;
+    color: #666;
+    margin-top: 4px;
+}
+.bv-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    background: #f0f6fc;
+    color: #002B5C;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+.bv-price {
+    font-size: 16px;
+    font-weight: 700;
+    color: #002B5C;
+}
+.bv-featured-badge {
+    display: inline-block;
+    background: #c5a028;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+.bv-btn {
+    display: inline-block;
+    padding: 10px 24px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 13px;
+    text-decoration: none;
+    text-align: center;
+    transition: all 0.2s;
+    cursor: pointer;
+    border: none;
+    line-height: 1.4;
+}
+.bv-btn-sm {
+    padding: 7px 16px;
+    font-size: 12px;
+}
+.bv-btn-primary {
+    background: #002B5C;
+    color: #fff;
+}
+.bv-btn-primary:hover {
+    background: #003d7a;
+    color: #fff;
+}
+.bv-btn-gold {
+    background: #C5A028;
+    color: #fff;
+}
+.bv-btn-gold:hover {
+    background: #b08e20;
+    color: #fff;
+}
+.bv-btn-plan-cta {
+    color: #fff;
+}
+.bv-btn-plan-cta:hover {
+    opacity: 0.9;
+    color: #fff;
+}
+
+/* ── Plans Section ─────────────────────────────────────────────────────── */
+.bv-plans-section {
+    margin-top: 50px;
+}
+.bv-plans-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 24px;
+}
+
+/* ── Plan Card ─────────────────────────────────────────────────────────── */
+.bv-plan-card {
+    background: #fff;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+    display: flex;
+    flex-direction: column;
+}
+.bv-plan-header {
+    padding: 28px 24px 24px;
+    color: #fff;
+    text-align: center;
+    position: relative;
+}
+.bv-plan-name {
+    font-size: 22px;
+    font-weight: 700;
+    margin: 0 0 4px;
+}
+.bv-plan-subtitle {
+    font-size: 13px;
+    opacity: 0.85;
+    margin: 0 0 16px;
+}
+.bv-plan-price {
+    margin-bottom: 18px;
+}
+.bv-plan-price-amount {
+    font-size: 36px;
+    font-weight: 700;
+}
+.bv-plan-price-period {
+    font-size: 13px;
+    opacity: 0.8;
+}
+.bv-plan-featured-label {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: #C5A028;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.bv-plan-body {
+    flex: 1;
+    padding: 24px;
+}
+.bv-plan-features {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.bv-plan-features li {
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f0f1;
+    font-size: 14px;
+    color: #333;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+.bv-plan-features li::before {
+    content: "✓";
+    color: #1a7a3a;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+.bv-plan-features li:last-child {
+    border-bottom: none;
+}
+.bv-no-features {
+    text-align: center;
+    color: #999;
+    font-size: 14px;
+    padding: 20px 0;
+}
+.bv-plan-footer {
+    padding: 0 24px 24px;
+    text-align: center;
+}
+
+/* ── No Items ──────────────────────────────────────────────────────────── */
+.bv-no-items {
+    text-align: center;
+    padding: 60px 20px;
+    color: #999;
+    font-size: 16px;
+}
+
+/* ── Animations ────────────────────────────────────────────────────────── */
+.bv-animate .bv-services-table tbody tr,
+.bv-animate .bv-plan-card {
+    opacity: 0;
+    transform: translateY(15px);
+    animation: bvFadeIn 0.4s ease forwards;
+}
+.bv-animate .bv-services-table tbody tr:nth-child(1)  { animation-delay: 0.05s; }
+.bv-animate .bv-services-table tbody tr:nth-child(2)  { animation-delay: 0.1s; }
+.bv-animate .bv-services-table tbody tr:nth-child(3)  { animation-delay: 0.15s; }
+.bv-animate .bv-services-table tbody tr:nth-child(4)  { animation-delay: 0.2s; }
+.bv-animate .bv-services-table tbody tr:nth-child(5)  { animation-delay: 0.25s; }
+.bv-animate .bv-services-table tbody tr:nth-child(6)  { animation-delay: 0.3s; }
+.bv-animate .bv-services-table tbody tr:nth-child(7)  { animation-delay: 0.35s; }
+.bv-animate .bv-services-table tbody tr:nth-child(8)  { animation-delay: 0.4s; }
+.bv-animate .bv-services-table tbody tr:nth-child(9)  { animation-delay: 0.45s; }
+.bv-animate .bv-services-table tbody tr:nth-child(10) { animation-delay: 0.5s; }
+
+.bv-animate .bv-plan-card:nth-child(1) { animation-delay: 0.1s; }
+.bv-animate .bv-plan-card:nth-child(2) { animation-delay: 0.2s; }
+.bv-animate .bv-plan-card:nth-child(3) { animation-delay: 0.3s; }
+.bv-animate .bv-plan-card:nth-child(4) { animation-delay: 0.4s; }
+
+@keyframes bvFadeIn {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ── Responsive ────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .bv-services-table thead {
+        display: none;
+    }
+    .bv-services-table,
+    .bv-services-table tbody,
+    .bv-services-table tr,
+    .bv-services-table td {
+        display: block;
+        width: 100%;
+    }
+    .bv-services-table tr {
+        margin-bottom: 16px;
+        border: 1px solid #eee;
+        border-radius: 8px;
+        padding: 16px;
+        box-sizing: border-box;
+    }
+    .bv-services-table td {
+        padding: 4px 0;
+        border-bottom: none;
+        text-align: left !important;
+    }
+    .bv-col-action {
+        margin-top: 8px;
+    }
+
+    .bv-plans-grid {
+        grid-template-columns: 1fr;
+    }
+}

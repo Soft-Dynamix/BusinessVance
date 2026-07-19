@@ -1,0 +1,274 @@
+/**
+ * BusinessVance Services Manager — Admin Styles
+ *
+ * @package BusinessVance_Services_Manager
+ * @since   1.0.0
+ */
+
+/* ── Page Title ────────────────────────────────────────────────────────── */
+.bv-page-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 23px;
+    font-weight: 400;
+    margin: 10px 0 20px;
+    color: #1d2327;
+}
+.bv-page-title .page-title-action {
+    margin-left: 4px;
+}
+
+/* ── Dashboard Stat Cards ─────────────────────────────────────────────── */
+.bv-dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+.bv-stat-card {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 6px;
+    padding: 20px 24px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.bv-stat-icon {
+    font-size: 28px;
+    margin-bottom: 8px;
+}
+.bv-stat-value {
+    font-size: 36px;
+    font-weight: 700;
+    color: #002B5C;
+    line-height: 1.1;
+}
+.bv-stat-label {
+    font-size: 13px;
+    color: #646970;
+    margin-top: 4px;
+}
+
+/* ── Form Card ─────────────────────────────────────────────────────────── */
+.bv-form-card {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 6px;
+    padding: 20px 24px;
+    max-width: 1000px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.bv-form-card h2 {
+    margin-top: 0;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #eee;
+}
+.bv-form-grid {
+    display: flex;
+    gap: 30px;
+    flex-wrap: wrap;
+}
+.bv-form-main {
+    flex: 2;
+    min-width: 300px;
+}
+.bv-form-sidebar {
+    flex: 1;
+    min-width: 260px;
+    background: #f6f7f7;
+    padding: 20px;
+    border-radius: 4px;
+}
+.bv-form-actions {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid #eee;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+/* ── Form Fields ───────────────────────────────────────────────────────── */
+.bv-field {
+    margin-bottom: 16px;
+}
+.bv-field label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 4px;
+    font-size: 13px;
+    color: #1d2327;
+}
+.bv-field .required {
+    color: #d63638;
+}
+.bv-field input[type="text"],
+.bv-field input[type="number"],
+.bv-field input[type="url"],
+.bv-field textarea,
+.bv-field select {
+    width: 100%;
+}
+.bv-field-checkbox {
+    margin-bottom: 12px;
+}
+.bv-field-checkbox label {
+    font-weight: 400;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.bv-field-row {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+/* ── List Table Enhancements ───────────────────────────────────────────── */
+.bv-drag-handle {
+    cursor: grab;
+    font-size: 18px;
+    color: #999;
+    text-align: center;
+    user-select: none;
+}
+.bv-drag-handle:active {
+    cursor: grabbing;
+}
+.bv-sortable-rows tr.ui-sortable-helper {
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+    background: #fff !important;
+}
+.bv-sortable-rows tr.ui-sortable-placeholder {
+    background: #f0f6fc !important;
+    visibility: visible !important;
+    height: 40px;
+}
+
+/* ── Badges ────────────────────────────────────────────────────────────── */
+.bv-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+.bv-badge-cart   { background: #e7f3fe; color: #0073aa; }
+.bv-badge-quote  { background: #fef7e0; color: #996800; }
+.bv-badge-booking { background: #e7f5e9; color: #1a7a3a; }
+.bv-badge-link   { background: #f0f0f1; color: #50575e; }
+
+/* ── Toggle Buttons ────────────────────────────────────────────────────── */
+.bv-toggle-btn {
+    display: inline-block;
+    font-size: 18px;
+    text-decoration: none;
+    line-height: 1;
+}
+.bv-toggle-on {
+    opacity: 1;
+}
+.bv-toggle-off {
+    opacity: 0.35;
+}
+
+/* ── Feature Rows (Plans) ──────────────────────────────────────────────── */
+.bv-feature-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.bv-feature-row input {
+    flex: 1;
+}
+.bv-feature-row .button {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    text-align: center;
+    line-height: 32px;
+    padding: 0;
+    font-size: 18px;
+    color: #d63638;
+}
+
+/* ── WooCommerce Product Modal ─────────────────────────────────────────── */
+.bv-wc-modal-backdrop {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 160000;
+}
+.bv-wc-modal-content {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: #fff;
+    border-radius: 6px;
+    width: 500px;
+    max-width: 90vw;
+    max-height: 80vh;
+    z-index: 160001;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+}
+.bv-wc-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid #eee;
+}
+.bv-wc-modal-header h2 {
+    margin: 0;
+    font-size: 16px;
+}
+.bv-wc-modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #666;
+    line-height: 1;
+    padding: 0 4px;
+}
+.bv-wc-modal-body {
+    padding: 20px;
+    overflow-y: auto;
+}
+.bv-wc-product-item {
+    padding: 10px 12px;
+    border: 1px solid #eee;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background 0.15s;
+}
+.bv-wc-product-item:hover {
+    background: #f0f6fc;
+    border-color: #0073aa;
+}
+.bv-wc-product-item .name {
+    font-weight: 600;
+    font-size: 13px;
+}
+.bv-wc-product-item .meta {
+    font-size: 11px;
+    color: #666;
+}
+.bv-wc-product-item .price {
+    font-weight: 700;
+    color: #002B5C;
+    font-size: 13px;
+    white-space: nowrap;
+}
+.bv-wc-no-results {
+    text-align: center;
+    padding: 30px;
+    color: #666;
+}
