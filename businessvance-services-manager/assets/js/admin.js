@@ -1,158 +1,438 @@
 /**
- * BusinessVance Services Manager — Admin Scripts
- *
- * @package BusinessVance_Services_Manager
- * @since   1.0.0
+ * BusinessVance Services Manager - Admin JavaScript
+ * Handles AJAX CRUD, modals, drag-and-drop reordering
  */
-
-(function ($) {
+(function($) {
     'use strict';
 
-    // ── Sortable Rows ─────────────────────────────────────────────────────
-    function initSortable() {
-        $('.bv-sortable-rows').sortable({
-            handle: '.bv-drag-handle',
-            placeholder: 'ui-sortable-placeholder',
-            tolerance: 'pointer',
-            cursor: 'grabbing',
-            update: function () {
-                var $table = $(this).closest('.bv-sortable-table');
-                var type = $(this).data('type');
-                var nonce = $table.data('nonce');
-                var order = [];
+    if (typeof bvAdmin === 'undefined') return;
 
-                $(this).children('tr[data-id]').each(function () {
+    var ajaxUrl = bvAdmin.ajax_url;
+    var nonce   = bvAdmin.nonce;
+    var strings = bvAdmin.strings;
+
+    /* ============================================
+       MODAL MANAGEMENT
+       ============================================ */
+
+    function openModal(modalId) {
+        $('#' + modalId).show();
+        $('body').css('overflow', 'hidden');
+    }
+
+    function closeModal(modalId) {
+        $('#' + modalId).hide();
+        $('body').css('overflow', '');
+    }
+
+    function resetForm(formId) {
+        $('#' + formId)[0].reset();
+        // Reset checkbox states
+        $('#' + formId + ' input[type="checkbox"]').prop('checked', false);
+        // Re-check defaults
+        $('#' + formId + ' input[name="is_visible"]').prop('checked', true);
+        // Reset hidden ID
+        $('#' + formId + ' input[name="id"]').val('');
+        // Reset features list
+        $('#bv-features-list').empty();
+    }
+
+    // Close modal on overlay click or X button
+    $(document).on('click', '.bv-modal-overlay, .bv-modal-close, .bv-cancel-btn', function(e) {
+        var modal = $(this).closest('.bv-modal');
+        if (modal.length) {
+            modal.hide();
+            $('body').css('overflow', '');
+        }
+    });
+
+    // Close on Escape
+    $(document).on('keydown', function(e) {
+        if (e.key === 'Escape') {
+            $('.bv-modal:visible').hide();
+            $('body').css('overflow', '');
+        }
+    });
+
+    /* ============================================
+       SERVICES
+       ============================================ */
+
+    // Open Add Service modal
+    $(document).on('click', '#bv-add-service', function() {
+        $('#bv-service-modal-title').text('Add New Service');
+        resetForm('bv-service-form');
+        $('#bv-service-form input[name="price"]').val('R0');
+        $('#bv-service-form input[name="button_label"]').val('Get Started');
+        openModal('bv-service-modal');
+    });
+
+    // Open Edit Service modal
+    $(document).on('click', '#bv-services-table .bv-edit-btn', function() {
+        var row = $(this).closest('tr');
+        var id = row.data('id');
+
+        $.post(ajaxUrl, {
+            action: 'bv_get_service',
+            nonce: nonce,
+            id: id
+        }, function(response) {
+            if (response.success) {
+                var svc = response.data;
+                $('#bv-service-modal-title').text('Edit Service');
+                $('#bv-service-form input[name="id"]').val(svc.id);
+                $('#bv-service-form input[name="name"]').val(svc.name);
+                $('#bv-service-form textarea[name="description"]').val(svc.description);
+                $('#bv-service-form input[name="price"]').val(svc.price);
+                $('#bv-service-form input[name="price_display"]').val(svc.price_display);
+                $('#bv-service-form select[name="icon"]').val(svc.icon);
+                $('#bv-service-form input[name="button_label"]').val(svc.button_label);
+                $('#bv-service-form select[name="service_type"]').val(svc.service_type);
+                $('#bv-service-form input[name="woo_product_id"]').val(svc.woo_product_id);
+                $('#bv-service-form select[name="category_id"]').val(svc.category_id);
+                $('#bv-service-form input[name="is_visible"]').prop('checked', svc.is_visible == 1);
+                $('#bv-service-form input[name="is_featured"]').prop('checked', svc.is_featured == 1);
+                openModal('bv-service-modal');
+            } else {
+                alert(response.data.message || strings.error);
+            }
+        });
+    });
+
+    // Save Service
+    $(document).on('submit', '#bv-service-form', function(e) {
+        e.preventDefault();
+
+        var $btn = $(this).find('.bv-gold-btn');
+        var originalText = $btn.text();
+
+        $btn.text(strings.saving).prop('disabled', true);
+
+        var formData = $(this).serialize();
+        formData += '&action=bv_save_service&nonce=' + nonce;
+
+        $.post(ajaxUrl, formData, function(response) {
+            if (response.success) {
+                alert(strings.saved);
+                location.reload();
+            } else {
+                alert(response.data.message || strings.error);
+                $btn.text(originalText).prop('disabled', false);
+            }
+        }).fail(function() {
+            alert(strings.error);
+            $btn.text(originalText).prop('disabled', false);
+        });
+    });
+
+    // Delete Service
+    $(document).on('click', '#bv-services-table .bv-delete-btn', function() {
+        if (!confirm(strings.confirm_delete)) return;
+
+        var id = $(this).data('id');
+
+        $.post(ajaxUrl, {
+            action: 'bv_delete_service',
+            nonce: nonce,
+            id: id
+        }, function(response) {
+            if (response.success) {
+                location.reload();
+            } else {
+                alert(response.data.message || strings.error);
+            }
+        });
+    });
+
+    /* ============================================
+       PLANS
+       ============================================ */
+
+    // Open Add Plan modal
+    $(document).on('click', '#bv-add-plan', function() {
+        $('#bv-plan-modal-title').text('Add New Plan');
+        resetForm('bv-plan-form');
+        $('#bv-plan-form input[name="price"]').val('R0/mo');
+        $('#bv-plan-form input[name="button_label"]').val('Subscribe Now');
+        $('#bv-plan-form input[name="is_visible"]').prop('checked', true);
+        $('#bv-features-list').empty();
+        addFeatureRow();
+        addFeatureRow();
+        openModal('bv-plan-modal');
+    });
+
+    // Open Edit Plan modal
+    $(document).on('click', '#bv-plans-table .bv-edit-btn', function() {
+        var row = $(this).closest('tr');
+        var id = row.data('id');
+
+        // Get plan data via AJAX
+        $.post(ajaxUrl, {
+            action: 'bv_get_plan',
+            nonce: nonce,
+            id: id
+        }, function(response) {
+            if (response.success) {
+                var plan = response.data;
+                $('#bv-plan-modal-title').text('Edit Plan');
+                $('#bv-plan-form input[name="id"]').val(plan.id);
+                $('#bv-plan-form input[name="name"]').val(plan.name);
+                $('#bv-plan-form input[name="subtitle"]').val(plan.subtitle);
+                $('#bv-plan-form input[name="price"]').val(plan.price);
+                $('#bv-plan-form input[name="color"]').val(plan.color);
+                $('#bv-plan-form input[name="button_label"]').val(plan.button_label);
+                $('#bv-plan-form input[name="woo_product_id"]').val(plan.woo_product_id);
+                $('#bv-plan-form select[name="category_id"]').val(plan.category_id);
+                $('#bv-plan-form input[name="is_visible"]').prop('checked', plan.is_visible == 1);
+                $('#bv-plan-form input[name="is_featured"]').prop('checked', plan.is_featured == 1);
+
+                // Populate features
+                $('#bv-features-list').empty();
+                if (plan.features && plan.features.length > 0) {
+                    plan.features.forEach(function(f) {
+                        addFeatureRow(f.feature_text);
+                    });
+                } else {
+                    addFeatureRow();
+                }
+
+                openModal('bv-plan-modal');
+            }
+        });
+    });
+
+    // Save Plan
+    $(document).on('submit', '#bv-plan-form', function(e) {
+        e.preventDefault();
+
+        var $btn = $(this).find('.bv-gold-btn');
+        var originalText = $btn.text();
+
+        $btn.text(strings.saving).prop('disabled', true);
+
+        // Collect features
+        var features = [];
+        $('#bv-features-list input[type="text"]').each(function() {
+            features.push($(this).val());
+        });
+
+        var formData = $(this).serialize();
+        formData += '&action=bv_save_plan&nonce=' + nonce;
+
+        // Remove features from form data (we send as array)
+        formData = formData.replace(/&features=[^&]*/g, '');
+
+        // Append features array
+        features.forEach(function(f, i) {
+            formData += '&features[]=' + encodeURIComponent(f);
+        });
+
+        $.post(ajaxUrl, formData, function(response) {
+            if (response.success) {
+                alert(strings.saved);
+                location.reload();
+            } else {
+                alert(response.data.message || strings.error);
+                $btn.text(originalText).prop('disabled', false);
+            }
+        }).fail(function() {
+            alert(strings.error);
+            $btn.text(originalText).prop('disabled', false);
+        });
+    });
+
+    // Delete Plan
+    $(document).on('click', '#bv-plans-table .bv-delete-btn', function() {
+        if (!confirm(strings.confirm_delete)) return;
+
+        var id = $(this).data('id');
+
+        $.post(ajaxUrl, {
+            action: 'bv_delete_plan',
+            nonce: nonce,
+            id: id
+        }, function(response) {
+            if (response.success) {
+                location.reload();
+            } else {
+                alert(response.data.message || strings.error);
+            }
+        });
+    });
+
+    // Feature row management
+    function addFeatureRow(value) {
+        var row = $('<div class="bv-feature-row">' +
+            '<input type="text" placeholder="Enter feature..." value="' + (value || '') + '">' +
+            '<button type="button" class="bv-remove-feature">&times;</button>' +
+            '</div>');
+        $('#bv-features-list').append(row);
+    }
+
+    $(document).on('click', '#bv-add-feature', function() {
+        addFeatureRow('');
+    });
+
+    $(document).on('click', '.bv-remove-feature', function() {
+        $(this).closest('.bv-feature-row').remove();
+    });
+
+    /* ============================================
+       CATEGORIES
+       ============================================ */
+
+    // Auto-generate slug from name
+    $(document).on('input', '#cat-name', function() {
+        var slug = $(this).val()
+            .toLowerCase()
+            .replace(/[^a-z0-9\s-]/g, '')
+            .replace(/[\s-]+/g, '-')
+            .replace(/^-+|-+$/g, '');
+        $('#cat-slug').val(slug);
+    });
+
+    // Open Add Category modal
+    $(document).on('click', '#bv-add-category', function() {
+        $('#bv-category-modal-title').text('Add New Category');
+        resetForm('bv-category-form');
+        openModal('bv-category-modal');
+    });
+
+    // Open Edit Category modal
+    $(document).on('click', 'table .bv-edit-btn[data-type="category"]', function() {
+        var row = $(this).closest('tr');
+        var id = row.data('id');
+        var name = row.find('strong').text().trim();
+        var slug = row.find('code').text().trim();
+
+        $('#bv-category-modal-title').text('Edit Category');
+        $('#bv-category-form input[name="id"]').val(id);
+        $('#bv-category-form input[name="name"]').val(name);
+        $('#bv-category-form input[name="slug"]').val(slug);
+        openModal('bv-category-modal');
+    });
+
+    // Save Category
+    $(document).on('submit', '#bv-category-form', function(e) {
+        e.preventDefault();
+
+        var $btn = $(this).find('.bv-gold-btn');
+        var originalText = $btn.text();
+
+        $btn.text(strings.saving).prop('disabled', true);
+
+        var formData = $(this).serialize();
+        formData += '&action=bv_save_category&nonce=' + nonce;
+
+        $.post(ajaxUrl, formData, function(response) {
+            if (response.success) {
+                alert(strings.saved);
+                location.reload();
+            } else {
+                alert(response.data.message || strings.error);
+                $btn.text(originalText).prop('disabled', false);
+            }
+        }).fail(function() {
+            alert(strings.error);
+            $btn.text(originalText).prop('disabled', false);
+        });
+    });
+
+    // Delete Category
+    $(document).on('click', 'table .bv-delete-btn[data-type="category"]', function() {
+        if (!confirm(strings.confirm_delete)) return;
+
+        var id = $(this).data('id');
+
+        $.post(ajaxUrl, {
+            action: 'bv_delete_category',
+            nonce: nonce,
+            id: id
+        }, function(response) {
+            if (response.success) {
+                location.reload();
+            } else {
+                alert(response.data.message || strings.error);
+            }
+        });
+    });
+
+    /* ============================================
+       TOGGLE VISIBILITY
+       ============================================ */
+
+    $(document).on('click', '.bv-toggle-btn', function() {
+        var id = $(this).data('id');
+        var type = $(this).data('type');
+        var $btn = $(this);
+
+        $.post(ajaxUrl, {
+            action: 'bv_toggle_visibility',
+            nonce: nonce,
+            id: id,
+            type: type
+        }, function(response) {
+            if (response.success) {
+                if (response.data.is_visible) {
+                    $btn.removeClass('bv-inactive').addClass('bv-active');
+                    $btn.html('👁️');
+                    $btn.attr('title', 'Click to hide');
+                } else {
+                    $btn.removeClass('bv-active').addClass('bv-inactive');
+                    $btn.html('🚫');
+                    $btn.attr('title', 'Click to show');
+                }
+            }
+        });
+    });
+
+    /* ============================================
+       DRAG & DROP REORDERING
+       ============================================ */
+
+    function initSortable(tableId, actionName) {
+        var $table = $('#' + tableId);
+        if ($table.length === 0) return;
+
+        $table.find('tbody').sortable({
+            handle: '.bv-sort-handle',
+            placeholder: 'bv-sort-placeholder',
+            axis: 'y',
+            opacity: 0.7,
+            tolerance: 'pointer',
+            update: function() {
+                var order = [];
+                $table.find('tbody tr').each(function(i) {
                     order.push($(this).data('id'));
                 });
 
-                $.post(ajaxurl, {
-                    action: 'bv_reorder_' + type,
+                $.post(ajaxUrl, {
+                    action: actionName,
                     nonce: nonce,
-                    order: order,
-                });
-            },
-        });
-    }
-
-    // ── Button Type Toggle (show/hide URL field) ──────────────────────────
-    function initButtonTypeToggle() {
-        $('select[name="button_type"], #svc-button-type, #plan-button-type').on('change', function () {
-            var val = $(this).val();
-            var $urlField = $(this).closest('.bv-form-card, .bv-form-sidebar').find('#svc-url-field, #plan-url-field');
-            if (val === 'link') {
-                $urlField.show();
-            } else {
-                $urlField.hide();
-            }
-        });
-    }
-
-    // ── Auto-generate slug from name ─────────────────────────────────────
-    function initSlugGenerator() {
-        $('#svc-name').on('input', function () {
-            if (!$('#svc-slug').val()) {
-                var slug = $(this).val().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-                $('#svc-slug').val(slug);
-            }
-        });
-    }
-
-    // ── Plan Feature Management ───────────────────────────────────────────
-    function initPlanFeatures() {
-        // Add feature.
-        $('#bv-add-feature').on('click', function () {
-            var html = '<div class="bv-feature-row">' +
-                '<input type="text" name="features[]" value="" class="regular-text" placeholder="Feature description">' +
-                '<button type="button" class="button bv-remove-feature" title="Remove feature">&minus;</button>' +
-                '</div>';
-            $('#bv-features-list').append(html);
-        });
-
-        // Remove feature.
-        $(document).on('click', '.bv-remove-feature', function () {
-            $(this).closest('.bv-feature-row').fadeOut(200, function () {
-                $(this).remove();
-            });
-        });
-    }
-
-    // ── WooCommerce Product Browser Modal ─────────────────────────────────
-    var $modal = $('#bv-wc-modal');
-    var $targetInput = null;
-
-    function initWCModal() {
-        // Open modal.
-        $(document).on('click', '.bv-browse-products', function () {
-            $targetInput = $('#' + $(this).data('target'));
-            $modal.show();
-            $('#bv-wc-search').val('').focus().trigger('input');
-        });
-
-        // Close modal.
-        $('.bv-wc-modal-close, .bv-wc-modal-backdrop').on('click', function () {
-            $modal.hide();
-        });
-
-        // Search products with debounce.
-        var searchTimer;
-        $('#bv-wc-search').on('input', function () {
-            clearTimeout(searchTimer);
-            var query = $(this).val();
-
-            searchTimer = setTimeout(function () {
-                $.post(ajaxurl, {
-                    action: 'bv_search_wc_products',
-                    nonce: BVAdmin.nonce_wc_search,
-                    search: query,
-                }, function (res) {
-                    if (!res.success) {
-                        $('#bv-wc-results').html('<div class="bv-wc-no-results">WooCommerce is not active.</div>');
-                        return;
+                    order: order
+                }, function(response) {
+                    if (response.success) {
+                        // Brief visual feedback
+                        $table.find('tbody tr').each(function(i) {
+                            $(this).find('td').effect('highlight', { color: '#D4AF37' }, 300);
+                        });
                     }
-
-                    var products = res.data;
-                    if (products.length === 0) {
-                        $('#bv-wc-results').html('<div class="bv-wc-no-results">No products found.</div>');
-                        return;
-                    }
-
-                    var html = '';
-                    products.forEach(function (p) {
-                        html += '<div class="bv-wc-product-item" data-id="' + p.id + '">' +
-                            '<div><div class="name">' + $('<span>').text(p.name).html() + '</div>' +
-                            '<div class="meta">ID: ' + p.id + ' &middot; SKU: ' + $('<span>').text(p.sku).html() + '</div></div>' +
-                            '<div class="price">' + p.price + '</div>' +
-                            '</div>';
-                    });
-
-                    $('#bv-wc-results').html(html);
                 });
-            }, 300);
-        });
-
-        // Select product.
-        $(document).on('click', '.bv-wc-product-item', function () {
-            if ($targetInput) {
-                $targetInput.val($(this).data('id'));
-            }
-            $modal.hide();
-        });
-
-        // Close on Escape.
-        $(document).on('keydown', function (e) {
-            if (e.key === 'Escape' && $modal.is(':visible')) {
-                $modal.hide();
             }
         });
     }
 
-    // ── Init on DOM Ready ─────────────────────────────────────────────────
-    $(document).ready(function () {
-        initSortable();
-        initButtonTypeToggle();
-        initSlugGenerator();
-        initPlanFeatures();
-        initWCModal();
+    $(document).ready(function() {
+        initSortable('bv-services-table', 'bv_reorder_services');
+        initSortable('bv-plans-table', 'bv_reorder_plans');
     });
+
+    /* ============================================
+       AJAX: GET PLAN (for edit)
+       ============================================ */
+
+    // Register the AJAX handler in PHP if needed, or use inline data
+    // For simplicity, plan edit fetches data from the table row and enriches with features
+    // The full implementation adds a 'bv_get_plan' action to the admin class
 
 })(jQuery);
