@@ -41,9 +41,15 @@ export async function POST(request: NextRequest) {
       features,
     } = body;
 
+    const slug = name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+
     const plan = await db.plan.create({
       data: {
         name,
+        slug,
         subtitle: subtitle || '',
         price: parseFloat(price) || 0,
         color: color || '#002B5C',

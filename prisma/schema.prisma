@@ -43,6 +43,7 @@ model Service {
 model Plan {
   id                String   @id @default(cuid())
   name              String
+  slug              String   @unique
   subtitle          String   @default("")
   price             Float
   color             String   @default("#002B5C") // primary color for the card
@@ -68,4 +69,11 @@ model PlanFeature {
   createdAt DateTime @default(now())
 
   plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+}
+
+model PluginSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
 }

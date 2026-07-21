@@ -241,3 +241,36 @@ Stage Summary:
 - Next.js showcase page at /home/z/my-project/src/app/page.tsx
 - Plugin is production-ready: WooCommerce-linked, Yoco-compatible, fully responsive
 
+
+---
+Task ID: 7
+Agent: main
+Task: Make page fully customizable by plugin — dynamic data from API
+
+Work Log:
+- Added PluginSetting model (key/value) to Prisma schema
+- Added slug field to Plan model for upsert operations
+- Created /api/settings route (GET returns merged defaults+DB, PUT upserts settings)
+- Updated /api/plans POST handler to auto-generate slug
+- Created comprehensive seed script (prisma/seed.ts) with:
+  - 28 plugin settings (branding, colors, sections, currency, footer, layout, trust badges)
+  - 4 categories, 12 services, 3 plans with features
+- Rewrote bv-frontend.css to use CSS custom properties (var(--bv-color-primary), etc.)
+- Completely rewrote page.tsx: zero hardcoded data, all fetched from 3 API endpoints
+  - Fetches settings, services, plans in parallel on mount
+  - Derives all display values (brand, colors, currency, sections, footer) from settings
+  - Sets CSS custom properties on wrapper for theme color customization
+  - Loading spinner state while data loads
+  - formatPrice() respects currency_symbol and currency_position settings
+  - getButtonUrl() handles cart/quote/link button types with WooCommerce product IDs
+  - Trust badges parsed from JSON setting
+  - Sections conditionally rendered (show_services_section, show_plans_section, show_trust_badges)
+- Verified customization works: changed brand name, section title, currency, accent color via API — all reflected on page
+- VLM-verified desktop (1920x1080) and mobile (iPhone 14) rendering
+
+Stage Summary:
+- Page is now 100% plugin-customizable via /api/settings
+- 28 configurable settings covering branding, colors, content, currency, footer, layout
+- CSS custom properties enable live theme color changes
+- All services, plans, and categories are dynamic from database
+- Clean ESLint pass, browser-verified on desktop and mobile

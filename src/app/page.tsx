@@ -1,44 +1,51 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
-/* ── Seed data matching plugin's activation data ── */
+/* ── Types ── */
+interface Settings {
+  [key: string]: string;
+}
 
-const services = [
-  { name: 'Business Feasibility Report', desc: 'Comprehensive assessment of the viability and potential success of your business idea, including market demand, financial projections, and risk analysis.', price: 'R2,500', icon: 'clipboard-list', featured: true },
-  { name: 'Market Research Report', desc: 'In-depth analysis of your target market, customer demographics, industry trends, and competitive landscape to inform strategic decisions.', price: 'R3,000', icon: 'search', featured: false },
-  { name: 'Competitor Analysis', desc: "Detailed evaluation of your competitors' strategies, strengths, weaknesses, and market positioning to identify opportunities.", price: 'R2,000', icon: 'users', featured: false },
-  { name: 'Startup Cost Estimate', desc: 'Thorough breakdown of all expected costs to launch your business, including one-time and recurring expenses.', price: 'R1,500', icon: 'calculator', featured: false },
-  { name: 'Marketing Strategy Report', desc: 'Custom marketing plan covering digital and traditional channels, target audience segmentation, and budget allocation.', price: 'R3,500', icon: 'megaphone', featured: true },
-  { name: 'Financial Forecast Report', desc: '3-5 year financial projections including revenue, expenses, cash flow, and break-even analysis for investors or planning.', price: 'R3,000', icon: 'trending-up', featured: false },
-  { name: 'Risk Assessment Report', desc: 'Identification and evaluation of potential business risks with mitigation strategies and contingency planning.', price: 'R2,500', icon: 'shield-alert', featured: false },
-  { name: 'Business Plan', desc: 'Comprehensive, investor-ready business plan including executive summary, market analysis, financials, and operations plan.', price: 'R4,000', icon: 'file-text', featured: true },
-  { name: 'Investor Readiness Report', desc: "Assessment of your business's readiness for investment, covering financials, governance, growth potential, and pitch preparation.", price: 'R3,500', icon: 'presentation', featured: false },
-  { name: 'Business Health Check', desc: 'Diagnostic review of your existing business operations, financials, and strategy with actionable improvement recommendations.', price: 'R2,000', icon: 'heart-pulse', featured: false },
-  { name: 'Consulting & Strategy Session', desc: 'One-on-one consulting session with our expert advisors to address specific business challenges and opportunities.', price: 'R1,200', icon: 'handshake', featured: false },
-  { name: 'Implementation Support', desc: 'Hands-on support to implement recommended strategies, processes, and systems for your business.', price: 'R2,500', icon: 'wrench', featured: false },
-];
+interface ServiceItem {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  icon: string;
+  buttonLabel: string;
+  buttonType: string;
+  buttonUrl: string;
+  woocommerceProductId: string;
+  categoryId: string | null;
+  visible: boolean;
+  featured: boolean;
+  displayOrder: number;
+  category?: { id: string; name: string; slug: string; color: string } | null;
+}
 
-const plans = [
-  {
-    name: 'STARTER', subtitle: 'For new entrepreneurs', price: 'R299/MONTH',
-    color: '#2A9D8F', featured: false, btn: 'GET STARTED', btnClass: 'bv-btn-teal',
-    features: ['1 report per month', '10% discount on all services', 'Priority delivery', 'Email support', 'Monthly business tips'],
-  },
-  {
-    name: 'PROFESSIONAL', subtitle: 'For growing businesses', price: 'R599/MONTH',
-    color: '#264653', featured: true, btn: 'UPGRADE NOW', btnClass: 'bv-btn-navy',
-    features: ['2 reports per month', '15% discount on all services', 'Priority delivery', 'Email support', 'Monthly business tips', 'Early access to new reports'],
-  },
-  {
-    name: 'BUSINESS PARTNER', subtitle: 'For serious entrepreneurs & teams', price: 'R999/MONTH',
-    color: '#F4A261', featured: false, btn: 'JOIN NOW', btnClass: 'bv-btn-gold',
-    features: ['4 reports per month', '20% discount on all services', 'Priority delivery', 'Email support', 'Monthly business tips', 'Early access to new reports', 'Dedicated account manager'],
-  },
-];
+interface PlanItem {
+  id: string;
+  name: string;
+  subtitle: string;
+  price: number;
+  color: string;
+  buttonLabel: string;
+  buttonType: string;
+  buttonUrl: string;
+  woocommerceProductId: string;
+  visible: boolean;
+  featured: boolean;
+  displayOrder: number;
+  features: { id: string; text: string }[];
+}
 
-/* ── SVG icon paths (same as plugin) ── */
+interface TrustBadge {
+  icon: string;
+  text: string;
+}
 
+/* ── SVG icon paths (same as WordPress plugin) ── */
 const iconPaths: Record<string, string> = {
   shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
   'shield-check': '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
@@ -71,7 +78,85 @@ function Icon({ name, size = 24 }: { name: string; size?: number }) {
   );
 }
 
+/* ── Helpers ── */
+function formatPrice(price: number, symbol: string, position: string): string {
+  const formatted = price.toLocaleString('en-ZA');
+  if (position === 'after') return `${formatted} ${symbol}`;
+  return `${symbol}${formatted}`;
+}
+
+function getButtonClass(color: string): string {
+  // Determine button class based on plan color
+  const teal = ['#2A9D8F', '#21867A', '#008080', '#006699'].map(c => c.toLowerCase());
+  const navy = ['#264653', '#0A2647', '#003366', '#004080', '#144272'].map(c => c.toLowerCase());
+  const lower = color.toLowerCase();
+  if (teal.includes(lower)) return 'bv-btn-teal';
+  if (navy.includes(lower)) return 'bv-btn-navy';
+  return 'bv-btn-gold';
+}
+
+function getButtonUrl(service: ServiceItem | PlanItem): string {
+  if (service.buttonType === 'link' && service.buttonUrl) return service.buttonUrl;
+  if ((service.buttonType === 'cart' || service.buttonType === 'subscription') && service.woocommerceProductId) {
+    return `?add-to-cart=${service.woocommerceProductId}`;
+  }
+  return '#';
+}
+
+/* ── Component ── */
 export default function Home() {
+  const [settings, setSettings] = useState<Settings>({});
+  const [services, setServices] = useState<ServiceItem[]>([]);
+  const [plans, setPlans] = useState<PlanItem[]>([]);
+  const [trustBadges, setTrustBadges] = useState<TrustBadge[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const [settingsRes, servicesRes, plansRes] = await Promise.all([
+        fetch('/api/settings'),
+        fetch('/api/services'),
+        fetch('/api/plans'),
+      ]);
+
+      const settingsData = await settingsRes.json();
+      const servicesData = await servicesRes.json();
+      const plansData = await plansRes.json();
+
+      const s = settingsData.settings || {};
+      setSettings(s);
+
+      // Parse trust badges from settings
+      try {
+        const badges = JSON.parse(s.trust_badges || '[]');
+        setTrustBadges(badges);
+      } catch {
+        setTrustBadges([]);
+      }
+
+      // Filter and sort services
+      const visibleServices = (servicesData.services || [])
+        .filter((sv: ServiceItem) => sv.visible)
+        .sort((a: ServiceItem, b: ServiceItem) => a.displayOrder - b.displayOrder);
+      setServices(visibleServices);
+
+      // Filter and sort plans
+      const visiblePlans = (plansData.plans || [])
+        .filter((p: PlanItem) => p.visible)
+        .sort((a: PlanItem, b: PlanItem) => a.displayOrder - b.displayOrder);
+      setPlans(visiblePlans);
+    } catch (err) {
+      console.error('Failed to fetch data:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Load CSS dynamically
   useEffect(() => {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
@@ -80,8 +165,56 @@ export default function Home() {
     return () => { document.head.removeChild(link); };
   }, []);
 
+  // Derive values from settings with fallbacks
+  const brandName = settings.brand_name || 'BUSINESSVANCE';
+  const brandTagline = settings.brand_tagline || '';
+  const brandDescription = settings.brand_description || '';
+  const headerIcon = settings.header_icon || 'shield';
+  const currencySymbol = settings.currency_symbol || 'R';
+  const currencyPosition = settings.currency_position || 'before';
+  const showServices = settings.show_services_section !== 'false';
+  const showPlans = settings.show_plans_section !== 'false';
+  const showTrustBadges = settings.show_trust_badges !== 'false';
+  const showFeaturedBadge = settings.show_featured_badge !== 'false';
+  const servicesTitle = settings.services_section_title || 'PRICE LIST';
+  const servicesSubtitle = settings.services_section_subtitle || 'ONE-TIME REPORTS & SERVICES';
+  const plansTitle = settings.plans_section_title || 'MONTHLY SUBSCRIPTION PLANS';
+  const plansSubtitle = settings.plans_section_subtitle || 'CHOOSE THE PLAN THAT GROWS WITH YOU';
+  const footerCompanyName = settings.footer_company_name || '';
+  const footerWebsite = settings.footer_website || '';
+  const footerPhone = settings.footer_phone || '';
+  const footerEmail = settings.footer_email || '';
+  const footerCopyright = settings.footer_copyright || '';
+  const defaultButtonLabel = settings.default_service_button_label || 'ADD TO CART';
+  const containerMaxWidth = settings.container_max_width || '1200px';
+
+  // CSS custom properties from settings
+  const cssVars: React.CSSProperties = {
+    '--bv-color-primary': settings.color_primary || '#0A2647',
+    '--bv-color-primary-dark': settings.color_primary_dark || '#071a33',
+    '--bv-color-primary-light': settings.color_primary_light || '#144272',
+    '--bv-color-accent': settings.color_accent || '#F4A261',
+    '--bv-color-accent-alt': settings.color_accent_alt || '#2A9D8F',
+    '--bv-color-gold': settings.color_gold || '#D4AF37',
+    '--bv-color-text': settings.color_text || '#333333',
+    '--bv-color-text-light': settings.color_text_light || '#666666',
+    '--bv-color-bg': settings.color_bg || '#ffffff',
+    '--bv-container-max-width': containerMaxWidth,
+  } as React.CSSProperties;
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="bv-loading">
+          <div className="bv-loading-spinner" />
+          <span>Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="bv-page-wrapper" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="bv-page-wrapper" style={{ ...cssVars, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
 
       {/* ═══ HEADER ═══ */}
       <header className="bv-header">
@@ -93,166 +226,187 @@ export default function Home() {
           </div>
           <div className="bv-header-brand">
             <div className="bv-shield-logo">
-              <Icon name="shield" size={36} />
+              <Icon name={headerIcon} size={36} />
             </div>
             <div className="bv-brand-text">
-              <h1 className="bv-brand-name">BUSINESSVANCE</h1>
-              <p className="bv-brand-tagline">INSIGHT. STRATEGY. SUCCESS.</p>
+              <h1 className="bv-brand-name">{brandName}</h1>
+              {brandTagline && <p className="bv-brand-tagline">{brandTagline}</p>}
             </div>
           </div>
-          <p className="bv-brand-description">Professional business reports and advisory services to help you make confident, informed decisions.</p>
+          {brandDescription && <p className="bv-brand-description">{brandDescription}</p>}
         </div>
       </header>
 
       {/* ═══ SERVICES TABLE ═══ */}
-      <section className="bv-services-section">
-        <div className="bv-section-header">
-          <div className="bv-section-banner">PRICE LIST</div>
-          <div className="bv-section-sub">ONE-TIME REPORTS &amp; SERVICES</div>
-        </div>
+      {showServices && services.length > 0 && (
+        <section className="bv-services-section">
+          <div className="bv-section-header">
+            <div className="bv-section-banner">{servicesTitle}</div>
+            <div className="bv-section-sub">{servicesSubtitle}</div>
+          </div>
 
-        {/* Desktop Table */}
-        <div className="bv-table-wrapper bv-desktop-only">
-          <table className="bv-services-table">
-            <thead>
-              <tr>
-                <th style={{ width: '28%' }}>SERVICE</th>
-                <th style={{ width: '47%' }}>DESCRIPTION</th>
-                <th className="bv-col-price" style={{ width: '25%' }}>PRICE (ZAR)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {services.map((s, i) => (
-                <tr key={i}>
-                  <td>
-                    <div className="bv-service-info">
-                      <div className="bv-service-icon">
-                        <Icon name={s.icon} size={20} />
-                      </div>
-                      <div className="bv-service-name">
-                        {s.name}
-                        {s.featured && <span className="bv-featured-badge">★ Popular</span>}
-                      </div>
-                    </div>
-                  </td>
-                  <td><p className="bv-service-desc">{s.desc}</p></td>
-                  <td>
-                    <div className="bv-price-block">
-                      <span className="bv-service-price">{s.price}</span>
-                      <a href="#" className="bv-btn bv-btn-gold bv-btn-sm" onClick={e => e.preventDefault()}>ADD TO CART</a>
-                    </div>
-                  </td>
+          {/* Desktop Table */}
+          <div className="bv-table-wrapper bv-desktop-only">
+            <table className="bv-services-table">
+              <thead>
+                <tr>
+                  <th style={{ width: '28%' }}>SERVICE</th>
+                  <th style={{ width: '47%' }}>DESCRIPTION</th>
+                  <th className="bv-col-price" style={{ width: '25%' }}>PRICE ({currencySymbol} ZAR)</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {services.map((s) => (
+                  <tr key={s.id}>
+                    <td>
+                      <div className="bv-service-info">
+                        <div className="bv-service-icon">
+                          <Icon name={s.icon} size={20} />
+                        </div>
+                        <div className="bv-service-name">
+                          {s.name}
+                          {showFeaturedBadge && s.featured && <span className="bv-featured-badge">★ Popular</span>}
+                        </div>
+                      </div>
+                    </td>
+                    <td><p className="bv-service-desc">{s.description}</p></td>
+                    <td>
+                      <div className="bv-price-block">
+                        <span className="bv-service-price">{formatPrice(s.price, currencySymbol, currencyPosition)}</span>
+                        <a
+                          href={getButtonUrl(s)}
+                          className="bv-btn bv-btn-gold bv-btn-sm"
+                          onClick={e => { if (getButtonUrl(s) === '#') e.preventDefault(); }}
+                        >
+                          {s.buttonLabel || defaultButtonLabel}
+                        </a>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-        {/* Mobile Cards */}
-        <div className="bv-mobile-cards bv-mobile-only">
-          {services.map((s, i) => (
-            <div className="bv-service-card" key={i}>
-              <div className="bv-card-header">
-                <div className="bv-card-icon">
-                  <Icon name={s.icon} size={20} />
+          {/* Mobile Cards */}
+          <div className="bv-mobile-cards bv-mobile-only">
+            {services.map((s) => (
+              <div className="bv-service-card" key={s.id}>
+                <div className="bv-card-header">
+                  <div className="bv-card-icon">
+                    <Icon name={s.icon} size={20} />
+                  </div>
+                  <div>
+                    <h3 className="bv-card-name">
+                      {s.name}
+                      {showFeaturedBadge && s.featured && <span className="bv-featured-badge">★ Popular</span>}
+                    </h3>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="bv-card-name">
-                    {s.name}
-                    {s.featured && <span className="bv-featured-badge">★ Popular</span>}
-                  </h3>
+                <p className="bv-card-desc">{s.description}</p>
+                <div className="bv-card-footer">
+                  <span className="bv-card-price">{formatPrice(s.price, currencySymbol, currencyPosition)}</span>
+                  <a
+                    href={getButtonUrl(s)}
+                    className="bv-btn bv-btn-gold bv-btn-sm"
+                    onClick={e => { if (getButtonUrl(s) === '#') e.preventDefault(); }}
+                  >
+                    {s.buttonLabel || defaultButtonLabel}
+                  </a>
                 </div>
               </div>
-              <p className="bv-card-desc">{s.desc}</p>
-              <div className="bv-card-footer">
-                <span className="bv-card-price">{s.price}</span>
-                <a href="#" className="bv-btn bv-btn-gold bv-btn-sm" onClick={e => e.preventDefault()}>ADD TO CART</a>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ═══ SUBSCRIPTION PLANS ═══ */}
-      <section className="bv-plans-section">
-        <div className="bv-section-header">
-          <div className="bv-section-banner">
-            <Icon name="crown" size={18} />
-            &nbsp; MONTHLY SUBSCRIPTION PLANS
-          </div>
-          <div className="bv-section-sub-alt">CHOOSE THE PLAN THAT GROWS WITH YOU</div>
-        </div>
-
-        <div className="bv-plans-grid">
-          {plans.map((p, i) => (
-            <div
-              key={i}
-              className={`bv-plan-card ${p.featured ? 'bv-plan-featured' : ''}`}
-              style={p.featured ? { borderColor: p.color } : undefined}
-            >
-              {p.featured && (
-                <div className="bv-plan-popular" style={{ backgroundColor: p.color }}>
-                  MOST POPULAR
-                </div>
-              )}
-
-              <div className="bv-plan-header" style={{ backgroundColor: p.color }}>
-                <h3 className="bv-plan-name">{p.name}</h3>
-                <p className="bv-plan-subtitle">{p.subtitle}</p>
-              </div>
-
-              <div className="bv-plan-price-wrap">
-                <span className="bv-plan-price">{p.price}</span>
-              </div>
-
-              <div className="bv-plan-features">
-                <ul>
-                  {p.features.map((f, j) => (
-                    <li key={j}>
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="bv-plan-action">
-                <a href="#" className={`bv-btn ${p.btnClass} bv-btn-block`} onClick={e => e.preventDefault()}>
-                  {p.btn}
-                </a>
-              </div>
+      {showPlans && plans.length > 0 && (
+        <section className="bv-plans-section">
+          <div className="bv-section-header">
+            <div className="bv-section-banner">
+              <Icon name="crown" size={18} />
+              &nbsp; {plansTitle}
             </div>
-          ))}
-        </div>
-      </section>
+            <div className="bv-section-sub-alt">{plansSubtitle}</div>
+          </div>
+
+          <div className="bv-plans-grid">
+            {plans.map((p) => (
+              <div
+                key={p.id}
+                className={`bv-plan-card ${p.featured ? 'bv-plan-featured' : ''}`}
+                style={p.featured ? { borderColor: p.color } : undefined}
+              >
+                {p.featured && (
+                  <div className="bv-plan-popular" style={{ backgroundColor: p.color }}>
+                    MOST POPULAR
+                  </div>
+                )}
+
+                <div className="bv-plan-header" style={{ backgroundColor: p.color }}>
+                  <h3 className="bv-plan-name">{p.name}</h3>
+                  <p className="bv-plan-subtitle">{p.subtitle}</p>
+                </div>
+
+                <div className="bv-plan-price-wrap">
+                  <span className="bv-plan-price">{formatPrice(p.price, currencySymbol, currencyPosition)}/MONTH</span>
+                </div>
+
+                <div className="bv-plan-features">
+                  <ul>
+                    {p.features.map((f) => (
+                      <li key={f.id}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                        {f.text}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="bv-plan-action">
+                  <a
+                    href={getButtonUrl(p)}
+                    className={`bv-btn ${getButtonClass(p.color)} bv-btn-block`}
+                    onClick={e => { if (getButtonUrl(p) === '#') e.preventDefault(); }}
+                  >
+                    {p.buttonLabel}
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ═══ FOOTER ═══ */}
       <footer className="bv-footer" style={{ marginTop: 'auto' }}>
         <div className="bv-footer-inner">
-          <div className="bv-trust-badges">
-            <div className="bv-trust-badge">
-              <Icon name="shield-check" size={20} />
-              <span>PROFESSIONAL QUALITY REPORTS</span>
+          {showTrustBadges && trustBadges.length > 0 && (
+            <div className="bv-trust-badges">
+              {trustBadges.map((badge, i) => (
+                <div className="bv-trust-badge" key={i}>
+                  <Icon name={badge.icon} size={20} />
+                  <span>{badge.text}</span>
+                </div>
+              ))}
             </div>
-            <div className="bv-trust-badge">
-              <Icon name="clock" size={20} />
-              <span>FAST TURNAROUND</span>
-            </div>
-            <div className="bv-trust-badge">
-              <Icon name="lock" size={20} />
-              <span>100% CONFIDENTIAL &amp; SECURE</span>
-            </div>
-            <div className="bv-trust-badge">
-              <Icon name="star" size={20} />
-              <span>ACTIONABLE RECOMMENDATIONS</span>
-            </div>
-          </div>
+          )}
           <div className="bv-footer-contact">
-            <p><strong>BUSINESSVANCE CONSULTING</strong></p>
-            <p>www.studyvance.co.za &nbsp;|&nbsp; 082 377 7490 &nbsp;|&nbsp; info@businessvance.co.za</p>
+            {footerCompanyName && <p><strong>{footerCompanyName}</strong></p>}
+            {(footerWebsite || footerPhone || footerEmail) && (
+              <p>
+                {[footerWebsite, footerPhone, footerEmail].filter(Boolean).join('  |  ')}
+              </p>
+            )}
           </div>
           <div className="bv-footer-copyright">
-            <p>&copy; {new Date().getFullYear()} BusinessVance Consulting. All rights reserved.</p>
+            <p>
+              {footerCopyright
+                ? footerCopyright.replace('{year}', String(new Date().getFullYear()))
+                : `© ${new Date().getFullYear()} ${footerCompanyName || 'BusinessVance Consulting'}. All rights reserved.`
+              }
+            </p>
           </div>
         </div>
       </footer>

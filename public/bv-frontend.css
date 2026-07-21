@@ -1,22 +1,24 @@
 /* ============================================
    BusinessVance Services Manager - Frontend CSS
-   Matches reference design: Navy #0A2647, Orange #F4A261, Teal #2A9D8F
+   Fully customizable via CSS custom properties
    ============================================ */
 
 /* Page Wrapper */
 .bv-page-wrapper {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    color: #333333;
+    color: var(--bv-color-text, #333333);
     line-height: 1.6;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
-    background: #ffffff;
+    background: var(--bv-color-bg, #ffffff);
+    max-width: var(--bv-container-max-width, 1200px);
+    margin: 0 auto;
 }
 
 /* ---- HEADER ---- */
 .bv-header {
-    background: linear-gradient(135deg, #0A2647 0%, #144272 100%);
+    background: linear-gradient(135deg, var(--bv-color-primary, #0A2647) 0%, var(--bv-color-primary-light, #144272) 100%);
     padding: 0;
     position: relative;
     overflow: hidden;
@@ -29,11 +31,11 @@
     left: 0;
     right: 0;
     height: 4px;
-    background: linear-gradient(90deg, #F4A261, #2A9D8F, #F4A261);
+    background: linear-gradient(90deg, var(--bv-color-accent, #F4A261), var(--bv-color-accent-alt, #2A9D8F), var(--bv-color-accent, #F4A261));
 }
 
 .bv-header-inner {
-    max-width: 1200px;
+    max-width: 100%;
     margin: 0 auto;
     padding: 48px 24px 44px;
     text-align: center;
@@ -47,7 +49,7 @@
 }
 
 .bv-header-stars svg {
-    color: #F4A261;
+    color: var(--bv-color-accent, #F4A261);
 }
 
 .bv-header-brand {
@@ -61,12 +63,12 @@
     width: 72px;
     height: 72px;
     background: rgba(244, 162, 97, 0.12);
-    border: 2px solid #F4A261;
+    border: 2px solid var(--bv-color-accent, #F4A261);
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #F4A261;
+    color: var(--bv-color-accent, #F4A261);
     position: relative;
 }
 
@@ -86,7 +88,7 @@
     margin: 0;
     font-size: 13px;
     font-weight: 700;
-    color: #F4A261;
+    color: var(--bv-color-accent, #F4A261);
     letter-spacing: 4px;
 }
 
@@ -106,7 +108,7 @@
 
 .bv-section-banner {
     display: inline-block;
-    background: #0A2647;
+    background: var(--bv-color-primary, #0A2647);
     color: #fff;
     padding: 10px 32px;
     font-size: 18px;
@@ -116,9 +118,13 @@
     margin: 0;
 }
 
+.bv-section-banner svg {
+    vertical-align: middle;
+}
+
 .bv-section-sub {
     display: inline-block;
-    background: #F4A261;
+    background: var(--bv-color-accent, #F4A261);
     color: #fff;
     padding: 6px 24px;
     font-size: 12px;
@@ -128,7 +134,7 @@
 }
 
 .bv-section-sub-alt {
-    color: #F4A261;
+    color: var(--bv-color-accent, #F4A261);
     font-size: 13px;
     font-weight: 700;
     letter-spacing: 2px;
@@ -138,7 +144,7 @@
 
 /* ---- SERVICES SECTION ---- */
 .bv-services-section {
-    max-width: 1200px;
+    max-width: 100%;
     margin: 0 auto;
     padding: 50px 24px 60px;
     width: 100%;
@@ -160,7 +166,7 @@
 }
 
 .bv-services-table thead {
-    background: #0A2647;
+    background: var(--bv-color-primary, #0A2647);
 }
 
 .bv-services-table thead th {
@@ -211,8 +217,8 @@
     width: 40px;
     height: 40px;
     min-width: 40px;
-    background: linear-gradient(135deg, #0A2647, #144272);
-    color: #F4A261;
+    background: linear-gradient(135deg, var(--bv-color-primary, #0A2647), var(--bv-color-primary-light, #144272));
+    color: var(--bv-color-accent, #F4A261);
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -222,7 +228,7 @@
 .bv-service-name {
     font-size: 14px;
     font-weight: 700;
-    color: #0A2647;
+    color: var(--bv-color-primary, #0A2647);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin: 0;
@@ -233,7 +239,7 @@
 
 .bv-featured-badge {
     display: inline-block;
-    background: linear-gradient(135deg, #F4A261, #E76F51);
+    background: linear-gradient(135deg, var(--bv-color-accent, #F4A261), #E76F51);
     color: #fff;
     font-size: 9px;
     font-weight: 700;
@@ -246,7 +252,7 @@
 /* Description column */
 .bv-service-desc {
     font-size: 13px;
-    color: #666;
+    color: var(--bv-color-text-light, #666);
     line-height: 1.5;
     margin: 0;
 }
@@ -267,7 +273,7 @@
 .bv-service-price {
     font-size: 15px;
     font-weight: 800;
-    color: #0A2647;
+    color: var(--bv-color-primary, #0A2647);
 }
 
 /* ---- BUTTONS ---- */
@@ -288,7 +294,7 @@
 }
 
 .bv-btn-gold {
-    background: linear-gradient(135deg, #F4A261, #E76F51);
+    background: linear-gradient(135deg, var(--bv-color-accent, #F4A261), #E76F51);
     color: #fff !important;
     box-shadow: 0 2px 8px rgba(244, 162, 97, 0.35);
 }
@@ -301,7 +307,7 @@
 }
 
 .bv-btn-teal {
-    background: linear-gradient(135deg, #2A9D8F, #21867A);
+    background: linear-gradient(135deg, var(--bv-color-accent-alt, #2A9D8F), #21867A);
     color: #fff !important;
     box-shadow: 0 2px 8px rgba(42, 157, 143, 0.3);
 }
@@ -313,13 +319,13 @@
 }
 
 .bv-btn-navy {
-    background: linear-gradient(135deg, #0A2647, #144272);
+    background: linear-gradient(135deg, var(--bv-color-primary, #0A2647), var(--bv-color-primary-light, #144272));
     color: #fff !important;
     box-shadow: 0 2px 8px rgba(10, 38, 71, 0.3);
 }
 
 .bv-btn-navy:hover {
-    background: linear-gradient(135deg, #144272, #1a5276);
+    background: linear-gradient(135deg, var(--bv-color-primary-light, #144272), #1a5276);
     transform: translateY(-1px);
     color: #fff !important;
 }
@@ -370,8 +376,8 @@
     width: 40px;
     height: 40px;
     min-width: 40px;
-    background: linear-gradient(135deg, #0A2647, #144272);
-    color: #F4A261;
+    background: linear-gradient(135deg, var(--bv-color-primary, #0A2647), var(--bv-color-primary-light, #144272));
+    color: var(--bv-color-accent, #F4A261);
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -381,7 +387,7 @@
 .bv-card-name {
     font-size: 13px;
     font-weight: 700;
-    color: #0A2647;
+    color: var(--bv-color-primary, #0A2647);
     text-transform: uppercase;
     letter-spacing: 0.3px;
     margin: 0;
@@ -393,7 +399,7 @@
 
 .bv-card-desc {
     font-size: 13px;
-    color: #666;
+    color: var(--bv-color-text-light, #666);
     margin: 0 0 12px 0;
     line-height: 1.4;
     padding-left: 52px;
@@ -410,12 +416,12 @@
 .bv-card-price {
     font-size: 15px;
     font-weight: 800;
-    color: #0A2647;
+    color: var(--bv-color-primary, #0A2647);
 }
 
 /* ---- PLANS SECTION ---- */
 .bv-plans-section {
-    max-width: 1200px;
+    max-width: 100%;
     margin: 0 auto;
     padding: 60px 24px;
     width: 100%;
@@ -447,7 +453,6 @@
 
 .bv-plan-featured {
     box-shadow: 0 4px 20px rgba(10, 38, 71, 0.15);
-    border-color: #264653;
 }
 
 .bv-plan-popular {
@@ -494,7 +499,7 @@
 .bv-plan-price {
     font-size: 32px;
     font-weight: 900;
-    color: #0A2647;
+    color: var(--bv-color-primary, #0A2647);
     letter-spacing: -0.5px;
 }
 
@@ -524,7 +529,7 @@
 }
 
 .bv-plan-features li svg {
-    color: #2A9D8F;
+    color: var(--bv-color-accent-alt, #2A9D8F);
     flex-shrink: 0;
 }
 
@@ -534,13 +539,13 @@
 
 /* ---- FOOTER ---- */
 .bv-footer {
-    background: linear-gradient(135deg, #0A2647 0%, #071a33 100%);
+    background: linear-gradient(135deg, var(--bv-color-primary, #0A2647) 0%, var(--bv-color-primary-dark, #071a33) 100%);
     color: #fff;
     margin-top: auto;
 }
 
 .bv-footer-inner {
-    max-width: 1200px;
+    max-width: 100%;
     margin: 0 auto;
     padding: 40px 24px 30px;
 }
@@ -566,7 +571,7 @@
 }
 
 .bv-trust-badge svg {
-    color: #F4A261;
+    color: var(--bv-color-accent, #F4A261);
 }
 
 .bv-footer-contact {
@@ -594,6 +599,30 @@
     margin: 0;
     color: rgba(255,255,255,0.35);
     font-size: 12px;
+}
+
+/* ---- LOADING STATE ---- */
+.bv-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+    gap: 8px;
+    color: var(--bv-color-text-light, #666);
+    font-size: 14px;
+}
+
+.bv-loading-spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid #e5e7eb;
+    border-top-color: var(--bv-color-primary, #0A2647);
+    border-radius: 50%;
+    animation: bv-spin 0.8s linear infinite;
+}
+
+@keyframes bv-spin {
+    to { transform: rotate(360deg); }
 }
 
 /* ---- RESPONSIVE ---- */
