@@ -28,7 +28,12 @@ import {
   LayoutDashboard, FileText, CreditCard, FolderOpen, Image as ImageIcon,
   Settings, Shield, GripVertical, Copy, Plus, Menu, Eye, EyeOff,
   Pencil, Trash2, X, Loader2, ChevronLeft, Upload,
+  ClipboardList, Users, FileCheck, MonitorSmartphone,
 } from 'lucide-react';
+import QuestionnaireBuilder from '@/components/admin/questionnaire-builder';
+import { ProjectsTab } from '@/components/admin/projects-tab';
+import { ClientPortal } from '@/components/admin/client-portal';
+import AgreementBuilder from '@/components/admin/agreement-builder';
 
 /* ═══════════════════════════════════════════════════════════════
    Types
@@ -88,7 +93,7 @@ interface IconItem {
   displayOrder: number;
 }
 
-type TabId = 'dashboard' | 'services' | 'plans' | 'categories' | 'icons' | 'settings';
+type TabId = 'dashboard' | 'services' | 'plans' | 'categories' | 'icons' | 'questionnaires' | 'projects' | 'agreements' | 'client-portal' | 'settings';
 
 /* ═══════════════════════════════════════════════════════════════
    Fallback icon path (used only when DB icons haven't loaded)
@@ -124,6 +129,10 @@ const SIDEBAR_MENU: { id: TabId; label: string; icon: typeof LayoutDashboard }[]
   { id: 'plans', label: 'Subscription Plans', icon: CreditCard },
   { id: 'categories', label: 'Categories', icon: FolderOpen },
   { id: 'icons', label: 'Icon Manager', icon: ImageIcon },
+  { id: 'questionnaires', label: 'Questionnaires', icon: ClipboardList },
+  { id: 'agreements', label: 'Agreements', icon: FileCheck },
+  { id: 'projects', label: 'Projects', icon: Users },
+  { id: 'client-portal', label: 'Client Portal', icon: MonitorSmartphone },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -244,7 +253,7 @@ export default function Home() {
   const iconOptions = React.useMemo(() => icons.map((i) => i.name), [icons]);
 
   /* ── Toast ── */
-  const showToast = useCallback((msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); }, []);
+  const showToast = useCallback((msg: string, _type?: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); }, []);
 
   /* ── Data Fetching ── */
   const fetchData = useCallback(async () => {
@@ -892,6 +901,42 @@ export default function Home() {
                   )}
                 </div>
               </div>
+            </section>
+          )}
+
+          {/* ══════════════════════════════════════
+              QUESTIONNAIRES TAB
+          ══════════════════════════════════════ */}
+          {activeTab === 'questionnaires' && (
+            <section aria-label="Questionnaire Builder">
+              <QuestionnaireBuilder toast={showToast} />
+            </section>
+          )}
+
+          {/* ══════════════════════════════════════
+              AGREEMENTS TAB
+          ══════════════════════════════════════ */}
+          {activeTab === 'agreements' && (
+            <section aria-label="Agreement Builder">
+              <AgreementBuilder toast={showToast} />
+            </section>
+          )}
+
+          {/* ══════════════════════════════════════
+              PROJECTS TAB
+          ══════════════════════════════════════ */}
+          {activeTab === 'projects' && (
+            <section aria-label="Projects">
+              <ProjectsTab toast={showToast} />
+            </section>
+          )}
+
+          {/* ══════════════════════════════════════
+              CLIENT PORTAL TAB
+          ══════════════════════════════════════ */}
+          {activeTab === 'client-portal' && (
+            <section aria-label="Client Portal">
+              <ClientPortal toast={showToast} />
             </section>
           )}
 
