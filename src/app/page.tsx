@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, type DragEndEvent } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
-  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
 } from '@dnd-kit/core';
 import {
   SortableContext, useSortable, verticalListSortingStrategy, arrayMove,
@@ -25,9 +25,9 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import {
-  Eye, EyeOff, Star, GripVertical, Pencil, Trash2, Plus, X,
-  LayoutDashboard, FileText, CreditCard, FolderOpen, Settings,
-  Menu, ChevronLeft, Copy, Shield, Loader2,
+  LayoutDashboard, FileText, CreditCard, FolderOpen, Image as ImageIcon,
+  Settings, Shield, GripVertical, Copy, Plus, Menu, Eye, EyeOff,
+  Pencil, Trash2, X, Loader2, ChevronLeft, Upload,
 } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════════
@@ -79,40 +79,30 @@ interface PlanItem {
   category?: CategoryItem | null;
 }
 
-type TabId = 'dashboard' | 'services' | 'plans' | 'categories' | 'settings';
+interface IconItem {
+  id: string;
+  name: string;
+  label: string;
+  svgPath: string;
+  category: string;
+  displayOrder: number;
+}
+
+type TabId = 'dashboard' | 'services' | 'plans' | 'categories' | 'icons' | 'settings';
 
 /* ═══════════════════════════════════════════════════════════════
-   SVG Icon Paths (same 22 icons from public page)
+   Fallback icon path (used only when DB icons haven't loaded)
    ═══════════════════════════════════════════════════════════════ */
-const iconPaths: Record<string, string> = {
-  shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
-  'shield-check': '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
-  'check-circle': '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/>',
-  award: '<circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>',
-  star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
-  crown: '<path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"/>',
-  lock: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
-  clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
-  'clipboard-list': '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/>',
-  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
-  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
-  calculator: '<rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><line x1="8" x2="8" y1="10" y2="10.01"/><line x1="12" x2="12" y1="10" y2="10.01"/><line x1="16" x2="16" y1="10" y2="10.01"/><line x1="8" x2="8" y1="14" y2="14.01"/><line x1="12" x2="12" y1="14" y2="14.01"/><line x1="8" x2="8" y1="18" y2="18.01"/><line x1="12" x2="12" y1="18" y2="18.01"/>',
-  megaphone: '<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>',
-  'trending-up': '<polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>',
-  'shield-alert': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4"/><path d="M12 16h.01"/>',
-  'file-text': '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
-  presentation: '<path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/>',
-  'heart-pulse': '<path d="M19.5 12.572l-7.5 7.428l-7.5 -7.428a5 5 0 1 1 7.5 -6.566a5 5 0 1 1 7.5 6.572"/><path d="M12 6l-2 4h4l-2 4"/>',
-  handshake: '<path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="m21 3 1 11h-2"/><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/><path d="M3 4h8"/>',
-  wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
-  check: '<polyline points="20 6 9 17 4 12"/>',
-};
+const FALLBACK_ICON_PATH = '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>';
 
-const ICON_OPTIONS = Object.keys(iconPaths);
-
-function BvIcon({ name, size = 20 }: { name: string; size?: number }) {
-  const d = iconPaths[name];
-  if (!d) return <FileText size={size} />;
+/* ═══════════════════════════════════════════════════════════════
+   BvIcon - Dynamic icon component (uses DB icons via props)
+   ═══════════════════════════════════════════════════════════════ */
+function BvIcon({ name, size = 20, iconMap }: { name: string; size?: number; iconMap?: Record<string, string> }) {
+  const d = iconMap?.[name];
+  if (!d) return (
+    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: FALLBACK_ICON_PATH }} />
+  );
   return (
     <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: d }} />
   );
@@ -133,6 +123,7 @@ const SIDEBAR_MENU: { id: TabId; label: string; icon: typeof LayoutDashboard }[]
   { id: 'services', label: 'Services', icon: FileText },
   { id: 'plans', label: 'Subscription Plans', icon: CreditCard },
   { id: 'categories', label: 'Categories', icon: FolderOpen },
+  { id: 'icons', label: 'Icon Manager', icon: ImageIcon },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -200,7 +191,7 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
   );
 }
 
-function Toast({ message }: { message: string }) {
+function Toast({ message }: { message: string | null }) {
   if (!message) return null;
   return (
     <div className="fixed bottom-4 right-4 z-[9999] px-4 py-3 rounded-lg text-white text-sm font-medium shadow-lg" style={{ backgroundColor: '#002B5C', animation: 'bvSlideIn 0.3s ease-out' }}>
@@ -224,19 +215,33 @@ export default function Home() {
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [plans, setPlans] = useState<PlanItem[]>([]);
   const [categories, setCategories] = useState<CategoryItem[]>([]);
+  const [icons, setIcons] = useState<IconItem[]>([]);
 
   const [serviceModal, setServiceModal] = useState<{ open: boolean; data: ServiceItem | null }>({ open: false, data: null });
   const [planModal, setPlanModal] = useState<{ open: boolean; data: PlanItem | null }>({ open: false, data: null });
   const [categoryModal, setCategoryModal] = useState<{ open: boolean; data: CategoryItem | null }>({ open: false, data: null });
-  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; type: 'service' | 'plan' | 'category'; id: string; name: string }>({ open: false, type: 'service', id: '', name: '' });
+  const [iconModal, setIconModal] = useState<{ open: boolean; data: IconItem | null }>({ open: false, data: null });
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; type: 'service' | 'plan' | 'category' | 'icon'; id: string; name: string }>({ open: false, type: 'service', id: '', name: '' });
 
   const [serviceForm, setServiceForm] = useState<Record<string, unknown>>({});
   const [planForm, setPlanForm] = useState<Record<string, unknown>>({});
   const [planFeatures, setPlanFeatures] = useState<string[]>(['']);
   const [categoryForm, setCategoryForm] = useState<Record<string, unknown>>({});
+  const [iconForm, setIconForm] = useState<Record<string, unknown>>({});
   const [settingsForm, setSettingsForm] = useState<Settings>({});
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  /* ── Icon Map (derived from DB icons) ── */
+  const iconMap = React.useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const icon of icons) {
+      map[icon.name] = icon.svgPath;
+    }
+    return map;
+  }, [icons]);
+
+  const iconOptions = React.useMemo(() => icons.map((i) => i.name), [icons]);
 
   /* ── Toast ── */
   const showToast = useCallback((msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); }, []);
@@ -244,14 +249,15 @@ export default function Home() {
   /* ── Data Fetching ── */
   const fetchData = useCallback(async () => {
     try {
-      const [settingsRes, servicesRes, plansRes, categoriesRes] = await Promise.all([
+      const [settingsRes, servicesRes, plansRes, categoriesRes, iconsRes] = await Promise.all([
         fetch('/api/settings'),
         fetch('/api/services?all=true'),
         fetch('/api/plans?all=true'),
         fetch('/api/categories'),
+        fetch('/api/icons'),
       ]);
-      const [settingsData, servicesData, plansData, categoriesData] = await Promise.all([
-        settingsRes.json(), servicesRes.json(), plansRes.json(), categoriesRes.json(),
+      const [settingsData, servicesData, plansData, categoriesData, iconsData] = await Promise.all([
+        settingsRes.json(), servicesRes.json(), plansRes.json(), categoriesRes.json(), iconsRes.json(),
       ]);
       const s = settingsData.settings || {};
       setSettings(s);
@@ -259,6 +265,7 @@ export default function Home() {
       setServices((servicesData.services || []).sort((a: ServiceItem, b: ServiceItem) => a.displayOrder - b.displayOrder));
       setPlans((plansData.plans || []).sort((a: PlanItem, b: PlanItem) => a.displayOrder - b.displayOrder));
       setCategories(categoriesData.categories || []);
+      setIcons(iconsData.icons || []);
     } catch (err) { console.error('Failed to fetch:', err); }
     finally { setLoading(false); }
   }, []);
@@ -320,11 +327,29 @@ export default function Home() {
     finally { setSaving(false); }
   };
 
+  const saveIcon = async () => {
+    setSaving(true);
+    try {
+      const f = iconForm;
+      const isEdit = !!f.id;
+      const url = isEdit ? '/api/icons' : '/api/icons';
+      const method = isEdit ? 'PUT' : 'POST';
+      const body = { ...f };
+      if (isEdit) delete (body as Record<string, unknown>).id;
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!res.ok) throw new Error();
+      showToast(isEdit ? 'Icon updated!' : 'Icon created!');
+      setIconModal({ open: false, data: null });
+      fetchData();
+    } catch { showToast('Error saving icon'); }
+    finally { setSaving(false); }
+  };
+
   const deleteItem = async () => {
     const { type, id } = deleteConfirm;
     setSaving(true);
     try {
-      const url = type === 'service' ? `/api/services/${id}` : type === 'plan' ? `/api/plans/${id}` : `/api/categories/${id}`;
+      const url = type === 'service' ? `/api/services/${id}` : type === 'plan' ? `/api/plans/${id}` : type === 'icon' ? `/api/icons?id=${id}` : `/api/categories/${id}`;
       const res = await fetch(url, { method: 'DELETE' });
       if (!res.ok) throw new Error();
       showToast('Deleted successfully!');
@@ -416,6 +441,8 @@ export default function Home() {
 
   const openNewCategory = () => { setCategoryForm({ name: '', slug: '', color: '#002B5C' }); setCategoryModal({ open: true, data: null }); };
   const openEditCategory = (c: CategoryItem) => { setCategoryForm({ ...c }); setCategoryModal({ open: true, data: c }); };
+  const openNewIcon = () => { setIconForm({ name: '', label: '', svgPath: '', category: 'general', displayOrder: icons.length }); setIconModal({ open: true, data: null }); };
+  const openEditIcon = (ic: IconItem) => { setIconForm({ ...ic }); setIconModal({ open: true, data: ic }); };
 
   /* ── Loading ── */
   if (loading) {
@@ -447,7 +474,14 @@ export default function Home() {
       <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4" style={{ height: 32, backgroundColor: '#1d2327', color: '#c3c4c7' }}>
         <div className="flex items-center gap-2 text-[13px]">
           <button className="lg:hidden p-0.5 hover:text-white" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Toggle menu"><Menu size={18} /></button>
-          <div className="flex items-center gap-2"><Shield size={14} style={{ color: '#D4AF37' }} /><span className="font-semibold text-white">BusinessVance</span></div>
+          <div className="flex items-center gap-2">
+            {settings.logo_url ? (
+              <img src={settings.logo_url} alt="Logo" className="h-5 w-auto max-w-[100px] object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+            ) : (
+              <Shield size={14} style={{ color: '#D4AF37' }} />
+            )}
+            <span className="font-semibold text-white">{(settings.logo_url && settings.brand_name) ? settings.brand_name : 'BusinessVance'}</span>
+          </div>
         </div>
         <div className="text-[13px]"><span>Howdy, </span><span className="text-white font-medium">Admin</span></div>
       </header>
@@ -588,7 +622,7 @@ export default function Home() {
                               <TableCell className="py-3 px-3">
                                 <div className="flex items-start gap-2.5">
                                   <div className="flex-shrink-0 w-9 h-9 rounded-md flex items-center justify-center" style={{ backgroundColor: (s.category?.color || '#002B5C') + '18', color: s.category?.color || '#002B5C' }}>
-                                    <BvIcon name={s.icon} size={18} />
+                                    <BvIcon name={s.icon} size={18} iconMap={iconMap} />
                                   </div>
                                   <div className="min-w-0">
                                     <div className="font-medium text-sm text-[#1d2327]">{s.name}</div>
@@ -795,6 +829,73 @@ export default function Home() {
           )}
 
           {/* ══════════════════════════════════════
+              ICONS TAB
+          ══════════════════════════════════════ */}
+          {activeTab === 'icons' && (
+            <section aria-label="Icon Manager">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
+                <div className="flex items-center gap-3">
+                  <ImageIcon size={24} style={{ color: '#D4AF37' }} />
+                  <div>
+                    <h1 className="text-2xl font-bold" style={{ color: '#002B5C' }}>Icon Manager</h1>
+                    <p className="text-sm text-[#646970]">Manage SVG icons used across the plugin</p>
+                  </div>
+                </div>
+                <Button onClick={openNewIcon} className="font-semibold text-white shadow-sm hover:opacity-90 transition-opacity" style={{ backgroundColor: '#D4AF37' }}>
+                  <Plus size={16} className="mr-1.5" /> Add New Icon
+                </Button>
+              </div>
+
+              <div className="bg-white rounded-lg border border-[#c3c4c7]/30 overflow-hidden">
+                <div className="overflow-x-auto max-h-[600px] overflow-y-auto wp-scrollbar">
+                  <Table>
+                    <TableHeader>
+                      <TableRow style={{ backgroundColor: '#f8f9fa' }}>
+                        <TableHead className="text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Preview</TableHead>
+                        <TableHead className="text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Name</TableHead>
+                        <TableHead className="text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Label</TableHead>
+                        <TableHead className="text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Category</TableHead>
+                        <TableHead className="w-28 text-right text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {icons.map((ic) => (
+                        <TableRow key={ic.id}>
+                          <TableCell className="py-3 px-3">
+                            <div className="w-9 h-9 rounded-md flex items-center justify-center" style={{ backgroundColor: '#002B5C18', color: '#002B5C' }}>
+                              <BvIcon name={ic.name} size={18} iconMap={iconMap} />
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-3 px-3">
+                            <span className="text-sm font-mono text-[#1d2327]">{ic.name}</span>
+                          </TableCell>
+                          <TableCell className="py-3 px-3 text-sm text-[#50575e]">{ic.label}</TableCell>
+                          <TableCell className="py-3 px-3">
+                            <Badge variant="secondary" className="text-xs font-semibold capitalize">{ic.category}</Badge>
+                          </TableCell>
+                          <TableCell className="py-3 px-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button onClick={() => openEditIcon(ic)} className="p-1.5 rounded text-[#2271b1] hover:bg-[#f0f0f1] transition-colors" title="Edit"><Pencil size={15} /></button>
+                              <button onClick={() => setDeleteConfirm({ open: true, type: 'icon', id: ic.id, name: ic.label })} className="p-1.5 rounded text-[#d63638] hover:bg-red-50 transition-colors" title="Delete"><Trash2 size={15} /></button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {icons.length === 0 && (
+                    <div className="text-center py-16 text-[#a7aaad]">
+                      <ImageIcon size={40} className="mx-auto mb-3 opacity-40" />
+                      <p className="font-medium">No icons yet</p>
+                      <p className="text-sm mt-1">Click &quot;Add New Icon&quot; to get started</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* ══════════════════════════════════════
               SETTINGS TAB
           ══════════════════════════════════════ */}
           {activeTab === 'settings' && (
@@ -824,11 +925,57 @@ export default function Home() {
                       <Textarea value={settingsForm.brand_description || ''} onChange={(e) => setSettingsForm({ ...settingsForm, brand_description: e.target.value })} className="text-sm" rows={2} />
                     </div>
                     <div className="md:col-span-2">
+                      <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Custom Logo</Label>
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-center gap-3">
+                          <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium text-white cursor-pointer hover:opacity-90 transition-opacity" style={{ backgroundColor: '#D4AF37' }}>
+                            <Upload size={14} />
+                            Upload Logo
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg,image/gif,image/svg+xml,image/webp"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                const fd = new FormData();
+                                fd.append('file', file);
+                                try {
+                                  showToast('Uploading logo...');
+                                  const res = await fetch('/api/upload/logo', { method: 'POST', body: fd });
+                                  if (!res.ok) throw new Error();
+                                  const data = await res.json();
+                                  setSettingsForm((prev: Settings) => ({ ...prev, logo_url: data.url }));
+                                  showToast('Logo uploaded!');
+                                } catch { showToast('Upload failed'); }
+                                e.target.value = '';
+                              }}
+                            />
+                          </label>
+                          <span className="text-xs text-[#a7aaad]">PNG, JPEG, GIF, SVG, WebP (max 2MB)</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-[#646970] font-medium whitespace-nowrap">or enter URL:</span>
+                          <Input value={settingsForm.logo_url || ''} onChange={(e) => setSettingsForm({ ...settingsForm, logo_url: e.target.value })} className="text-sm flex-1" placeholder="https://example.com/logo.png" />
+                        </div>
+                        {settingsForm.logo_url && (
+                          <div className="flex items-center gap-3 p-3 rounded-lg border border-[#e5e7eb] bg-[#f8f9fa]">
+                            <img src={settingsForm.logo_url} alt="Logo preview" className="h-12 max-w-[200px] rounded object-contain bg-white p-1 border border-[#e5e7eb]" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                            <div className="flex-1">
+                              <p className="text-xs font-medium text-[#1d2327]">Logo Preview</p>
+                              <p className="text-xs text-[#a7aaad] mt-0.5 truncate max-w-[300px]">{settingsForm.logo_url}</p>
+                            </div>
+                            <button type="button" onClick={() => setSettingsForm({ ...settingsForm, logo_url: '' })} className="p-1.5 rounded text-[#d63638] hover:bg-red-50 transition-colors" title="Remove logo"><X size={16} /></button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="md:col-span-2">
                       <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Header Icon</Label>
                       <Select value={settingsForm.header_icon || 'shield'} onValueChange={(v) => setSettingsForm({ ...settingsForm, header_icon: v })}>
                         <SelectTrigger className="w-full text-sm"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          {ICON_OPTIONS.map((icon) => (
+                          {iconOptions.map((icon) => (
                             <SelectItem key={icon} value={icon} className="capitalize">{icon.replace(/-/g, ' ')}</SelectItem>
                           ))}
                         </SelectContent>
@@ -909,7 +1056,7 @@ export default function Home() {
                   <div>
                     <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Trust Badges JSON</Label>
                     <Textarea value={settingsForm.trust_badges || '[]'} onChange={(e) => setSettingsForm({ ...settingsForm, trust_badges: e.target.value })} className="text-sm font-mono" rows={6} placeholder='[{"icon": "shield-check", "text": "PROFESSIONAL QUALITY"}]' />
-                    <p className="text-xs text-[#a7aaad] mt-1">Available icons: {ICON_OPTIONS.join(', ')}</p>
+                    <p className="text-xs text-[#a7aaad] mt-1">Available icons: {iconOptions.join(', ')}</p>
                   </div>
                 </SettingsCard>
 
@@ -959,7 +1106,7 @@ export default function Home() {
               <Select value={String(serviceForm.icon || 'file-text')} onValueChange={(v) => setServiceForm({ ...serviceForm, icon: v })}>
                 <SelectTrigger className="w-full text-sm"><SelectValue /></SelectTrigger>
                 <SelectContent className="max-h-60">
-                  {ICON_OPTIONS.map((icon) => (
+                  {iconOptions.map((icon) => (
                     <SelectItem key={icon} value={icon} className="capitalize">{icon.replace(/-/g, ' ')}</SelectItem>
                   ))}
                 </SelectContent>
@@ -1140,6 +1287,59 @@ export default function Home() {
             <Button onClick={saveCategory} disabled={saving || !String(categoryForm.name || '').trim()} className="text-white" style={{ backgroundColor: '#D4AF37' }}>
               {saving && <Loader2 size={14} className="mr-1.5 animate-spin" />}
               {categoryModal.data ? 'Update' : 'Create'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══ ICON MODAL ═══ */}
+      <Dialog open={iconModal.open} onOpenChange={(open) => setIconModal({ open, data: null })}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle className="text-lg" style={{ color: '#002B5C' }}>{iconModal.data ? 'Edit Icon' : 'Add New Icon'}</DialogTitle>
+            <DialogDescription>{iconModal.data ? 'Update icon details' : 'Add a new custom SVG icon to the library'}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Icon Name (slug) *</Label>
+              <Input value={String(iconForm.name || '')} onChange={(e) => setIconForm({ ...iconForm, name: e.target.value })} className="text-sm font-mono" placeholder="my-custom-icon" />
+              <p className="text-xs text-[#a7aaad] mt-1">Lowercase, letters, numbers, and hyphens only</p>
+            </div>
+            <div>
+              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Display Label *</Label>
+              <Input value={String(iconForm.label || '')} onChange={(e) => setIconForm({ ...iconForm, label: e.target.value })} className="text-sm" placeholder="My Custom Icon" />
+            </div>
+            <div>
+              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Category</Label>
+              <Select value={String(iconForm.category || 'general')} onValueChange={(v) => setIconForm({ ...iconForm, category: v })}>
+                <SelectTrigger className="w-full text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {['general', 'business', 'finance', 'marketing', 'people', 'security', 'status'].map((cat) => (
+                    <SelectItem key={cat} value={cat} className="capitalize">{cat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">SVG Path Content *</Label>
+              <Textarea value={String(iconForm.svgPath || '')} onChange={(e) => setIconForm({ ...iconForm, svgPath: e.target.value })} className="text-sm font-mono" rows={4} placeholder={'<path d="M12 2L2 7l10 5 10-5-10-5z"/>'} />
+              <p className="text-xs text-[#a7aaad] mt-1">Paste the inner SVG content (path, circle, polyline, polygon, rect, line elements)</p>
+              {String(iconForm.svgPath || '').trim() && (
+                <div className="mt-2 flex items-center gap-3 p-3 bg-[#f8f9fa] rounded-lg border border-[#e5e7eb]">
+                  <span className="text-xs text-[#646970]">Preview:</span>
+                  <div className="w-8 h-8 flex items-center justify-center text-[#002B5C]">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: String(iconForm.svgPath || '') }} />
+                  </div>
+                  <span className="text-sm font-medium text-[#1d2327]">{String(iconForm.label || iconForm.name || 'Icon')}</span>
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setIconModal({ open: false, data: null })}>Cancel</Button>
+            <Button onClick={saveIcon} disabled={saving || !String(iconForm.name || '').trim() || !String(iconForm.svgPath || '').trim()} className="text-white" style={{ backgroundColor: '#D4AF37' }}>
+              {saving && <Loader2 size={14} className="mr-1.5 animate-spin" />}
+              {iconModal.data ? 'Update Icon' : 'Create Icon'}
             </Button>
           </DialogFooter>
         </DialogContent>

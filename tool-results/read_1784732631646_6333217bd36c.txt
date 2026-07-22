@@ -1,0 +1,1330 @@
+     1→'use client';
+     2→
+     3→import React, { useEffect, useState, useCallback, useMemo, type DragEndEvent } from 'react';
+     4→import {
+     5→  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+     6→} from '@dnd-kit/core';
+     7→import {
+     8→  SortableContext, useSortable, verticalListSortingStrategy, arrayMove,
+     9→} from '@dnd-kit/sortable';
+    10→import { CSS } from '@dnd-kit/utilities';
+    11→import { Button } from '@/components/ui/button';
+    12→import { Input } from '@/components/ui/input';
+    13→import { Label } from '@/components/ui/label';
+    14→import { Textarea } from '@/components/ui/textarea';
+    15→import { Switch } from '@/components/ui/switch';
+    16→import { Card, CardContent } from '@/components/ui/card';
+    17→import { Badge } from '@/components/ui/badge';
+    18→import {
+    19→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+    20→} from '@/components/ui/dialog';
+    21→import {
+    22→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    23→} from '@/components/ui/select';
+    24→import {
+    25→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    26→} from '@/components/ui/table';
+    27→import { Settings as SettingsIcon, SortableRow, CopyBtn, SettingsCard, FormField, ColorField, Toast, BUTTON_TYPES, ICON_CATEGORIES,
+    28→} from '@/components/admin/helpers';
+    29→import type { Settings, CategoryItem, ServiceItem, PlanItem, IconItem, TabId } from '@/components/admin/types';
+    30→import {
+    31→  Settings as SettingsIcon, SortableRow, CopyBtn, SettingsCard, FormField, ColorField, Toast, BUTTON_TYPES, ICON_CATEGORIES,
+    32→} from '@/components/admin/helpers';
+    33→import type { Settings, CategoryItem, ServiceItem, PlanItem, IconItem, TabId } from '@/components/admin/types';
+    34→
+    35→/* ═══════════════════════════════════════════════════════════════
+    36→   Types
+    37→   ═══════════════════════════════════════════════════════════════ */
+    38→interface Settings {
+    39→  [key: string]: string;
+    40→}
+    41→
+    42→interface CategoryItem {
+    43→  id: string;
+    44→  name: string;
+    45→  slug: string;
+    46→  color: string;
+    47→}
+    48→
+    49→interface ServiceItem {
+    50→  id: string;
+    51→  name: string;
+    52→  description: string;
+    53→  price: number;
+    54→  icon: string;
+    55→  buttonLabel: string;
+    56→  buttonType: string;
+    57→  buttonUrl: string;
+    58→  woocommerceProductId: string;
+    59→  categoryId: string | null;
+    60→  visible: boolean;
+    61→  featured: boolean;
+    62→  displayOrder: number;
+    63→  category?: CategoryItem | null;
+    64→}
+    65→
+    66→interface PlanItem {
+    67→  id: string;
+    68→  name: string;
+    69→  subtitle: string;
+    70→  price: number;
+    71→  color: string;
+    72→  buttonLabel: string;
+    73→  buttonType: string;
+    74→  buttonUrl: string;
+    75→  woocommerceProductId: string;
+    76→  categoryId: string | null;
+    77→  visible: boolean;
+    78→  featured: boolean;
+    79→  displayOrder: number;
+    80→  features: { id: string; text: string }[];
+    81→  category?: CategoryItem | null;
+    82→}
+    83→
+    84→interface IconItem {
+    85→  id: string;
+    86→  name: string;
+    87→  label: string;
+    88→  svgPath: string;
+    89→  category: string;
+    90→  displayOrder: number;
+    91→}
+    92→
+    93→type TabId = 'dashboard' | 'services' | 'plans' | 'categories' | 'icons' | 'settings';
+    94→
+    95→/* ═══════════════════════════════════════════════════════════════
+    96→   Fallback icon path (used only when DB icons haven't loaded)
+    97→   ═══════════════════════════════════════════════════════════════ */
+    98→const FALLBACK_ICON_PATH = '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>';
+    99→
+   100→/* ═══════════════════════════════════════════════════════════════
+   101→   BvIcon - Dynamic icon component (uses DB icons via props)
+   102→   ═══════════════════════════════════════════════════════════════ */
+   103→function BvIcon({ name, size = 20, iconMap }: { name: string; size?: number; iconMap?: Record<string, string> }) {
+   104→  const d = iconMap?.[name];
+   105→  if (!d) return (
+   106→    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: FALLBACK_ICON_PATH }} />
+   107→  );
+   108→  return (
+   109→    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: d }} />
+   110→  );
+   111→}
+   112→
+   113→/* ═══════════════════════════════════════════════════════════════
+   114→   Constants
+   115→   ═══════════════════════════════════════════════════════════════ */
+   116→const BUTTON_TYPES = [
+   117→  { value: 'cart', label: 'Add to Cart' },
+   118→  { value: 'quote', label: 'Request Quote' },
+   119→  { value: 'booking', label: 'Book Now' },
+   120→  { value: 'link', label: 'External Link' },
+   121→];
+   122→
+   123→const SIDEBAR_MENU: { id: TabId; label: string; icon: typeof LayoutDashboard }[] = [
+   124→  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+   125→  { id: 'services', label: 'Services', icon: FileText },
+   126→  { id: 'plans', label: 'Subscription Plans', icon: CreditCard },
+   127→  { id: 'categories', label: 'Categories', icon: FolderOpen },
+   128→  { id: 'icons', label: 'Icon Manager', icon: ImageIcon },
+   129→  { id: 'settings', label: 'Settings', icon: Settings },
+   130→];
+   131→
+   132→/* ═══════════════════════════════════════════════════════════════
+   133→   Small Helper Components
+   134→   ═══════════════════════════════════════════════════════════════ */
+   135→function SortableRow({ id, children }: { id: string; children: React.ReactNode }) {
+   136→  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+   137→  const style: React.CSSProperties = {
+   138→    transform: CSS.Transform.toString(transform),
+   139→    transition,
+   140→    opacity: isDragging ? 0.4 : 1,
+   141→    background: isDragging ? '#FEF3C7' : undefined,
+   142→    zIndex: isDragging ? 50 : undefined,
+   143→  };
+   144→  return (
+   145→    <tr ref={setNodeRef} style={style} {...attributes}>
+   146→      {React.Children.map(children, (child, i) => {
+   147→        if (i === 0) return <td className="text-center p-2"><button className="cursor-grab active:cursor-grabbing text-[#9ca3af] hover:text-[#50575e] transition-colors" {...listeners} aria-label="Drag to reorder"><GripVertical size={18} /></button></td>;
+   148→        return child;
+   149→      })}
+   150→    </tr>
+   151→  );
+   152→}
+   153→
+   154→function CopyBtn({ text }: { text: string }) {
+   155→  const [copied, setCopied] = useState(false);
+   156→  return (
+   157→    <button type="button" onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="absolute top-2 right-2 p-1 rounded hover:bg-white/10 transition-colors" title="Copy">
+   158→      <Copy size={14} className={copied ? 'text-green-400' : 'text-white/60'} />
+   159→    </button>
+   160→  );
+   161→}
+   162→
+   163→function SettingsCard({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+   164→  return (
+   165→    <Card className="border-[#c3c4c7]/30 overflow-hidden">
+   166→      <div className="px-5 py-3 border-b border-[#c3c4c7]/30" style={{ backgroundColor: '#f8f9fa' }}>
+   167→        <h3 className="text-[15px] font-bold" style={{ color: '#002B5C' }}>{title}</h3>
+   168→        <p className="text-xs text-[#646970] mt-0.5">{description}</p>
+   169→      </div>
+   170→      <CardContent className="p-5">{children}</CardContent>
+   171→    </Card>
+   172→  );
+   173→}
+   174→
+   175→function FormField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+   176→  return (
+   177→    <div>
+   178→      <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">{label}</Label>
+   179→      <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="text-sm" />
+   180→    </div>
+   181→  );
+   182→}
+   183→
+   184→function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+   185→  return (
+   186→    <div>
+   187→      <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">{label}</Label>
+   188→      <div className="flex items-center gap-2">
+   189→        <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="w-10 h-10 rounded border border-[#d1d5db] cursor-pointer p-0.5" />
+   190→        <Input value={value} onChange={(e) => onChange(e.target.value)} className="text-sm font-mono flex-1" />
+   191→      </div>
+   192→    </div>
+   193→  );
+   194→}
+   195→
+   196→function Toast({ message }: { message: string }) {
+   197→  if (!message) return null;
+   198→  return (
+   199→    <div className="fixed bottom-4 right-4 z-[9999] px-4 py-3 rounded-lg text-white text-sm font-medium shadow-lg" style={{ backgroundColor: '#002B5C', animation: 'bvSlideIn 0.3s ease-out' }}>
+   200→      {message}
+   201→    </div>
+   202→  );
+   203→}
+   204→
+   205→/* ═══════════════════════════════════════════════════════════════
+   206→   Main Page Component
+   207→   ═══════════════════════════════════════════════════════════════ */
+   208→export default function Home() {
+   209→  /* ── State ── */
+   210→  const [activeTab, setActiveTab] = useState<TabId>('dashboard');
+   211→  const [sidebarOpen, setSidebarOpen] = useState(false);
+   212→  const [loading, setLoading] = useState(true);
+   213→  const [saving, setSaving] = useState(false);
+   214→  const [toast, setToast] = useState<string | null>(null);
+   215→
+   216→  const [settings, setSettings] = useState<Settings>({});
+   217→  const [services, setServices] = useState<ServiceItem[]>([]);
+   218→  const [plans, setPlans] = useState<PlanItem[]>([]);
+   219→  const [categories, setCategories] = useState<CategoryItem[]>([]);
+   220→  const [icons, setIcons] = useState<IconItem[]>([]);
+   221→
+   222→  const [serviceModal, setServiceModal] = useState<{ open: boolean; data: ServiceItem | null }>({ open: false, data: null });
+   223→  const [planModal, setPlanModal] = useState<{ open: boolean; data: PlanItem | null }>({ open: false, data: null });
+   224→  const [categoryModal, setCategoryModal] = useState<{ open: boolean; data: CategoryItem | null }>({ open: false, data: null });
+   225→  const [iconModal, setIconModal] = useState<{ open: boolean; data: IconItem | null }>({ open: false, data: null });
+   226→  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; type: 'service' | 'plan' | 'category' | 'icon'; id: string; name: string }>({ open: false, type: 'service', id: '', name: '' });
+   227→
+   228→  const [serviceForm, setServiceForm] = useState<Record<string, unknown>>({});
+   229→  const [planForm, setPlanForm] = useState<Record<string, unknown>>({});
+   230→  const [planFeatures, setPlanFeatures] = useState<string[]>(['']);
+   231→  const [categoryForm, setCategoryForm] = useState<Record<string, unknown>>({});
+   232→  const [iconForm, setIconForm] = useState<Record<string, unknown>>({});
+   233→  const [settingsForm, setSettingsForm] = useState<Settings>({});
+   234→
+   235→  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+   236→
+   237→  /* ── Icon Map (derived from DB icons) ── */
+   238→  const iconMap = React.useMemo(() => {
+   239→    const map: Record<string, string> = {};
+   240→    for (const icon of icons) {
+   241→      map[icon.name] = icon.svgPath;
+   242→    }
+   243→    return map;
+   244→  }, [icons]);
+   245→
+   246→  const iconOptions = React.useMemo(() => icons.map((i) => i.name), [icons]);
+   247→
+   248→  /* ── Toast ── */
+   249→  const showToast = useCallback((msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); }, []);
+   250→
+   251→  /* ── Data Fetching ── */
+   252→  const fetchData = useCallback(async () => {
+   253→    try {
+   254→      const [settingsRes, servicesRes, plansRes, categoriesRes, iconsRes] = await Promise.all([
+   255→        fetch('/api/settings'),
+   256→        fetch('/api/services?all=true'),
+   257→        fetch('/api/plans?all=true'),
+   258→        fetch('/api/categories'),
+   259→        fetch('/api/icons'),
+   260→      ]);
+   261→      const [settingsData, servicesData, plansData, categoriesData, iconsData] = await Promise.all([
+   262→        settingsRes.json(), servicesRes.json(), plansRes.json(), categoriesRes.json(), iconsRes.json(),
+   263→      ]);
+   264→      const s = settingsData.settings || {};
+   265→      setSettings(s);
+   266→      setSettingsForm({ ...s });
+   267→      setServices((servicesData.services || []).sort((a: ServiceItem, b: ServiceItem) => a.displayOrder - b.displayOrder));
+   268→      setPlans((plansData.plans || []).sort((a: PlanItem, b: PlanItem) => a.displayOrder - b.displayOrder));
+   269→      setCategories(categoriesData.categories || []);
+   270→      setIcons(iconsData.icons || []);
+   271→    } catch (err) { console.error('Failed to fetch:', err); }
+   272→    finally { setLoading(false); }
+   273→  }, []);
+   274→
+   275→  useEffect(() => { fetchData(); }, [fetchData]);
+   276→
+   277→  /* ── CRUD ── */
+   278→  const saveService = async () => {
+   279→    setSaving(true);
+   280→    try {
+   281→      const f = serviceForm;
+   282→      const isEdit = !!f.id;
+   283→      const url = isEdit ? `/api/services/${f.id}` : '/api/services';
+   284→      const method = isEdit ? 'PUT' : 'POST';
+   285→      const body = { ...f };
+   286→      if (isEdit) delete (body as Record<string, unknown>).id;
+   287→      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+   288→      if (!res.ok) throw new Error();
+   289→      showToast(isEdit ? 'Service updated!' : 'Service created!');
+   290→      setServiceModal({ open: false, data: null });
+   291→      fetchData();
+   292→    } catch { showToast('Error saving service'); }
+   293→    finally { setSaving(false); }
+   294→  };
+   295→
+   296→  const savePlan = async () => {
+   297→    setSaving(true);
+   298→    try {
+   299→      const f = planForm;
+   300→      const isEdit = !!f.id;
+   301→      const url = isEdit ? `/api/plans/${f.id}` : '/api/plans';
+   302→      const method = isEdit ? 'PUT' : 'POST';
+   303→      const body = { ...f, features: planFeatures.filter(Boolean) };
+   304→      if (isEdit) delete (body as Record<string, unknown>).id;
+   305→      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+   306→      if (!res.ok) throw new Error();
+   307→      showToast(isEdit ? 'Plan updated!' : 'Plan created!');
+   308→      setPlanModal({ open: false, data: null });
+   309→      fetchData();
+   310→    } catch { showToast('Error saving plan'); }
+   311→    finally { setSaving(false); }
+   312→  };
+   313→
+   314→  const saveCategory = async () => {
+   315→    setSaving(true);
+   316→    try {
+   317→      const f = categoryForm;
+   318→      const isEdit = !!f.id;
+   319→      const url = isEdit ? `/api/categories/${f.id}` : '/api/categories';
+   320→      const method = isEdit ? 'PUT' : 'POST';
+   321→      const body = { ...f };
+   322→      if (isEdit) delete (body as Record<string, unknown>).id;
+   323→      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+   324→      if (!res.ok) throw new Error();
+   325→      showToast(isEdit ? 'Category updated!' : 'Category created!');
+   326→      setCategoryModal({ open: false, data: null });
+   327→      fetchData();
+   328→    } catch { showToast('Error saving category'); }
+   329→    finally { setSaving(false); }
+   330→  };
+   331→
+   332→  const saveIcon = async () => {
+   333→    setSaving(true);
+   334→    try {
+   335→      const f = iconForm;
+   336→      const isEdit = !!f.id;
+   337→      const url = isEdit ? '/api/icons' : '/api/icons';
+   338→      const method = isEdit ? 'PUT' : 'POST';
+   339→      const body = { ...f };
+   340→      if (isEdit) delete (body as Record<string, unknown>).id;
+   341→      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+   342→      if (!res.ok) throw new Error();
+   343→      showToast(isEdit ? 'Icon updated!' : 'Icon created!');
+   344→      setIconModal({ open: false, data: null });
+   345→      fetchData();
+   346→    } catch { showToast('Error saving icon'); }
+   347→    finally { setSaving(false); }
+   348→  };
+   349→
+   350→  const deleteItem = async () => {
+   351→    const { type, id } = deleteConfirm;
+   352→    setSaving(true);
+   353→    try {
+   354→      const url = type === 'service' ? `/api/services/${id}` : type === 'plan' ? `/api/plans/${id}` : type === 'icon' ? `/api/icons?id=${id}` : `/api/categories/${id}`;
+   355→      const res = await fetch(url, { method: 'DELETE' });
+   356→      if (!res.ok) throw new Error();
+   357→      showToast('Deleted successfully!');
+   358→      setDeleteConfirm({ open: false, type: 'service', id: '', name: '' });
+   359→      fetchData();
+   360→    } catch { showToast('Error deleting'); }
+   361→    finally { setSaving(false); }
+   362→  };
+   363→
+   364→  const toggleVisibility = async (type: 'service' | 'plan', id: string, current: boolean) => {
+   365→    try {
+   366→      await fetch(type === 'service' ? `/api/services/${id}` : `/api/plans/${id}`, {
+   367→        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ visible: !current }),
+   368→      });
+   369→      fetchData();
+   370→    } catch { showToast('Error toggling visibility'); }
+   371→  };
+   372→
+   373→  const saveSettings = async () => {
+   374→    setSaving(true);
+   375→    try {
+   376→      const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: settingsForm }) });
+   377→      if (!res.ok) throw new Error();
+   378→      const data = await res.json();
+   379→      setSettings(data.settings || {});
+   380→      showToast('Settings saved!');
+   381→    } catch { showToast('Error saving settings'); }
+   382→    finally { setSaving(false); }
+   383→  };
+   384→
+   385→  const handleServiceReorder = async (event: DragEndEvent) => {
+   386→    const { active, over } = event;
+   387→    if (!over || active.id === over.id) return;
+   388→    const ids = services.map((s) => s.id);
+   389→    const oldIdx = ids.indexOf(String(active.id));
+   390→    const newIdx = ids.indexOf(String(over.id));
+   391→    if (oldIdx === -1 || newIdx === -1) return;
+   392→    const reordered = arrayMove(services, oldIdx, newIdx);
+   393→    setServices(reordered);
+   394→    try {
+   395→      await fetch('/api/services/reorder', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: reordered.map((s, i) => ({ id: s.id, displayOrder: i })) }) });
+   396→    } catch { showToast('Reorder failed'); }
+   397→  };
+   398→
+   399→  const handlePlanReorder = async (event: DragEndEvent) => {
+   400→    const { active, over } = event;
+   401→    if (!over || active.id === over.id) return;
+   402→    const ids = plans.map((p) => p.id);
+   403→    const oldIdx = ids.indexOf(String(active.id));
+   404→    const newIdx = ids.indexOf(String(over.id));
+   405→    if (oldIdx === -1 || newIdx === -1) return;
+   406→    const reordered = arrayMove(plans, oldIdx, newIdx);
+   407→    setPlans(reordered);
+   408→    try {
+   409→      await fetch('/api/plans/reorder', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: reordered.map((p, i) => ({ id: p.id, displayOrder: i })) }) });
+   410→    } catch { showToast('Reorder failed'); }
+   411→  };
+   412→
+   413→  /* ── Derived Stats ── */
+   414→  const stats = {
+   415→    totalServices: services.length,
+   416→    totalPlans: plans.length,
+   417→    visibleItems: services.filter((s) => s.visible).length + plans.filter((p) => p.visible).length,
+   418→    hiddenItems: services.filter((s) => !s.visible).length + plans.filter((p) => !p.visible).length,
+   419→    featuredItems: services.filter((s) => s.featured).length + plans.filter((p) => p.featured).length,
+   420→    categories: categories.length,
+   421→  };
+   422→
+   423→  const catServiceCount = (catId: string) => services.filter((s) => s.categoryId === catId).length;
+   424→  const catPlanCount = (catId: string) => plans.filter((p) => p.categoryId === catId).length;
+   425→
+   426→  /* ── Open Modal Helpers ── */
+   427→  const openNewService = () => {
+   428→    setServiceForm({ name: '', description: '', price: 0, icon: 'file-text', buttonLabel: 'ADD TO CART', buttonType: 'cart', buttonUrl: '', woocommerceProductId: '', categoryId: null, visible: true, featured: false, displayOrder: services.length });
+   429→    setServiceModal({ open: true, data: null });
+   430→  };
+   431→  const openEditService = (s: ServiceItem) => { setServiceForm({ ...s }); setServiceModal({ open: true, data: s }); };
+   432→
+   433→  const openNewPlan = () => {
+   434→    setPlanForm({ name: '', subtitle: '', price: 0, color: '#002B5C', buttonLabel: 'GET STARTED', buttonType: 'cart', buttonUrl: '', woocommerceProductId: '', categoryId: null, visible: true, featured: false, displayOrder: plans.length });
+   435→    setPlanFeatures(['']);
+   436→    setPlanModal({ open: true, data: null });
+   437→  };
+   438→  const openEditPlan = (p: PlanItem) => {
+   439→    setPlanForm({ ...p });
+   440→    setPlanFeatures(p.features.map((f) => f.text));
+   441→    setPlanModal({ open: true, data: p });
+   442→  };
+   443→
+   444→  const openNewCategory = () => { setCategoryForm({ name: '', slug: '', color: '#002B5C' }); setCategoryModal({ open: true, data: null }); };
+   445→  const openEditCategory = (c: CategoryItem) => { setCategoryForm({ ...c }); setCategoryModal({ open: true, data: c }); };
+   446→  const openNewIcon = () => { setIconForm({ name: '', label: '', svgPath: '', category: 'general', displayOrder: icons.length }); setIconModal({ open: true, data: null }); };
+   447→  const openEditIcon = (ic: IconItem) => { setIconForm({ ...ic }); setIconModal({ open: true, data: ic }); };
+   448→
+   449→  /* ── Loading ── */
+   450→  if (loading) {
+   451→    return (
+   452→      <div className="min-h-screen bg-[#f0f0f1] flex items-center justify-center">
+   453→        <div className="flex flex-col items-center gap-3">
+   454→          <Loader2 className="animate-spin" size={40} style={{ color: '#D4AF37' }} />
+   455→          <p className="text-[#646970] text-sm">Loading BusinessVance Admin...</p>
+   456→        </div>
+   457→      </div>
+   458→    );
+   459→  }
+   460→
+   461→  /* ═══════════════════════════════════════════════════════════════
+   462→     RENDER
+   463→     ═══════════════════════════════════════════════════════════════ */
+   464→  return (
+   465→    <div className="min-h-screen flex flex-col bg-[#f0f0f1]">
+   466→      {/* ═══ Inline Styles ═══ */}
+   467→      <style>{`
+   468→        @keyframes bvSlideIn { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+   469→        .wp-scrollbar::-webkit-scrollbar { width: 6px; }
+   470→        .wp-scrollbar::-webkit-scrollbar-track { background: transparent; }
+   471→        .wp-scrollbar::-webkit-scrollbar-thumb { background: #c3c4c7; border-radius: 3px; }
+   472→        .wp-scrollbar::-webkit-scrollbar-thumb:hover { background: #a7aaad; }
+   473→      `}</style>
+   474→
+   475→      {/* ═══ Admin Bar ═══ */}
+   476→      <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4" style={{ height: 32, backgroundColor: '#1d2327', color: '#c3c4c7' }}>
+   477→        <div className="flex items-center gap-2 text-[13px]">
+   478→          <button className="lg:hidden p-0.5 hover:text-white" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Toggle menu"><Menu size={18} /></button>
+   479→          <div className="flex items-center gap-2"><Shield size={14} style={{ color: '#D4AF37' }} /><span className="font-semibold text-white">BusinessVance</span></div>
+   480→        </div>
+   481→        <div className="text-[13px]"><span>Howdy, </span><span className="text-white font-medium">Admin</span></div>
+   482→      </header>
+   483→
+   484→      {/* ═══ Sidebar Overlay (mobile) ═══ */}
+   485→      {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />}
+   486→
+   487→      {/* ═══ Sidebar ═══ */}
+   488→      <aside className={`fixed top-8 left-0 bottom-0 z-40 flex flex-col transition-transform duration-200 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`} style={{ width: 250, backgroundColor: '#1d2327' }}>
+   489→        <div className="flex items-center justify-center py-2 border-b border-white/10">
+   490→          <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M1 1h18v18H1V1zm2 2v14h14V3H3zm2 2h10v2H5V5zm0 4h10v2H5V9zm0 4h7v2H5v-2z" fill="#c3c4c7" /></svg>
+   491→        </div>
+   492→        <nav className="flex-1 overflow-y-auto py-2" role="navigation">
+   493→          {SIDEBAR_MENU.map((item) => {
+   494→            const isActive = activeTab === item.id;
+   495→            const IconComp = item.icon;
+   496→            return (
+   497→              <button key={item.id} onClick={() => { setActiveTab(item.id); setSidebarOpen(false); }}
+   498→                className={`w-full flex items-center gap-3 px-4 py-2.5 text-left text-[14px] transition-colors border-none cursor-pointer ${isActive ? 'bg-[#2271b1] text-white' : 'text-[#c3c4c7] hover:bg-[#2c3338] hover:text-white'}`}
+   499→                aria-current={isActive ? 'page' : undefined}>
+   500→                <IconComp size={18} />{item.label}
+   501→              </button>
+   502→            );
+   503→          })}
+   504→        </nav>
+   505→        <button className="hidden lg:flex items-center justify-center py-3 border-t border-white/10 text-[#c3c4c7] hover:text-white transition-colors" style={{ height: 36 }} onClick={() => setSidebarOpen(false)} aria-label="Collapse menu">
+   506→          <ChevronLeft size={18} />
+   507→        </button>
+   508→      </aside>
+   509→
+   510→      {/* ═══ Main Content ═══ */}
+   511→      <main className="flex-1 lg:ml-[250px] pt-12 min-h-screen">
+   512→        <div className="p-4 md:p-6 lg:p-8 max-w-[1200px]">
+   513→
+   514→          {/* ══════════════════════════════════════
+   515→              DASHBOARD TAB
+   516→          ══════════════════════════════════════ */}
+   517→          {activeTab === 'dashboard' && (
+   518→            <section aria-label="Dashboard">
+   519→              <div className="flex items-center gap-3 mb-6">
+   520→                <Shield size={28} style={{ color: '#D4AF37' }} />
+   521→                <div>
+   522→                  <h1 className="text-2xl font-bold" style={{ color: '#002B5C' }}>BusinessVance Dashboard</h1>
+   523→                  <p className="text-sm text-[#646970]">Services Manager — Plugin Overview</p>
+   524→                </div>
+   525→              </div>
+   526→
+   527→              {/* Stats */}
+   528→              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+   529→                {[
+   530→                  { label: 'Total Services', value: stats.totalServices, color: '#002B5C' },
+   531→                  { label: 'Total Plans', value: stats.totalPlans, color: '#2A9D8F' },
+   532→                  { label: 'Visible Items', value: stats.visibleItems, color: '#16a34a' },
+   533→                  { label: 'Hidden Items', value: stats.hiddenItems, color: '#dc2626' },
+   534→                  { label: 'Featured Items', value: stats.featuredItems, color: '#D4AF37' },
+   535→                  { label: 'Categories', value: stats.categories, color: '#7c3aed' },
+   536→                ].map((stat) => (
+   537→                  <Card key={stat.label} className="border border-[#c3c4c7]/30 hover:shadow-md transition-shadow">
+   538→                    <CardContent className="p-4 text-center">
+   539→                      <div className="text-3xl font-extrabold" style={{ color: stat.color }}>{stat.value}</div>
+   540→                      <div className="text-[11px] text-[#646970] uppercase tracking-wide mt-1 font-semibold">{stat.label}</div>
+   541→                    </CardContent>
+   542→                  </Card>
+   543→                ))}
+   544→              </div>
+   545→
+   546→              {/* Shortcodes */}
+   547→              <div className="bg-white rounded-lg border border-[#c3c4c7]/30 p-6 mb-6">
+   548→                <h2 className="text-lg font-bold mb-4" style={{ color: '#002B5C' }}>Shortcode Reference</h2>
+   549→                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+   550→                  {[
+   551→                    { code: '[businessvance_services]', desc: 'Full services page with both once-off services and subscription plans' },
+   552→                    { code: '[businessvance_onceoff]', desc: 'Displays only once-off services/price list' },
+   553→                    { code: '[businessvance_subscriptions]', desc: 'Displays only monthly subscription plans' },
+   554→                  ].map((sc) => (
+   555→                    <div key={sc.code} className="rounded-lg p-4 relative" style={{ backgroundColor: '#002B5C' }}>
+   556→                      <CopyBtn text={sc.code} />
+   557→                      <p className="text-[13px] text-white/80 mb-3 leading-snug pr-8">{sc.desc}</p>
+   558→                      <code className="block text-[13px] font-semibold px-3 py-2 rounded" style={{ color: '#D4AF37', backgroundColor: 'rgba(0,0,0,0.25)' }}>{sc.code}</code>
+   559→                    </div>
+   560→                  ))}
+   561→                </div>
+   562→              </div>
+   563→
+   564→              {/* Quick Start */}
+   565→              <div className="bg-white rounded-lg border border-[#c3c4c7]/30 p-6">
+   566→                <h2 className="text-lg font-bold mb-4" style={{ color: '#002B5C' }}>Quick Start Guide</h2>
+   567→                <ol className="list-decimal list-inside space-y-2 text-sm text-[#50575e] leading-relaxed">
+   568→                  <li>Add your <strong>Categories</strong> to organize services and plans</li>
+   569→                  <li>Create <strong>Services</strong> (once-off reports and services) with pricing</li>
+   570→                  <li>Set up <strong>Subscription Plans</strong> with features and pricing</li>
+   571→                  <li>Configure <strong>Settings</strong> — branding, colors, currency, footer</li>
+   572→                  <li>Insert one of the shortcodes above on any WordPress page</li>
+   573→                  <li>Preview your page to see the fully styled services section</li>
+   574→                </ol>
+   575→              </div>
+   576→            </section>
+   577→          )}
+   578→
+   579→          {/* ══════════════════════════════════════
+   580→              SERVICES TAB
+   581→          ══════════════════════════════════════ */}
+   582→          {activeTab === 'services' && (
+   583→            <section aria-label="Services">
+   584→              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
+   585→                <div className="flex items-center gap-3">
+   586→                  <FileText size={24} style={{ color: '#D4AF37' }} />
+   587→                  <div>
+   588→                    <h1 className="text-2xl font-bold" style={{ color: '#002B5C' }}>Services</h1>
+   589→                    <p className="text-sm text-[#646970]">Manage once-off services and price list</p>
+   590→                  </div>
+   591→                </div>
+   592→                <Button onClick={openNewService} className="font-semibold text-white shadow-sm hover:opacity-90 transition-opacity" style={{ backgroundColor: '#D4AF37' }}>
+   593→                  <Plus size={16} className="mr-1.5" /> Add New Service
+   594→                </Button>
+   595→              </div>
+   596→
+   597→              <div className="bg-white rounded-lg border border-[#c3c4c7]/30 overflow-hidden">
+   598→                <div className="overflow-x-auto max-h-[600px] overflow-y-auto wp-scrollbar">
+   599→                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleServiceReorder}>
+   600→                    <Table>
+   601→                      <TableHeader>
+   602→                        <TableRow style={{ backgroundColor: '#f8f9fa' }}>
+   603→                          <TableHead className="w-12" />
+   604→                          <TableHead className="text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Service</TableHead>
+   605→                          <TableHead className="text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Category</TableHead>
+   606→                          <TableHead className="text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Price</TableHead>
+   607→                          <TableHead className="text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Button</TableHead>
+   608→                          <TableHead className="w-16 text-center text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Visible</TableHead>
+   609→                          <TableHead className="w-16 text-center text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Featured</TableHead>
+   610→                          <TableHead className="w-28 text-right text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Actions</TableHead>
+   611→                        </TableRow>
+   612→                      </TableHeader>
+   613→                      <TableBody>
+   614→                        <SortableContext items={services.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+   615→                          {services.map((s) => (
+   616→                            <SortableRow key={s.id} id={s.id}>
+   617→                              <TableCell className="py-3 px-3">
+   618→                                <div className="flex items-start gap-2.5">
+   619→                                  <div className="flex-shrink-0 w-9 h-9 rounded-md flex items-center justify-center" style={{ backgroundColor: (s.category?.color || '#002B5C') + '18', color: s.category?.color || '#002B5C' }}>
+   620→                                    <BvIcon name={s.icon} size={18} iconMap={iconMap} />
+   621→                                  </div>
+   622→                                  <div className="min-w-0">
+   623→                                    <div className="font-medium text-sm text-[#1d2327]">{s.name}</div>
+   624→                                    <div className="text-xs text-[#646970] mt-0.5 truncate max-w-[220px]">{s.description}</div>
+   625→                                  </div>
+   626→                                </div>
+   627→                              </TableCell>
+   628→                              <TableCell className="py-3 px-3">
+   629→                                {s.category ? (
+   630→                                  <div className="flex items-center gap-1.5">
+   631→                                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.category.color }} />
+   632→                                    <span className="text-sm text-[#50575e]">{s.category.name}</span>
+   633→                                  </div>
+   634→                                ) : <span className="text-xs text-[#a7aaad]">—</span>}
+   635→                              </TableCell>
+   636→                              <TableCell className="py-3 px-3 text-sm font-semibold" style={{ color: '#002B5C' }}>
+   637→                                {settings.currency_symbol || 'R'}{s.price.toLocaleString('en-ZA')}
+   638→                              </TableCell>
+   639→                              <TableCell className="py-3 px-3">
+   640→                                <Badge variant="outline" className="text-xs capitalize">{s.buttonType}</Badge>
+   641→                              </TableCell>
+   642→                              <TableCell className="py-3 px-3 text-center">
+   643→                                <button onClick={() => toggleVisibility('service', s.id, s.visible)} className={`p-1 rounded transition-opacity ${s.visible ? 'text-[#2271b1] hover:opacity-70' : 'text-[#a7aaad] opacity-40 hover:opacity-60'}`} title={s.visible ? 'Visible' : 'Hidden'} aria-label="Toggle visibility">
+   644→                                  {s.visible ? <Eye size={18} /> : <EyeOff size={18} />}
+   645→                                </button>
+   646→                              </TableCell>
+   647→                              <TableCell className="py-3 px-3 text-center">
+   648→                                {s.featured && <span className="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold text-white" style={{ background: 'linear-gradient(135deg, #D4AF37, #F0D060)' }}>★</span>}
+   649→                              </TableCell>
+   650→                              <TableCell className="py-3 px-3 text-right">
+   651→                                <div className="flex items-center justify-end gap-1">
+   652→                                  <button onClick={() => openEditService(s)} className="p-1.5 rounded text-[#2271b1] hover:bg-[#f0f0f1] transition-colors" title="Edit"><Pencil size={15} /></button>
+   653→                                  <button onClick={() => setDeleteConfirm({ open: true, type: 'service', id: s.id, name: s.name })} className="p-1.5 rounded text-[#d63638] hover:bg-red-50 transition-colors" title="Delete"><Trash2 size={15} /></button>
+   654→                                </div>
+   655→                              </TableCell>
+   656→                            </SortableRow>
+   657→                          ))}
+   658→                        </SortableContext>
+   659→                      </TableBody>
+   660→                    </Table>
+   661→                  </DndContext>
+   662→                  {services.length === 0 && (
+   663→                    <div className="text-center py-16 text-[#a7aaad]">
+   664→                      <FileText size={40} className="mx-auto mb-3 opacity-40" />
+   665→                      <p className="font-medium">No services yet</p>
+   666→                      <p className="text-sm mt-1">Click &quot;Add New Service&quot; to get started</p>
+   667→                    </div>
+   668→                  )}
+   669→                </div>
+   670→              </div>
+   671→            </section>
+   672→          )}
+   673→
+   674→          {/* ══════════════════════════════════════
+   675→              PLANS TAB
+   676→          ══════════════════════════════════════ */}
+   677→          {activeTab === 'plans' && (
+   678→            <section aria-label="Subscription Plans">
+   679→              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
+   680→                <div className="flex items-center gap-3">
+   681→                  <CreditCard size={24} style={{ color: '#D4AF37' }} />
+   682→                  <div>
+   683→                    <h1 className="text-2xl font-bold" style={{ color: '#002B5C' }}>Subscription Plans</h1>
+   684→                    <p className="text-sm text-[#646970]">Manage monthly subscription plan cards</p>
+   685→                  </div>
+   686→                </div>
+   687→                <Button onClick={openNewPlan} className="font-semibold text-white shadow-sm hover:opacity-90 transition-opacity" style={{ backgroundColor: '#D4AF37' }}>
+   688→                  <Plus size={16} className="mr-1.5" /> Add New Plan
+   689→                </Button>
+   690→              </div>
+   691→
+   692→              <div className="bg-white rounded-lg border border-[#c3c4c7]/30 overflow-hidden">
+   693→                <div className="overflow-x-auto max-h-[600px] overflow-y-auto wp-scrollbar">
+   694→                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handlePlanReorder}>
+   695→                    <Table>
+   696→                      <TableHeader>
+   697→                        <TableRow style={{ backgroundColor: '#f8f9fa' }}>
+   698→                          <TableHead className="w-12" />
+   699→                          <TableHead className="text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Plan</TableHead>
+   700→                          <TableHead className="text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Color</TableHead>
+   701→                          <TableHead className="text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Price</TableHead>
+   702→                          <TableHead className="text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Button</TableHead>
+   703→                          <TableHead className="w-16 text-center text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Visible</TableHead>
+   704→                          <TableHead className="w-16 text-center text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Featured</TableHead>
+   705→                          <TableHead className="w-28 text-right text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Actions</TableHead>
+   706→                        </TableRow>
+   707→                      </TableHeader>
+   708→                      <TableBody>
+   709→                        <SortableContext items={plans.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+   710→                          {plans.map((p) => (
+   711→                            <SortableRow key={p.id} id={p.id}>
+   712→                              <TableCell className="py-3 px-3">
+   713→                                <div>
+   714→                                  <div className="font-medium text-sm text-[#1d2327]">{p.name}</div>
+   715→                                  {p.subtitle && <div className="text-xs text-[#646970] mt-0.5">{p.subtitle}</div>}
+   716→                                </div>
+   717→                              </TableCell>
+   718→                              <TableCell className="py-3 px-3">
+   719→                                <div className="flex items-center gap-2">
+   720→                                  <span className="w-5 h-5 rounded" style={{ backgroundColor: p.color, border: '1px solid rgba(0,0,0,0.1)' }} />
+   721→                                  <span className="text-xs text-[#646970] font-mono">{p.color}</span>
+   722→                                </div>
+   723→                              </TableCell>
+   724→                              <TableCell className="py-3 px-3 text-sm font-semibold" style={{ color: '#002B5C' }}>
+   725→                                {settings.currency_symbol || 'R'}{p.price.toLocaleString('en-ZA')}/mo
+   726→                              </TableCell>
+   727→                              <TableCell className="py-3 px-3 text-sm text-[#50575e]">{p.buttonLabel || 'GET STARTED'}</TableCell>
+   728→                              <TableCell className="py-3 px-3 text-center">
+   729→                                <button onClick={() => toggleVisibility('plan', p.id, p.visible)} className={`p-1 rounded transition-opacity ${p.visible ? 'text-[#2271b1] hover:opacity-70' : 'text-[#a7aaad] opacity-40 hover:opacity-60'}`} title={p.visible ? 'Visible' : 'Hidden'} aria-label="Toggle visibility">
+   730→                                  {p.visible ? <Eye size={18} /> : <EyeOff size={18} />}
+   731→                                </button>
+   732→                              </TableCell>
+   733→                              <TableCell className="py-3 px-3 text-center">
+   734→                                {p.featured && <span className="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold text-white" style={{ background: 'linear-gradient(135deg, #D4AF37, #F0D060)' }}>★</span>}
+   735→                              </TableCell>
+   736→                              <TableCell className="py-3 px-3 text-right">
+   737→                                <div className="flex items-center justify-end gap-1">
+   738→                                  <button onClick={() => openEditPlan(p)} className="p-1.5 rounded text-[#2271b1] hover:bg-[#f0f0f1] transition-colors" title="Edit"><Pencil size={15} /></button>
+   739→                                  <button onClick={() => setDeleteConfirm({ open: true, type: 'plan', id: p.id, name: p.name })} className="p-1.5 rounded text-[#d63638] hover:bg-red-50 transition-colors" title="Delete"><Trash2 size={15} /></button>
+   740→                                </div>
+   741→                              </TableCell>
+   742→                            </SortableRow>
+   743→                          ))}
+   744→                        </SortableContext>
+   745→                      </TableBody>
+   746→                    </Table>
+   747→                  </DndContext>
+   748→                  {plans.length === 0 && (
+   749→                    <div className="text-center py-16 text-[#a7aaad]">
+   750→                      <CreditCard size={40} className="mx-auto mb-3 opacity-40" />
+   751→                      <p className="font-medium">No plans yet</p>
+   752→                      <p className="text-sm mt-1">Click &quot;Add New Plan&quot; to get started</p>
+   753→                    </div>
+   754→                  )}
+   755→                </div>
+   756→              </div>
+   757→            </section>
+   758→          )}
+   759→
+   760→          {/* ══════════════════════════════════════
+   761→              CATEGORIES TAB
+   762→          ══════════════════════════════════════ */}
+   763→          {activeTab === 'categories' && (
+   764→            <section aria-label="Categories">
+   765→              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
+   766→                <div className="flex items-center gap-3">
+   767→                  <FolderOpen size={24} style={{ color: '#D4AF37' }} />
+   768→                  <div>
+   769→                    <h1 className="text-2xl font-bold" style={{ color: '#002B5C' }}>Categories</h1>
+   770→                    <p className="text-sm text-[#646970]">Organize services and plans</p>
+   771→                  </div>
+   772→                </div>
+   773→                <Button onClick={openNewCategory} className="font-semibold text-white shadow-sm hover:opacity-90 transition-opacity" style={{ backgroundColor: '#D4AF37' }}>
+   774→                  <Plus size={16} className="mr-1.5" /> Add New Category
+   775→                </Button>
+   776→              </div>
+   777→
+   778→              <div className="bg-white rounded-lg border border-[#c3c4c7]/30 overflow-hidden">
+   779→                <div className="overflow-x-auto">
+   780→                  <Table>
+   781→                    <TableHeader>
+   782→                      <TableRow style={{ backgroundColor: '#f8f9fa' }}>
+   783→                        <TableHead className="text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Name</TableHead>
+   784→                        <TableHead className="text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Slug</TableHead>
+   785→                        <TableHead className="text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Color</TableHead>
+   786→                        <TableHead className="text-[12px] uppercase tracking-wide font-semibold text-[#50575e] text-center">Services</TableHead>
+   787→                        <TableHead className="text-[12px] uppercase tracking-wide font-semibold text-[#50575e] text-center">Plans</TableHead>
+   788→                        <TableHead className="w-28 text-right text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Actions</TableHead>
+   789→                      </TableRow>
+   790→                    </TableHeader>
+   791→                    <TableBody>
+   792→                      {categories.map((c) => (
+   793→                        <TableRow key={c.id}>
+   794→                          <TableCell className="py-3 px-3 font-medium text-sm text-[#1d2327]">{c.name}</TableCell>
+   795→                          <TableCell className="py-3 px-3 text-sm text-[#646970] font-mono">{c.slug}</TableCell>
+   796→                          <TableCell className="py-3 px-3">
+   797→                            <div className="flex items-center gap-2">
+   798→                              <span className="w-5 h-5 rounded" style={{ backgroundColor: c.color, border: '1px solid rgba(0,0,0,0.1)' }} />
+   799→                              <span className="text-xs text-[#646970] font-mono">{c.color}</span>
+   800→                            </div>
+   801→                          </TableCell>
+   802→                          <TableCell className="py-3 px-3 text-center"><Badge variant="secondary" className="text-xs font-semibold">{catServiceCount(c.id)}</Badge></TableCell>
+   803→                          <TableCell className="py-3 px-3 text-center"><Badge variant="secondary" className="text-xs font-semibold">{catPlanCount(c.id)}</Badge></TableCell>
+   804→                          <TableCell className="py-3 px-3 text-right">
+   805→                            <div className="flex items-center justify-end gap-1">
+   806→                              <button onClick={() => openEditCategory(c)} className="p-1.5 rounded text-[#2271b1] hover:bg-[#f0f0f1] transition-colors" title="Edit"><Pencil size={15} /></button>
+   807→                              <button onClick={() => setDeleteConfirm({ open: true, type: 'category', id: c.id, name: c.name })} className="p-1.5 rounded text-[#d63638] hover:bg-red-50 transition-colors" title="Delete"><Trash2 size={15} /></button>
+   808→                            </div>
+   809→                          </TableCell>
+   810→                        </TableRow>
+   811→                      ))}
+   812→                    </TableBody>
+   813→                  </Table>
+   814→                  {categories.length === 0 && (
+   815→                    <div className="text-center py-16 text-[#a7aaad]">
+   816→                      <FolderOpen size={40} className="mx-auto mb-3 opacity-40" />
+   817→                      <p className="font-medium">No categories yet</p>
+   818→                      <p className="text-sm mt-1">Click &quot;Add New Category&quot; to get started</p>
+   819→                    </div>
+   820→                  )}
+   821→                </div>
+   822→              </div>
+   823→            </section>
+   824→          )}
+   825→
+   826→          {/* ══════════════════════════════════════
+   827→              ICONS TAB
+   828→          ══════════════════════════════════════ */}
+   829→          {activeTab === 'icons' && (
+   830→            <section aria-label="Icon Manager">
+   831→              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
+   832→                <div className="flex items-center gap-3">
+   833→                  <ImageIcon size={24} style={{ color: '#D4AF37' }} />
+   834→                  <div>
+   835→                    <h1 className="text-2xl font-bold" style={{ color: '#002B5C' }}>Icon Manager</h1>
+   836→                    <p className="text-sm text-[#646970]">Manage SVG icons used across the plugin</p>
+   837→                  </div>
+   838→                </div>
+   839→                <Button onClick={openNewIcon} className="font-semibold text-white shadow-sm hover:opacity-90 transition-opacity" style={{ backgroundColor: '#D4AF37' }}>
+   840→                  <Plus size={16} className="mr-1.5" /> Add New Icon
+   841→                </Button>
+   842→              </div>
+   843→
+   844→              <div className="bg-white rounded-lg border border-[#c3c4c7]/30 overflow-hidden">
+   845→                <div className="overflow-x-auto max-h-[600px] overflow-y-auto wp-scrollbar">
+   846→                  <Table>
+   847→                    <TableHeader>
+   848→                      <TableRow style={{ backgroundColor: '#f8f9fa' }}>
+   849→                        <TableHead className="text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Preview</TableHead>
+   850→                        <TableHead className="text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Name</TableHead>
+   851→                        <TableHead className="text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Label</TableHead>
+   852→                        <TableHead className="text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Category</TableHead>
+   853→                        <TableHead className="w-28 text-right text-[12px] uppercase tracking-wide font-semibold text-[#50575e]">Actions</TableHead>
+   854→                      </TableRow>
+   855→                    </TableHeader>
+   856→                    <TableBody>
+   857→                      {icons.map((ic) => (
+   858→                        <TableRow key={ic.id}>
+   859→                          <TableCell className="py-3 px-3">
+   860→                            <div className="w-9 h-9 rounded-md flex items-center justify-center" style={{ backgroundColor: '#002B5C18', color: '#002B5C' }}>
+   861→                              <BvIcon name={ic.name} size={18} iconMap={iconMap} />
+   862→                            </div>
+   863→                          </TableCell>
+   864→                          <TableCell className="py-3 px-3">
+   865→                            <span className="text-sm font-mono text-[#1d2327]">{ic.name}</span>
+   866→                          </TableCell>
+   867→                          <TableCell className="py-3 px-3 text-sm text-[#50575e]">{ic.label}</TableCell>
+   868→                          <TableCell className="py-3 px-3">
+   869→                            <Badge variant="secondary" className="text-xs font-semibold capitalize">{ic.category}</Badge>
+   870→                          </TableCell>
+   871→                          <TableCell className="py-3 px-3 text-right">
+   872→                            <div className="flex items-center justify-end gap-1">
+   873→                              <button onClick={() => openEditIcon(ic)} className="p-1.5 rounded text-[#2271b1] hover:bg-[#f0f0f1] transition-colors" title="Edit"><Pencil size={15} /></button>
+   874→                              <button onClick={() => setDeleteConfirm({ open: true, type: 'icon', id: ic.id, name: ic.label })} className="p-1.5 rounded text-[#d63638] hover:bg-red-50 transition-colors" title="Delete"><Trash2 size={15} /></button>
+   875→                            </div>
+   876→                          </TableCell>
+   877→                        </TableRow>
+   878→                      ))}
+   879→                    </TableBody>
+   880→                  </Table>
+   881→                  {icons.length === 0 && (
+   882→                    <div className="text-center py-16 text-[#a7aaad]">
+   883→                      <ImageIcon size={40} className="mx-auto mb-3 opacity-40" />
+   884→                      <p className="font-medium">No icons yet</p>
+   885→                      <p className="text-sm mt-1">Click &quot;Add New Icon&quot; to get started</p>
+   886→                    </div>
+   887→                  )}
+   888→                </div>
+   889→              </div>
+   890→            </section>
+   891→          )}
+   892→
+   893→          {/* ══════════════════════════════════════
+   894→              SETTINGS TAB
+   895→          ══════════════════════════════════════ */}
+   896→          {activeTab === 'settings' && (
+   897→            <section aria-label="Settings">
+   898→              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
+   899→                <div className="flex items-center gap-3">
+   900→                  <Settings size={24} style={{ color: '#D4AF37' }} />
+   901→                  <div>
+   902→                    <h1 className="text-2xl font-bold" style={{ color: '#002B5C' }}>Plugin Settings</h1>
+   903→                    <p className="text-sm text-[#646970]">Configure branding, colors, content, and layout</p>
+   904→                  </div>
+   905→                </div>
+   906→                <Button onClick={saveSettings} disabled={saving} className="font-semibold text-white shadow-sm hover:opacity-90 transition-opacity" style={{ backgroundColor: '#D4AF37' }}>
+   907→                  {saving && <Loader2 size={16} className="mr-1.5 animate-spin" />}
+   908→                  {saving ? 'Saving...' : 'Save Changes'}
+   909→                </Button>
+   910→              </div>
+   911→
+   912→              <div className="space-y-6">
+   913→                {/* Branding */}
+   914→                <SettingsCard title="Branding" description="Site-wide branding options">
+   915→                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   916→                    <FormField label="Brand Name" value={settingsForm.brand_name || ''} onChange={(v) => setSettingsForm({ ...settingsForm, brand_name: v })} />
+   917→                    <FormField label="Brand Tagline" value={settingsForm.brand_tagline || ''} onChange={(v) => setSettingsForm({ ...settingsForm, brand_tagline: v })} />
+   918→                    <div className="md:col-span-2">
+   919→                      <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Brand Description</Label>
+   920→                      <Textarea value={settingsForm.brand_description || ''} onChange={(e) => setSettingsForm({ ...settingsForm, brand_description: e.target.value })} className="text-sm" rows={2} />
+   921→                    </div>
+   922→                    <div className="md:col-span-2">
+   923→                      <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Logo URL</Label>
+   924→                      <Input value={settingsForm.logo_url || ''} onChange={(e) => setSettingsForm({ ...settingsForm, logo_url: e.target.value })} className="text-sm" placeholder="https://example.com/logo.png" />
+   925→                      {settingsForm.logo_url && (
+   926→                        <div className="mt-2 flex items-center gap-3">
+   927→                          <img src={settingsForm.logo_url} alt="Logo preview" className="h-10 rounded border border-[#e5e7eb] object-contain bg-white p-1" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+   928→                          <button type="button" onClick={() => setSettingsForm({ ...settingsForm, logo_url: '' })} className="text-xs text-[#d63638] hover:underline">Remove logo</button>
+   929→                        </div>
+   930→                      )}
+   931→                    </div>
+   932→                    <div className="md:col-span-2">
+   933→                      <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Header Icon</Label>
+   934→                      <Select value={settingsForm.header_icon || 'shield'} onValueChange={(v) => setSettingsForm({ ...settingsForm, header_icon: v })}>
+   935→                        <SelectTrigger className="w-full text-sm"><SelectValue /></SelectTrigger>
+   936→                        <SelectContent>
+   937→                          {iconOptions.map((icon) => (
+   938→                            <SelectItem key={icon} value={icon} className="capitalize">{icon.replace(/-/g, ' ')}</SelectItem>
+   939→                          ))}
+   940→                        </SelectContent>
+   941→                      </Select>
+   942→                    </div>
+   943→                  </div>
+   944→                </SettingsCard>
+   945→
+   946→                {/* Colors */}
+   947→                <SettingsCard title="Colors" description="Theme colors used across the plugin">
+   948→                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   949→                    <ColorField label="Primary Color" value={settingsForm.color_primary || '#0A2647'} onChange={(v) => setSettingsForm({ ...settingsForm, color_primary: v })} />
+   950→                    <ColorField label="Primary Dark" value={settingsForm.color_primary_dark || '#071a33'} onChange={(v) => setSettingsForm({ ...settingsForm, color_primary_dark: v })} />
+   951→                    <ColorField label="Primary Light" value={settingsForm.color_primary_light || '#144272'} onChange={(v) => setSettingsForm({ ...settingsForm, color_primary_light: v })} />
+   952→                    <ColorField label="Accent Color" value={settingsForm.color_accent || '#F4A261'} onChange={(v) => setSettingsForm({ ...settingsForm, color_accent: v })} />
+   953→                    <ColorField label="Accent Alt" value={settingsForm.color_accent_alt || '#2A9D8F'} onChange={(v) => setSettingsForm({ ...settingsForm, color_accent_alt: v })} />
+   954→                    <ColorField label="Gold Accent" value={settingsForm.color_gold || '#D4AF37'} onChange={(v) => setSettingsForm({ ...settingsForm, color_gold: v })} />
+   955→                  </div>
+   956→                </SettingsCard>
+   957→
+   958→                {/* Services Section */}
+   959→                <SettingsCard title="Services Section" description="Configure the once-off services section">
+   960→                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   961→                    <FormField label="Section Title" value={settingsForm.services_section_title || ''} onChange={(v) => setSettingsForm({ ...settingsForm, services_section_title: v })} />
+   962→                    <FormField label="Section Subtitle" value={settingsForm.services_section_subtitle || ''} onChange={(v) => setSettingsForm({ ...settingsForm, services_section_subtitle: v })} />
+   963→                    <div className="flex items-center gap-3">
+   964→                      <Switch checked={settingsForm.show_services_section !== 'false'} onCheckedChange={(checked) => setSettingsForm({ ...settingsForm, show_services_section: String(checked) })} />
+   965→                      <Label className="text-sm text-[#50575e]">Show services section</Label>
+   966→                    </div>
+   967→                  </div>
+   968→                </SettingsCard>
+   969→
+   970→                {/* Plans Section */}
+   971→                <SettingsCard title="Plans Section" description="Configure the subscription plans section">
+   972→                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   973→                    <FormField label="Section Title" value={settingsForm.plans_section_title || ''} onChange={(v) => setSettingsForm({ ...settingsForm, plans_section_title: v })} />
+   974→                    <FormField label="Section Subtitle" value={settingsForm.plans_section_subtitle || ''} onChange={(v) => setSettingsForm({ ...settingsForm, plans_section_subtitle: v })} />
+   975→                    <div className="flex items-center gap-3">
+   976→                      <Switch checked={settingsForm.show_plans_section !== 'false'} onCheckedChange={(checked) => setSettingsForm({ ...settingsForm, show_plans_section: String(checked) })} />
+   977→                      <Label className="text-sm text-[#50575e]">Show plans section</Label>
+   978→                    </div>
+   979→                  </div>
+   980→                </SettingsCard>
+   981→
+   982→                {/* Currency */}
+   983→                <SettingsCard title="Currency" description="Currency display settings">
+   984→                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   985→                    <FormField label="Currency Symbol" value={settingsForm.currency_symbol || ''} onChange={(v) => setSettingsForm({ ...settingsForm, currency_symbol: v })} placeholder="R" />
+   986→                    <div>
+   987→                      <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Currency Position</Label>
+   988→                      <Select value={settingsForm.currency_position || 'before'} onValueChange={(v) => setSettingsForm({ ...settingsForm, currency_position: v })}>
+   989→                        <SelectTrigger className="w-full text-sm"><SelectValue /></SelectTrigger>
+   990→                        <SelectContent>
+   991→                          <SelectItem value="before">Before price (R 1,000)</SelectItem>
+   992→                          <SelectItem value="after">After price (1,000 R)</SelectItem>
+   993→                        </SelectContent>
+   994→                      </Select>
+   995→                    </div>
+   996→                  </div>
+   997→                </SettingsCard>
+   998→
+   999→                {/* Footer */}
+  1000→                <SettingsCard title="Footer" description="Footer content and contact information">
+  1001→                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+  1002→                    <FormField label="Company Name" value={settingsForm.footer_company_name || ''} onChange={(v) => setSettingsForm({ ...settingsForm, footer_company_name: v })} />
+  1003→                    <FormField label="Website" value={settingsForm.footer_website || ''} onChange={(v) => setSettingsForm({ ...settingsForm, footer_website: v })} />
+  1004→                    <FormField label="Phone" value={settingsForm.footer_phone || ''} onChange={(v) => setSettingsForm({ ...settingsForm, footer_phone: v })} />
+  1005→                    <FormField label="Email" value={settingsForm.footer_email || ''} onChange={(v) => setSettingsForm({ ...settingsForm, footer_email: v })} />
+  1006→                    <div className="md:col-span-2">
+  1007→                      <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Copyright Text</Label>
+  1008→                      <Input value={settingsForm.footer_copyright || ''} onChange={(e) => setSettingsForm({ ...settingsForm, footer_copyright: e.target.value })} placeholder="Leave empty for auto-generated" className="text-sm" />
+  1009→                    </div>
+  1010→                  </div>
+  1011→                </SettingsCard>
+  1012→
+  1013→                {/* Trust Badges */}
+  1014→                <SettingsCard title="Trust Badges" description="JSON array of trust badges displayed in the footer. Each badge has an icon name and text.">
+  1015→                  <div>
+  1016→                    <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Trust Badges JSON</Label>
+  1017→                    <Textarea value={settingsForm.trust_badges || '[]'} onChange={(e) => setSettingsForm({ ...settingsForm, trust_badges: e.target.value })} className="text-sm font-mono" rows={6} placeholder='[{"icon": "shield-check", "text": "PROFESSIONAL QUALITY"}]' />
+  1018→                    <p className="text-xs text-[#a7aaad] mt-1">Available icons: {iconOptions.join(', ')}</p>
+  1019→                  </div>
+  1020→                </SettingsCard>
+  1021→
+  1022→                {/* Layout */}
+  1023→                <SettingsCard title="Layout & Display" description="Control the overall layout and visibility of elements">
+  1024→                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+  1025→                    <FormField label="Container Max Width" value={settingsForm.container_max_width || ''} onChange={(v) => setSettingsForm({ ...settingsForm, container_max_width: v })} placeholder="1200px" />
+  1026→                    <div className="flex items-center gap-3">
+  1027→                      <Switch checked={settingsForm.show_trust_badges !== 'false'} onCheckedChange={(checked) => setSettingsForm({ ...settingsForm, show_trust_badges: String(checked) })} />
+  1028→                      <Label className="text-sm text-[#50575e]">Show trust badges</Label>
+  1029→                    </div>
+  1030→                    <div className="flex items-center gap-3">
+  1031→                      <Switch checked={settingsForm.show_featured_badge !== 'false'} onCheckedChange={(checked) => setSettingsForm({ ...settingsForm, show_featured_badge: String(checked) })} />
+  1032→                      <Label className="text-sm text-[#50575e]">Show featured badge on items</Label>
+  1033→                    </div>
+  1034→                  </div>
+  1035→                </SettingsCard>
+  1036→              </div>
+  1037→            </section>
+  1038→          )}
+  1039→        </div>
+  1040→      </main>
+  1041→
+  1042→      {/* ═══ SERVICE MODAL ═══ */}
+  1043→      <Dialog open={serviceModal.open} onOpenChange={(open) => setServiceModal({ open, data: null })}>
+  1044→        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto p-0">
+  1045→          <div className="sticky top-0 bg-[#f8f9fa] px-6 py-4 border-b border-[#e5e7eb] rounded-t-lg z-10">
+  1046→            <DialogHeader className="flex flex-row items-center justify-between">
+  1047→              <DialogTitle className="text-lg" style={{ color: '#002B5C' }}>{serviceModal.data ? 'Edit Service' : 'Add New Service'}</DialogTitle>
+  1048→            </DialogHeader>
+  1049→          </div>
+  1050→          <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+  1051→            <div>
+  1052→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Name *</Label>
+  1053→              <Input value={String(serviceForm.name || '')} onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })} className="text-sm" />
+  1054→            </div>
+  1055→            <div className="md:col-span-2">
+  1056→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Description</Label>
+  1057→              <Textarea value={String(serviceForm.description || '')} onChange={(e) => setServiceForm({ ...serviceForm, description: e.target.value })} className="text-sm" rows={2} />
+  1058→            </div>
+  1059→            <div>
+  1060→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Price</Label>
+  1061→              <Input type="number" step="0.01" value={String(serviceForm.price ?? '')} onChange={(e) => setServiceForm({ ...serviceForm, price: parseFloat(e.target.value) || 0 })} className="text-sm" />
+  1062→            </div>
+  1063→            <div>
+  1064→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Icon</Label>
+  1065→              <Select value={String(serviceForm.icon || 'file-text')} onValueChange={(v) => setServiceForm({ ...serviceForm, icon: v })}>
+  1066→                <SelectTrigger className="w-full text-sm"><SelectValue /></SelectTrigger>
+  1067→                <SelectContent className="max-h-60">
+  1068→                  {iconOptions.map((icon) => (
+  1069→                    <SelectItem key={icon} value={icon} className="capitalize">{icon.replace(/-/g, ' ')}</SelectItem>
+  1070→                  ))}
+  1071→                </SelectContent>
+  1072→              </Select>
+  1073→            </div>
+  1074→            <div>
+  1075→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Button Label</Label>
+  1076→              <Input value={String(serviceForm.buttonLabel || '')} onChange={(e) => setServiceForm({ ...serviceForm, buttonLabel: e.target.value })} className="text-sm" />
+  1077→            </div>
+  1078→            <div>
+  1079→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Button Type</Label>
+  1080→              <Select value={String(serviceForm.buttonType || 'cart')} onValueChange={(v) => setServiceForm({ ...serviceForm, buttonType: v })}>
+  1081→                <SelectTrigger className="w-full text-sm"><SelectValue /></SelectTrigger>
+  1082→                <SelectContent>
+  1083→                  {BUTTON_TYPES.map((bt) => (
+  1084→                    <SelectItem key={bt.value} value={bt.value}>{bt.label}</SelectItem>
+  1085→                  ))}
+  1086→                </SelectContent>
+  1087→              </Select>
+  1088→            </div>
+  1089→            {(serviceForm.buttonType === 'link' || serviceForm.buttonType === 'booking' || serviceForm.buttonType === 'quote') && (
+  1090→              <div className="md:col-span-2">
+  1091→                <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Button URL</Label>
+  1092→                <Input value={String(serviceForm.buttonUrl || '')} onChange={(e) => setServiceForm({ ...serviceForm, buttonUrl: e.target.value })} className="text-sm" placeholder="https://..." />
+  1093→              </div>
+  1094→            )}
+  1095→            <div>
+  1096→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">WooCommerce Product ID</Label>
+  1097→              <Input value={String(serviceForm.woocommerceProductId || '')} onChange={(e) => setServiceForm({ ...serviceForm, woocommerceProductId: e.target.value })} className="text-sm" placeholder="Optional" />
+  1098→            </div>
+  1099→            <div>
+  1100→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Category</Label>
+  1101→              <Select value={String(serviceForm.categoryId || '_none')} onValueChange={(v) => setServiceForm({ ...serviceForm, categoryId: v === '_none' ? null : v })}>
+  1102→                <SelectTrigger className="w-full text-sm"><SelectValue placeholder="None" /></SelectTrigger>
+  1103→                <SelectContent>
+  1104→                  <SelectItem value="_none">— None —</SelectItem>
+  1105→                  {categories.map((c) => (
+  1106→                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+  1107→                  ))}
+  1108→                </SelectContent>
+  1109→              </Select>
+  1110→            </div>
+  1111→            <div className="flex items-center gap-3">
+  1112→              <Switch checked={!!serviceForm.visible} onCheckedChange={(checked) => setServiceForm({ ...serviceForm, visible: checked })} />
+  1113→              <Label className="text-sm text-[#50575e]">Visible</Label>
+  1114→            </div>
+  1115→            <div className="flex items-center gap-3">
+  1116→              <Switch checked={!!serviceForm.featured} onCheckedChange={(checked) => setServiceForm({ ...serviceForm, featured: checked })} />
+  1117→              <Label className="text-sm text-[#50575e]">Featured</Label>
+  1118→            </div>
+  1119→          </div>
+  1120→          <div className="sticky bottom-0 bg-[#f8f9fa] px-6 py-4 border-t border-[#e5e7eb] rounded-b-lg">
+  1121→            <DialogFooter className="gap-2">
+  1122→              <Button variant="outline" onClick={() => setServiceModal({ open: false, data: null })}>Cancel</Button>
+  1123→              <Button onClick={saveService} disabled={saving || !String(serviceForm.name || '').trim()} className="text-white" style={{ backgroundColor: '#D4AF37' }}>
+  1124→                {saving && <Loader2 size={14} className="mr-1.5 animate-spin" />}
+  1125→                {serviceModal.data ? 'Update Service' : 'Create Service'}
+  1126→              </Button>
+  1127→            </DialogFooter>
+  1128→          </div>
+  1129→        </DialogContent>
+  1130→      </Dialog>
+  1131→
+  1132→      {/* ═══ PLAN MODAL ═══ */}
+  1133→      <Dialog open={planModal.open} onOpenChange={(open) => setPlanModal({ open, data: null })}>
+  1134→        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto p-0">
+  1135→          <div className="sticky top-0 bg-[#f8f9fa] px-6 py-4 border-b border-[#e5e7eb] rounded-t-lg z-10">
+  1136→            <DialogHeader>
+  1137→              <DialogTitle className="text-lg" style={{ color: '#002B5C' }}>{planModal.data ? 'Edit Plan' : 'Add New Plan'}</DialogTitle>
+  1138→            </DialogHeader>
+  1139→          </div>
+  1140→          <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+  1141→            <div>
+  1142→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Plan Name *</Label>
+  1143→              <Input value={String(planForm.name || '')} onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })} className="text-sm" />
+  1144→            </div>
+  1145→            <div>
+  1146→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Subtitle</Label>
+  1147→              <Input value={String(planForm.subtitle || '')} onChange={(e) => setPlanForm({ ...planForm, subtitle: e.target.value })} className="text-sm" />
+  1148→            </div>
+  1149→            <div>
+  1150→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Price (monthly)</Label>
+  1151→              <Input type="number" step="0.01" value={String(planForm.price ?? '')} onChange={(e) => setPlanForm({ ...planForm, price: parseFloat(e.target.value) || 0 })} className="text-sm" />
+  1152→            </div>
+  1153→            <div>
+  1154→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Color</Label>
+  1155→              <div className="flex items-center gap-2">
+  1156→                <input type="color" value={String(planForm.color || '#002B5C')} onChange={(e) => setPlanForm({ ...planForm, color: e.target.value })} className="w-10 h-10 rounded border border-[#d1d5db] cursor-pointer p-0.5" />
+  1157→                <Input value={String(planForm.color || '')} onChange={(e) => setPlanForm({ ...planForm, color: e.target.value })} className="text-sm font-mono flex-1" />
+  1158→              </div>
+  1159→            </div>
+  1160→            <div>
+  1161→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Button Label</Label>
+  1162→              <Input value={String(planForm.buttonLabel || '')} onChange={(e) => setPlanForm({ ...planForm, buttonLabel: e.target.value })} className="text-sm" />
+  1163→            </div>
+  1164→            <div>
+  1165→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">WooCommerce Product ID</Label>
+  1166→              <Input value={String(planForm.woocommerceProductId || '')} onChange={(e) => setPlanForm({ ...planForm, woocommerceProductId: e.target.value })} className="text-sm" placeholder="Optional" />
+  1167→            </div>
+  1168→            <div>
+  1169→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Category</Label>
+  1170→              <Select value={String(planForm.categoryId || '_none')} onValueChange={(v) => setPlanForm({ ...planForm, categoryId: v === '_none' ? null : v })}>
+  1171→                <SelectTrigger className="w-full text-sm"><SelectValue placeholder="None" /></SelectTrigger>
+  1172→                <SelectContent>
+  1173→                  <SelectItem value="_none">— None —</SelectItem>
+  1174→                  {categories.map((c) => (
+  1175→                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+  1176→                  ))}
+  1177→                </SelectContent>
+  1178→              </Select>
+  1179→            </div>
+  1180→            <div className="flex items-center gap-3">
+  1181→              <Switch checked={!!planForm.visible} onCheckedChange={(checked) => setPlanForm({ ...planForm, visible: checked })} />
+  1182→              <Label className="text-sm text-[#50575e]">Visible</Label>
+  1183→            </div>
+  1184→            <div className="flex items-center gap-3">
+  1185→              <Switch checked={!!planForm.featured} onCheckedChange={(checked) => setPlanForm({ ...planForm, featured: checked })} />
+  1186→              <Label className="text-sm text-[#50575e]">Featured</Label>
+  1187→            </div>
+  1188→            {/* Features */}
+  1189→            <div className="md:col-span-2">
+  1190→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-2">Features</Label>
+  1191→              <div className="space-y-2">
+  1192→                {planFeatures.map((f, i) => (
+  1193→                  <div key={i} className="flex items-center gap-2">
+  1194→                    <Input value={f} onChange={(e) => { const updated = [...planFeatures]; updated[i] = e.target.value; setPlanFeatures(updated); }} className="text-sm flex-1" placeholder="Feature text..." />
+  1195→                    <button type="button" onClick={() => setPlanFeatures(planFeatures.filter((_, idx) => idx !== i))} className="p-2 rounded text-[#d63638] hover:bg-red-50 transition-colors flex-shrink-0" aria-label="Remove feature"><X size={16} /></button>
+  1196→                  </div>
+  1197→                ))}
+  1198→                <button type="button" onClick={() => setPlanFeatures([...planFeatures, ''])} className="flex items-center gap-1 text-sm text-[#2271b1] hover:text-[#135e96] transition-colors font-medium">
+  1199→                  <Plus size={14} /> Add Feature
+  1200→                </button>
+  1201→              </div>
+  1202→            </div>
+  1203→          </div>
+  1204→          <div className="sticky bottom-0 bg-[#f8f9fa] px-6 py-4 border-t border-[#e5e7eb] rounded-b-lg">
+  1205→            <DialogFooter className="gap-2">
+  1206→              <Button variant="outline" onClick={() => setPlanModal({ open: false, data: null })}>Cancel</Button>
+  1207→              <Button onClick={savePlan} disabled={saving || !String(planForm.name || '').trim()} className="text-white" style={{ backgroundColor: '#D4AF37' }}>
+  1208→                {saving && <Loader2 size={14} className="mr-1.5 animate-spin" />}
+  1209→                {planModal.data ? 'Update Plan' : 'Create Plan'}
+  1210→              </Button>
+  1211→            </DialogFooter>
+  1212→          </div>
+  1213→        </DialogContent>
+  1214→      </Dialog>
+  1215→
+  1216→      {/* ═══ CATEGORY MODAL ═══ */}
+  1217→      <Dialog open={categoryModal.open} onOpenChange={(open) => setCategoryModal({ open, data: null })}>
+  1218→        <DialogContent className="sm:max-w-[480px]">
+  1219→          <DialogHeader>
+  1220→            <DialogTitle className="text-lg" style={{ color: '#002B5C' }}>{categoryModal.data ? 'Edit Category' : 'Add New Category'}</DialogTitle>
+  1221→            <DialogDescription>{categoryModal.data ? 'Update category details' : 'Create a new category'}</DialogDescription>
+  1222→          </DialogHeader>
+  1223→          <div className="space-y-4 py-2">
+  1224→            <div>
+  1225→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Name *</Label>
+  1226→              <Input value={String(categoryForm.name || '')} onChange={(e) => {
+  1227→                const name = e.target.value;
+  1228→                const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  1229→                setCategoryForm({ ...categoryForm, name, slug });
+  1230→              }} className="text-sm" />
+  1231→            </div>
+  1232→            <div>
+  1233→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Slug</Label>
+  1234→              <Input value={String(categoryForm.slug || '')} onChange={(e) => setCategoryForm({ ...categoryForm, slug: e.target.value })} className="text-sm font-mono" />
+  1235→            </div>
+  1236→            <div>
+  1237→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Color</Label>
+  1238→              <div className="flex items-center gap-2">
+  1239→                <input type="color" value={String(categoryForm.color || '#002B5C')} onChange={(e) => setCategoryForm({ ...categoryForm, color: e.target.value })} className="w-10 h-10 rounded border border-[#d1d5db] cursor-pointer p-0.5" />
+  1240→                <Input value={String(categoryForm.color || '')} onChange={(e) => setCategoryForm({ ...categoryForm, color: e.target.value })} className="text-sm font-mono flex-1" />
+  1241→              </div>
+  1242→            </div>
+  1243→          </div>
+  1244→          <DialogFooter className="gap-2">
+  1245→            <Button variant="outline" onClick={() => setCategoryModal({ open: false, data: null })}>Cancel</Button>
+  1246→            <Button onClick={saveCategory} disabled={saving || !String(categoryForm.name || '').trim()} className="text-white" style={{ backgroundColor: '#D4AF37' }}>
+  1247→              {saving && <Loader2 size={14} className="mr-1.5 animate-spin" />}
+  1248→              {categoryModal.data ? 'Update' : 'Create'}
+  1249→            </Button>
+  1250→          </DialogFooter>
+  1251→        </DialogContent>
+  1252→      </Dialog>
+  1253→
+  1254→      {/* ═══ ICON MODAL ═══ */}
+  1255→      <Dialog open={iconModal.open} onOpenChange={(open) => setIconModal({ open, data: null })}>
+  1256→        <DialogContent className="sm:max-w-[600px]">
+  1257→          <DialogHeader>
+  1258→            <DialogTitle className="text-lg" style={{ color: '#002B5C' }}>{iconModal.data ? 'Edit Icon' : 'Add New Icon'}</DialogTitle>
+  1259→            <DialogDescription>{iconModal.data ? 'Update icon details' : 'Add a new custom SVG icon to the library'}</DialogDescription>
+  1260→          </DialogHeader>
+  1261→          <div className="space-y-4 py-2">
+  1262→            <div>
+  1263→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Icon Name (slug) *</Label>
+  1264→              <Input value={String(iconForm.name || '')} onChange={(e) => setIconForm({ ...iconForm, name: e.target.value })} className="text-sm font-mono" placeholder="my-custom-icon" />
+  1265→              <p className="text-xs text-[#a7aaad] mt-1">Lowercase, letters, numbers, and hyphens only</p>
+  1266→            </div>
+  1267→            <div>
+  1268→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Display Label *</Label>
+  1269→              <Input value={String(iconForm.label || '')} onChange={(e) => setIconForm({ ...iconForm, label: e.target.value })} className="text-sm" placeholder="My Custom Icon" />
+  1270→            </div>
+  1271→            <div>
+  1272→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">Category</Label>
+  1273→              <Select value={String(iconForm.category || 'general')} onValueChange={(v) => setIconForm({ ...iconForm, category: v })}>
+  1274→                <SelectTrigger className="w-full text-sm"><SelectValue /></SelectTrigger>
+  1275→                <SelectContent>
+  1276→                  {['general', 'business', 'finance', 'marketing', 'people', 'security', 'status'].map((cat) => (
+  1277→                    <SelectItem key={cat} value={cat} className="capitalize">{cat}</SelectItem>
+  1278→                  ))}
+  1279→                </SelectContent>
+  1280→              </Select>
+  1281→            </div>
+  1282→            <div>
+  1283→              <Label className="block text-[13px] font-semibold text-[#1d2327] mb-1.5">SVG Path Content *</Label>
+  1284→              <Textarea value={String(iconForm.svgPath || '')} onChange={(e) => setIconForm({ ...iconForm, svgPath: e.target.value })} className="text-sm font-mono" rows={4} placeholder={'<path d="M12 2L2 7l10 5 10-5-10-5z"/>'} />
+  1285→              <p className="text-xs text-[#a7aaad] mt-1">Paste the inner SVG content (path, circle, polyline, polygon, rect, line elements)</p>
+  1286→              {String(iconForm.svgPath || '').trim() && (
+  1287→                <div className="mt-2 flex items-center gap-3 p-3 bg-[#f8f9fa] rounded-lg border border-[#e5e7eb]">
+  1288→                  <span className="text-xs text-[#646970]">Preview:</span>
+  1289→                  <div className="w-8 h-8 flex items-center justify-center text-[#002B5C]">
+  1290→                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: String(iconForm.svgPath || '') }} />
+  1291→                  </div>
+  1292→                  <span className="text-sm font-medium text-[#1d2327]">{String(iconForm.label || iconForm.name || 'Icon')}</span>
+  1293→                </div>
+  1294→              )}
+  1295→            </div>
+  1296→          </div>
+  1297→          <DialogFooter className="gap-2">
+  1298→            <Button variant="outline" onClick={() => setIconModal({ open: false, data: null })}>Cancel</Button>
+  1299→            <Button onClick={saveIcon} disabled={saving || !String(iconForm.name || '').trim() || !String(iconForm.svgPath || '').trim()} className="text-white" style={{ backgroundColor: '#D4AF37' }}>
+  1300→              {saving && <Loader2 size={14} className="mr-1.5 animate-spin" />}
+  1301→              {iconModal.data ? 'Update Icon' : 'Create Icon'}
+  1302→            </Button>
+  1303→          </DialogFooter>
+  1304→        </DialogContent>
+  1305→      </Dialog>
+  1306→
+  1307→      {/* ═══ DELETE CONFIRMATION ═══ */}
+  1308→      <Dialog open={deleteConfirm.open} onOpenChange={(open) => setDeleteConfirm({ ...deleteConfirm, open })}>
+  1309→        <DialogContent className="sm:max-w-[420px]">
+  1310→          <DialogHeader>
+  1311→            <DialogTitle className="text-lg text-[#d63638]">Delete {deleteConfirm.type}?</DialogTitle>
+  1312→            <DialogDescription>
+  1313→              Are you sure you want to permanently delete <strong>&quot;{deleteConfirm.name}&quot;</strong>? This action cannot be undone.
+  1314→            </DialogDescription>
+  1315→          </DialogHeader>
+  1316→          <DialogFooter className="gap-2">
+  1317→            <Button variant="outline" onClick={() => setDeleteConfirm({ ...deleteConfirm, open: false })}>Cancel</Button>
+  1318→            <Button onClick={deleteItem} disabled={saving} className="bg-[#d63638] hover:bg-[#b32d2e] text-white">
+  1319→              {saving && <Loader2 size={14} className="mr-1.5 animate-spin" />}
+  1320→              Delete
+  1321→            </Button>
+  1322→          </DialogFooter>
+  1323→        </DialogContent>
+  1324→      </Dialog>
+  1325→
+  1326→      {/* ═══ TOAST ═══ */}
+  1327→      <Toast message={toast} />
+  1328→    </div>
+  1329→  );
+  1330→}

@@ -299,3 +299,51 @@ Stage Summary:
 - Drag-and-drop reordering for services and plans
 - 28 plugin settings configurable from Settings tab
 - Browser verified: dashboard, services, plans, settings, edit modal, mobile responsive
+
+---
+Task ID: 9
+Agent: main
+Task: Add custom logo insertion and icon management system
+
+Work Log:
+- Fixed broken page.tsx: removed duplicate imports (lines 27-33), fixed DragEndEvent import from @dnd-kit/core, fixed Toast component prop type (string | null)
+- Fixed circular import in helpers.tsx (was re-exporting from non-existent ./helpers)
+- Added `Upload` to lucide-react imports
+- Created /api/upload/logo POST endpoint:
+  - Accepts multipart file upload (PNG, JPEG, GIF, SVG, WebP)
+  - 2MB max file size validation
+  - Generates unique filename with crypto.randomUUID()
+  - Saves to public/uploads/logos/ directory
+  - Returns { url, filename } on success
+- Enhanced Settings > Branding section with:
+  - "Upload Logo" button (gold-styled file input) that calls /api/upload/logo
+  - URL text input as alternative ("or enter URL:")
+  - Logo preview card with image, filename, and remove button
+  - Error handling for upload failures
+- Added logo rendering to admin header bar:
+  - When logo_url is set, shows <img> instead of Shield icon
+  - Falls back to Shield icon if logo fails to load (onError handler)
+  - Shows brand name next to logo
+- Icon Manager tab already complete (from previous session):
+  - Table with Preview, Name, Label, Category, Actions columns
+  - Add/Edit/Delete operations via /api/icons CRUD API
+  - Modal form: name (slug), display label, category dropdown, SVG path content
+  - Live SVG preview in modal when path is entered
+  - 7 icon categories: general, business, finance, marketing, people, security, status
+  - All icons loaded from database and used dynamically throughout the admin
+- Browser verified all features:
+  - Dashboard renders with 6 stat cards
+  - Icon Manager shows all 22+ seeded icons with previews
+  - Add New Icon modal creates icons (tested with "test-star")
+  - Settings tab shows Upload Logo button and URL input
+  - Logo preview appears when URL is entered
+  - Admin header shows logo image when logo_url is set
+  - Services tab uses dynamic icons from database
+  - Clean ESLint pass, all API endpoints returning 200
+
+Stage Summary:
+- Custom logo: upload via file input or URL, preview in settings, renders in admin header
+- Icon management: full CRUD, 22+ seeded icons, live SVG preview, category organization
+- New API: POST /api/upload/logo for file uploads
+- All dynamic: icons loaded from DB, no hardcoded icon paths
+- Browser verified: icon creation, logo URL entry, header rendering, settings save

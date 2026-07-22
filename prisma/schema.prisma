@@ -77,3 +77,14 @@ model PluginSetting {
   value     String
   updatedAt DateTime @updatedAt
 }
+
+model Icon {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  label       String
+  svgPath     String
+  category    String   @default("general")
+  displayOrder Int     @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

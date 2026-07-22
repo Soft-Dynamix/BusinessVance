@@ -59,6 +59,13 @@
     gap: 12px;
 }
 
+.bv-logo-image {
+    width: 72px;
+    height: 72px;
+    object-fit: contain;
+    border-radius: 50%;
+}
+
 .bv-shield-logo {
     width: 72px;
     height: 72px;
@@ -648,6 +655,11 @@
     }
 
     .bv-shield-logo {
+        width: 56px;
+        height: 56px;
+    }
+
+    .bv-logo-image {
         width: 56px;
         height: 56px;
     }

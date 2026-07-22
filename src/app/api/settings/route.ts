@@ -7,6 +7,7 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   brand_tagline: 'INSIGHT. STRATEGY. SUCCESS.',
   brand_description: 'Professional business reports and advisory services to help you make confident, informed decisions.',
   header_icon: 'shield',
+  logo_url: '',
 
   // Colors
   color_primary: '#0A2647',
