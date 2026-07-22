@@ -1,5 +1,3 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
 # dependencies
 node_modules
 /.pnp
@@ -30,12 +28,13 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files (keep .env.example)
+.env
+.env.local
+.env.*.local
 
 # vercel
 .vercel
-
 
 # typescript
 *.tsbuildinfo
@@ -46,9 +45,33 @@ local-*
 *.log
 dev.log
 dev.out.log
+server.log
 test
 prompt
 
-server.log
-# Skills directory
+# Skills directory (z.ai internal)
 /skills/
+
+# z.ai internal scripts
+.zscripts/
+
+# SQLite database files (regenerated via prisma db push + seed)
+db/*.db
+db/*.db-journal
+
+# User uploads (logos, etc.)
+public/uploads/
+
+# Generated/temp files
+tool-results/
+*.zip
+*.png
+!public/**/*.png
+!businessvance-services-manager/**/*.png
+
+# Examples and downloads (not part of this project)
+examples/
+download/
+
+# Mini-services placeholder
+mini-services/
