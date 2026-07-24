@@ -75,3 +75,39 @@ Stage Summary:
 - No user-facing changes
 - Plugin behaves exactly as before — all 10 admin tabs, all 23 API routes functional
 - Foundation now supports: event-driven architecture, standardised responses, input validation, role-based access control, database migrations, multi-channel notifications, paginated API queries
+
+---
+Task ID: 4
+Agent: Lead Developer
+Task: Separate Client Portal from admin into standalone page
+
+Work Log:
+- Created `src/app/client-portal/page.tsx` — Standalone client portal page with:
+  - Professional client-facing header with BusinessVance branding, notification bell, user avatar
+  - Project selector bar (appears when multiple projects)
+  - Welcome header with project number and client name
+  - Project progress checklist (6 steps)
+  - My Services cards with progress bars
+  - Agreement status card (signed/unsigned)
+  - Questionnaire accordion with section locking (6 sections, completed/in-progress/locked)
+  - Document upload center (4 document categories)
+  - Client portal footer with contact details
+  - Responsive layout (auto-fit grids)
+  - Loading state with spinner
+  - Falls back to demo data when no projects exist
+  - Uses sonner toast directly (not admin toast prop)
+- Removed Client Portal from admin page (`src/app/page.tsx`):
+  - Removed import of ClientPortal component
+  - Removed 'client-portal' from TabId union type
+  - Removed sidebar menu entry (was between Projects and Settings)
+  - Removed tab content rendering block
+  - Removed MonitorSmartphone from lucide imports
+  - Admin reduced from 10 tabs to 9 tabs
+- Fixed empty-project edge case: when API returns 0 projects, demo data is used
+- Verified: lint clean, no console errors, both pages render correctly
+
+Stage Summary:
+- Client Portal is now a standalone page at `/client-portal` — completely separate from the admin dashboard
+- Admin dashboard has 9 tabs (Dashboard, Services, Plans, Categories, Icons, Questionnaires, Agreements, Projects, Settings)
+- Client Portal has its own header, footer, and layout — no admin sidebar, no admin controls
+- Old `src/components/admin/client-portal.tsx` still exists but is no longer imported by any page

@@ -28,11 +28,11 @@ import {
   LayoutDashboard, FileText, CreditCard, FolderOpen, Image as ImageIcon,
   Settings, Shield, GripVertical, Copy, Plus, Menu, Eye, EyeOff,
   Pencil, Trash2, X, Loader2, ChevronLeft, Upload,
-  ClipboardList, Users, FileCheck, MonitorSmartphone,
+  ClipboardList, Users, FileCheck,
 } from 'lucide-react';
 import QuestionnaireBuilder from '@/components/admin/questionnaire-builder';
 import { ProjectsTab } from '@/components/admin/projects-tab';
-import { ClientPortal } from '@/components/admin/client-portal';
+
 import AgreementBuilder from '@/components/admin/agreement-builder';
 
 /* ═══════════════════════════════════════════════════════════════
@@ -93,7 +93,7 @@ interface IconItem {
   displayOrder: number;
 }
 
-type TabId = 'dashboard' | 'services' | 'plans' | 'categories' | 'icons' | 'questionnaires' | 'projects' | 'agreements' | 'client-portal' | 'settings';
+type TabId = 'dashboard' | 'services' | 'plans' | 'categories' | 'icons' | 'questionnaires' | 'projects' | 'agreements' | 'settings';
 
 /* ═══════════════════════════════════════════════════════════════
    Fallback icon path (used only when DB icons haven't loaded)
@@ -132,7 +132,6 @@ const SIDEBAR_MENU: { id: TabId; label: string; icon: typeof LayoutDashboard }[]
   { id: 'questionnaires', label: 'Questionnaires', icon: ClipboardList },
   { id: 'agreements', label: 'Agreements', icon: FileCheck },
   { id: 'projects', label: 'Projects', icon: Users },
-  { id: 'client-portal', label: 'Client Portal', icon: MonitorSmartphone },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -928,15 +927,6 @@ export default function Home() {
           {activeTab === 'projects' && (
             <section aria-label="Projects">
               <ProjectsTab toast={showToast} />
-            </section>
-          )}
-
-          {/* ══════════════════════════════════════
-              CLIENT PORTAL TAB
-          ══════════════════════════════════════ */}
-          {activeTab === 'client-portal' && (
-            <section aria-label="Client Portal">
-              <ClientPortal toast={showToast} />
             </section>
           )}
 
