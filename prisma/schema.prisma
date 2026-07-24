@@ -199,6 +199,10 @@ model Project {
   agreements          ProjectAgreement[]
   questionnaires      ProjectQuestionnaire[]
   documents           ProjectDocument[]
+  reports             ProjectReport[]
+  messages            ProjectMessage[]
+  internalNotesList    ProjectNote[]
+  activityLog         ActivityLog[]
 }
 
 model ProjectService {
@@ -259,6 +263,97 @@ model ProjectDocument {
   mimeType    String   @default("")
   category    String   @default("other") // company-registration, id, financial, logo, branding, other
   uploadedBy  String   @default("")
+  createdAt   DateTime @default(now())
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PHASE 3: ACTIVITY LOG
+   Tracks all platform actions for audit trail, notifications,
+   and timeline display.
+   ═══════════════════════════════════════════════════════════════ */
+
+model ActivityLog {
+  id          String   @id @default(cuid())
+  projectId   String?
+  entityType  String   @default("") // project, service, questionnaire, agreement, document, report, message, note
+  entityId    String   @default("")
+  action      String   @default("") // created, updated, deleted, signed, uploaded, delivered, status_changed, message_sent, note_added
+  description String   @default("")
+  metadata    String   @default("{}") // JSON: {key: value} for context-specific data
+  userId      String   @default("") // who performed the action
+  createdAt   DateTime @default(now())
+
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PHASE 3: REPORT TEMPLATES & PROJECT REPORTS
+   Report templates define the structure for deliverable reports.
+   Project reports are instances linked to specific projects.
+   ═══════════════════════════════════════════════════════════════ */
+
+model ReportTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String   @default("")
+  content     String   @default("") // HTML/markdown template
+  version     String   @default("1.0")
+  status      String   @default("draft") // draft | published | archived
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  reports     ProjectReport[]
+}
+
+model ProjectReport {
+  id          String   @id @default(cuid())
+  projectId   String
+  templateId  String?
+  title       String
+  content     String   @default("")
+  status      String   @default("draft") // draft | ready | delivered
+  version     String   @default("1.0")
+  deliveredAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  template    ReportTemplate?  @relation(fields: [templateId], references: [id], onDelete: SetNull)
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PHASE 3: CLIENT MESSAGING
+   Threaded messaging between admin/consultant and client,
+   scoped to a project.
+   ═══════════════════════════════════════════════════════════════ */
+
+model ProjectMessage {
+  id          String   @id @default(cuid())
+  projectId   String
+  senderType  String   @default("admin") // admin | client
+  senderName  String   @default("")
+  senderEmail String   @default("")
+  message     String
+  read        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PHASE 3: INTERNAL NOTES
+   Private notes visible only to admin/consultants,
+   not exposed in the client portal.
+   ═══════════════════════════════════════════════════════════════ */
+
+model ProjectNote {
+  id          String   @id @default(cuid())
+  projectId   String
+  authorName  String   @default("")
+  content     String
   createdAt   DateTime @default(now())
 
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
