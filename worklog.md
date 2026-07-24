@@ -111,3 +111,22 @@ Stage Summary:
 - Admin dashboard has 9 tabs (Dashboard, Services, Plans, Categories, Icons, Questionnaires, Agreements, Projects, Settings)
 - Client Portal has its own header, footer, and layout — no admin sidebar, no admin controls
 - Old `src/components/admin/client-portal.tsx` still exists but is no longer imported by any page
+
+---
+Task ID: 5
+Agent: Main Coordinator
+Task: Verify Client Portal separation (continuation from previous session)
+
+Work Log:
+- Read worklog.md — confirmed Task ID 4 already completed the separation
+- Verified src/app/page.tsx: 1,406 lines, 9 tabs (Dashboard, Services, Plans, Categories, Icons, Questionnaires, Agreements, Projects, Settings) — no Client Portal tab
+- Verified src/app/client-portal/page.tsx: 614 lines, standalone page with its own header, footer, project selector, progress checklist, services cards, agreement status, questionnaire accordion, document upload center
+- Confirmed TabId type has no 'client-portal' entry
+- Confirmed SIDEBAR_MENU has no client-portal entry
+- Dev server running, all API routes returning 200
+- ESLint: 0 errors, 0 warnings
+
+Stage Summary:
+- Client Portal separation was already successfully completed in Task ID 4
+- No further code changes needed
+- Admin: 9 tabs, Client Portal: standalone at /client-portal
