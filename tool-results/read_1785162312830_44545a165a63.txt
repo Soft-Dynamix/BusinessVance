@@ -1,0 +1,600 @@
+     1→     1→# BusinessVance Services Manager — Complete Project Context
+     2→     2→
+     3→     3→> **This file is the single source of truth for any AI agent (including a new Z.ai chat) to fully understand this project without guessing.**
+     4→     4→> 
+     5→     5→> **Last updated: 2026-07-21 (post Phase 2 + Client Portal separation)**
+     6→     6→
+     7→     7→---
+     8→     8→
+     9→     9→## 1. WHAT THIS PROJECT IS
+    10→    10→
+    11→    11→This is a **BusinessVance** management platform consisting of two parts:
+    12→    12→
+    13→    13→1. **Next.js 16 Admin Panel** (`/` route) — A functional admin panel that mirrors the WordPress plugin admin. Used for preview and development.
+    14→    14→2. **WordPress Plugin** (`businessvance-services-manager/`) — The actual production-ready WordPress plugin (PHP).
+    15→    15→3. **Client Portal** (`/client-portal` route) — A standalone client-facing page where clients can manage their projects, sign agreements, fill questionnaires, and upload documents.
+    16→    16→
+    17→    17→**The WordPress plugin is the production target.** The Next.js app is a reference prototype.
+    18→    18→
+    19→    19→---
+    20→    20→
+    21→    21→## 2. TECH STACK
+    22→    22→
+    23→    23→| Layer | Technology |
+    24→    24→|---|---|
+    25→    25→| Framework | Next.js 16 with App Router, TypeScript 5 |
+    26→    26→| Styling | Tailwind CSS 4 with shadcn/ui (New York style), Lucide icons |
+    27→    27→| Database | Prisma ORM + SQLite (file: `db/custom.db`) |
+    28→    28→| State | React useState/useCallback/useMemo |
+    29→    29→| Drag & Drop | @dnd-kit/core + @dnd-kit/sortable |
+    30→    30→| Font | Geist Sans + Geist Mono via next/font/google |
+    31→    31→| Runtime | Bun (not Node) |
+    32→    32→| Validation | Zod (some API routes), custom validator (core) |
+    33→    33→| Toast | Sonner (layout.tsx), custom Toast (page.tsx admin) |
+    34→    34→
+    35→    35→---
+    36→    36→
+    37→    37→## 3. COMPLETE PROJECT STRUCTURE
+    38→    38→
+    39→    39→```
+    40→    40→/home/z/my-project/
+    41→    41→├── .env.example                 # DATABASE_URL template
+    42→    42→├── .gitignore
+    43→    43→├── Caddyfile                    # Reverse proxy config (internal)
+    44→    44→├── bun.lock
+    45→    45→├── components.json              # shadcn/ui config (New York style)
+    46→    46→├── eslint.config.mjs
+    47→    47→├── next.config.ts               # output: "standalone", reactStrictMode: false
+    48→    48→├── package.json
+    49→    49→├── postcss.config.mjs
+    50→    50→├── tsconfig.json
+    51→    51→├── prisma/
+    52→    52→│   ├── schema.prisma            # Database schema (20 models, 361 lines)
+    53→    53→│   └── seed.ts                  # Seed data (590 lines: settings, categories, services, plans, icons, test project)
+    54→    54→├── public/
+    55→    55→│   ├── bv-frontend.css          # CSS with custom properties for the WP frontend
+    56→    56→│   ├── bv-logo.jpeg             # Default BusinessVance logo
+    57→    57→│   ├── logo.svg                 # SVG logo
+    58→    58→│   └── robots.txt
+    59→    59→├── upload/
+    60→    60→│   ├── mockup-analysis.json     # VLM analysis of original mockup
+    61→    61→│   ├── mockup-detail.json       # VLM detail analysis of mockup
+    62→    62→│   ├── preview-desktop.png      # (gitignored)
+    63→    63→│   └── preview-mobile.png       # (gitignored)
+    64→    64→├── src/
+    65→    65→│   ├── app/
+    66→    66→│   │   ├── globals.css          # Tailwind imports + brand CSS variables + custom scrollbar
+    67→    67→│   │   ├── layout.tsx           # Root layout (Geist fonts, Sonner Toaster)
+    68→    68→│   │   ├── page.tsx             # Admin panel (~1406 lines, 9 tabs, all inline)
+    69→    69→│   │   ├── client-portal/
+    70→    70→│   │   │   └── page.tsx         # Standalone client portal (~614 lines)
+    71→    71→│   │   └── api/                 # 22 API route files
+    72→    72→│   │       ├── route.ts         # Default /api (Hello World, unused)
+    73→    73→│   │       ├── settings/route.ts
+    74→    74→│   │       ├── services/
+    75→    75→│   │       │   ├── route.ts          # GET (list) / POST (create)
+    76→    76→│   │       │   ├── [id]/route.ts     # GET/PUT/DELETE single service
+    77→    77→│   │       │   └── reorder/route.ts  # PUT reorder
+    78→    78→│   │       ├── plans/
+    79→    79→│   │       │   ├── route.ts          # GET/POST/PUT/DELETE
+    80→    80→│   │       │   ├── [id]/route.ts     # GET/PUT/DELETE single plan
+    81→    81→│   │       │   └── reorder/route.ts  # PUT reorder
+    82→    82→│   │       ├── categories/
+    83→    83→│   │       │   ├── route.ts          # GET/POST/PUT/DELETE
+    84→    84→│   │       │   └── [id]/route.ts     # PUT/DELETE single category
+    85→    85→│   │       ├── icons/route.ts        # GET/POST/PUT/DELETE (full CRUD)
+    86→    86→│   │       ├── projects/
+    87→    87→│   │       │   ├── route.ts          # GET (list, filter, search) / POST (create)
+    88→    88→│   │       │   └── [id]/
+    89→    89→│   │       │       ├── route.ts      # GET/PUT/DELETE single project
+    90→    90→│   │       │       ├── agreement/route.ts  # POST (sign agreement)
+    91→    91→│   │       │       ├── documents/route.ts  # GET/POST/DELETE project docs
+    92→    92→│   │       │       └── questionnaire/route.ts  # POST (save responses)
+    93→    93→│   │       ├── agreement-templates/
+    94→    94→│   │       │   ├── route.ts          # GET/POST list + create
+    95→    95→│   │       │   └── [id]/route.ts     # GET/PUT/DELETE single template
+    96→    96→│   │       ├── questionnaire-templates/
+    97→    97→│   │       │   ├── route.ts          # GET (with sections+questions) / POST
+    98→    98→│   │       │   └── [id]/route.ts     # GET/PUT/DELETE with nested rebuild
+    99→    99→│   │       ├── report-templates/route.ts  # GET/POST (no [id] route yet)
+   100→   100→│   │       └── activity-log/route.ts     # GET (filter by project/entity) / POST
+   101→   101→│   ├── components/
+   102→   102→│   │   ├── ui/                   # shadcn/ui components (48 files, DO NOT modify)
+   103→   103→│   │   └── admin/
+   104→   104→│   │       ├── projects-tab.tsx       # Projects management tab (~1113 lines)
+   105→   105→│   │       ├── questionnaire-builder.tsx  # Questionnaire template builder (~942 lines)
+   106→   106→│   │       ├── agreement-builder.tsx  # Agreement template builder (~505 lines)
+   107→   107→│   │       └── client-portal.tsx      # OLD embedded portal (463 lines, NO LONGER IMPORTED)
+   108→   108→│   ├── hooks/
+   109→   109→│   │   ├── use-mobile.ts
+   110→   110→│   │   └── use-toast.ts
+   111→   111→│   └── lib/
+   112→   112→│       ├── db.ts                # Prisma singleton
+   113→   113→│       ├── utils.ts             # cn() helper
+   114→   114→│       ├── interfaces/
+   115→   115→│       │   ├── types.ts          # Shared interfaces & enums (189 lines)
+   116→   116→│       │   └── index.ts          # Barrel export
+   117→   117→│       ├── core/                # Phase 2: Core Platform Foundation
+   118→   118→│       │   ├── bv-constants.ts   # Platform constants (241 lines)
+   119→   119→│       │   ├── bv-logger.ts      # Singleton logger (191 lines)
+   120→   120→│       │   ├── bv-events.ts      # Pub/sub event bus (211 lines)
+   121→   121→│       │   ├── bv-validator.ts   # Input validation (272 lines)
+   122→   122→│       │   ├── bv-response.ts    # Standardised API responses (181 lines)
+   123→   123→│       │   ├── bv-capabilities.ts # 28 capabilities, 3 roles (282 lines)
+   124→   124→│       │   ├── bv-helper.ts      # 17 utility functions (269 lines)
+   125→   125→│       │   └── index.ts          # Barrel export
+   126→   126→│       ├── api/                 # Phase 2: API foundation
+   127→   127→│       │   ├── base-controller.ts # Abstract CRUD controller (189 lines)
+   128→   128→│       │   ├── api-helpers.ts    # Params, permissions, headers (137 lines)
+   129→   129→│       │   └── index.ts          # Barrel export
+   130→   130→│       └── services/            # Phase 2: Services
+   131→   131→│           ├── notification-service.ts  # Multi-channel notifications (174 lines)
+   132→   132→│           ├── database-versioning.ts   # Migration framework (176 lines)
+   133→   133→│           └── index.ts          # Barrel export
+   134→   134→├── businessvance-services-manager/   # THE ACTUAL WORDPRESS PLUGIN
+   135→   135→│   ├── businessvance-services-manager.php  # Main plugin file
+   136→   136→│   ├── uninstall.php
+   137→   137→│   ├── includes/
+   138→   138→│   │   ├── class-bv-activator.php       # DB table creation + seed
+   139→   139→│   │   ├── class-bv-admin.php           # Admin menu registration
+   140→   140→│   │   ├── class-bv-admin-dashboard.php # Dashboard page
+   141→   141→│   │   ├── class-bv-admin-services.php  # Services list
+   142→   142→│   │   ├── class-bv-admin-services-new.php  # Service add/edit form
+   143→   143→│   │   ├── class-bv-admin-plans.php     # Plans list + form
+   144→   144→│   │   ├── class-bv-admin-categories.php # Categories list + form
+   145→   145→│   │   ├── class-bv-settings.php        # Settings API integration
+   146→   146→│   │   ├── class-bv-ajax.php            # AJAX handlers (reorder, toggle, WC search)
+   147→   147→│   │   ├── class-bv-shortcode.php       # [businessvance_services] shortcode
+   148→   148→│   │   ├── class-bv-shortcodes.php      # Additional shortcodes
+   149→   149→│   │   └── class-bv-woocommerce.php     # WooCommerce integration
+   150→   150→│   ├── assets/
+   151→   151→│   │   ├── css/
+   152→   152→│   │   │   ├── frontend.css     # Public-facing CSS
+   153→   153→│   │   │   └── admin.css        # Admin panel CSS
+   154→   154→│   │   ├── js/
+   155→   155→│   │   │   ├── frontend.js      # Scroll animations, category filter
+   156→   156→│   │   │   └── admin.js         # Drag-drop, AJAX, modals
+   157→   157→│   │   └── img/
+   158→   158→│   │       └── default-logo.jpeg
+   159→   159→│   └── templates/
+   160→   160→│       └── services-page.php   # Frontend template
+   161→   161→└── worklog.md                   # Detailed work history (append-only)
+   162→   162→```
+   163→   163→
+   164→   164→---
+   165→   165→
+   166→   166→## 4. DATABASE SCHEMA (Prisma) — 20 MODELS
+   167→   167→
+   168→   168→Full schema in `prisma/schema.prisma` (361 lines).
+   169→   169→
+   170→   170→### Phase 1 Models (Core Services)
+   171→   171→
+   172→   172→**Category** — `id` (cuid), `name`, `slug` (unique), `color` (#002B5C), `createdAt`, `updatedAt`. Has many: Service[], Plan[].
+   173→   173→
+   174→   174→**Service** — `id`, `name`, `slug` (unique), `shortDescription`, `description`, `price` (Float), `icon`, `image`, `color`, `turnaround` (Int, days), `buttonLabel`, `buttonType` (cart|quote|booking|link), `buttonUrl`, `woocommerceProductId`, `categoryId` (optional, SetNull), `visible` (bool), `featured` (bool), `displayOrder`, `questionnaireTemplateId` (optional, ServiceQuestionnaire relation), `agreementTemplateId` (optional, ServiceAgreement relation), `requiredDocuments` (JSON string: `[{name, required, category}]`), `createdAt`, `updatedAt`.
+   175→   175→
+   176→   176→**Plan** — `id`, `name`, `slug` (unique), `subtitle`, `price` (Float), `color`, `buttonLabel`, `buttonType`, `buttonUrl`, `woocommerceProductId`, `categoryId` (optional, SetNull), `visible`, `featured`, `displayOrder`, `createdAt`, `updatedAt`. Has many: PlanFeature[].
+   177→   177→
+   178→   178→**PlanFeature** — `id`, `text`, `planId` (Cascade).
+   179→   179→
+   180→   180→**PluginSetting** — `id`, `key` (unique), `value` (String), `updatedAt`.
+   181→   181→
+   182→   182→**Icon** — `id`, `name` (unique), `label`, `svgPath`, `category` (default 'general'), `displayOrder`, `createdAt`, `updatedAt`.
+   183→   183→
+   184→   184→### Phase 2 Models (Questionnaire Builder)
+   185→   185→
+   186→   186→**QuestionnaireTemplate** — `id`, `name`, `slug` (unique), `description`, `version`, `status` (draft|published|archived), `createdAt`, `updatedAt`. Has many: QuestionnaireSection[], Service[] (ServiceQuestionnaire), ProjectQuestionnaire[].
+   187→   187→
+   188→   188→**QuestionnaireSection** — `id`, `templateId` (Cascade), `title`, `description`, `displayOrder`, `isShared` (bool, for cross-service deduplication), `createdAt`. Has many: QuestionnaireQuestion[].
+   189→   189→
+   190→   190→**QuestionnaireQuestion** — `id`, `sectionId` (Cascade), `type` (text|textarea|select|multiselect|number|email|phone|date|file|radio|checkbox|heading|paragraph), `label`, `placeholder`, `required`, `options` (JSON array), `conditionalOn` (question ID), `conditionalValue`, `helpText`, `displayOrder`, `createdAt`.
+   191→   191→
+   192→   192→### Phase 2 Models (Agreement Templates)
+   193→   193→
+   194→   194→**AgreementTemplate** — `id`, `name`, `slug` (unique), `content` (HTML), `version`, `status` (draft|published|archived), `createdAt`, `updatedAt`. Has many: Service[] (ServiceAgreement), ProjectAgreement[].
+   195→   195→
+   196→   196→### Phase 2 Models (Client Projects)
+   197→   197→
+   198→   198→**Project** — `id`, `projectNumber` (unique, BV-YYYY-NNNNNN), `clientName`, `clientEmail`, `clientPhone`, `clientCompany`, `woocommerceOrderId`, `status` (awaiting-agreement|awaiting-questionnaire|awaiting-documents|information-review|in-progress|quality-check|completed|delivered|archived), `progressPercent` (Int), `notes`, `assignedTo`, `internalNotes`, `createdAt`, `updatedAt`. Has many: ProjectService[], ProjectAgreement[], ProjectQuestionnaire[], ProjectDocument[], ProjectReport[], ProjectMessage[], ProjectNote[], ActivityLog[].
+   199→   199→
+   200→   200→**ProjectService** — `id`, `projectId` (Cascade), `serviceId`, `status`, `createdAt`.
+   201→   201→
+   202→   202→**ProjectAgreement** — `id`, `projectId` (Cascade), `templateId`, `fullName`, `ipAddress`, `userAgent`, `agreedAt`, `createdAt`.
+   203→   203→
+   204→   204→**ProjectQuestionnaire** — `id`, `projectId` (Cascade), `templateId`, `status` (pending|in-progress|completed), `completedAt`, `createdAt`, `updatedAt`. Has many: ProjectResponse[].
+   205→   205→
+   206→   206→**ProjectResponse** — `id`, `questionnaireId` (Cascade), `questionId`, `value`, `createdAt`.
+   207→   207→
+   208→   208→**ProjectDocument** — `id`, `projectId` (Cascade), `name`, `filename`, `filepath`, `filesize`, `mimeType`, `category` (company-registration|id|financial|logo|branding|report|other), `uploadedBy`, `createdAt`.
+   209→   209→
+   210→   210→### Phase 3 Models (Activity Log)
+   211→   211→
+   212→   212→**ActivityLog** — `id`, `projectId` (optional, SetNull), `entityType` (project|service|questionnaire|agreement|document|report|message|note|template|setting), `entityId`, `action` (created|updated|deleted|signed|uploaded|delivered|status_changed|message_sent|note_added|assigned), `description`, `metadata` (JSON), `userId`, `createdAt`.
+   213→   213→
+   214→   214→### Phase 3 Models (Reports)
+   215→   215→
+   216→   216→**ReportTemplate** — `id`, `name`, `slug` (unique), `description`, `content` (HTML/markdown), `version`, `status` (draft|ready|delivered), `createdAt`, `updatedAt`. Has many: ProjectReport[].
+   217→   217→
+   218→   218→**ProjectReport** — `id`, `projectId` (Cascade), `templateId` (optional, SetNull), `title`, `content`, `status` (draft|ready|delivered), `version`, `deliveredAt`, `createdAt`, `updatedAt`.
+   219→   219→
+   220→   220→### Phase 3 Models (Messaging)
+   221→   221→
+   222→   222→**ProjectMessage** — `id`, `projectId` (Cascade), `senderType` (admin|client), `senderName`, `senderEmail`, `message`, `read` (bool), `createdAt`.
+   223→   223→
+   224→   224→### Phase 3 Models (Internal Notes)
+   225→   225→
+   226→   226→**ProjectNote** — `id`, `projectId` (Cascade), `authorName`, `content`, `createdAt`.
+   227→   227→
+   228→   228→---
+   229→   229→
+   230→   230→## 5. ALL API ENDPOINTS (22 route files)
+   231→   231→
+   232→   232→### Core CRUD
+   233→   233→
+   234→   234→| Method | Path | Purpose |
+   235→   235→|---|---|---|
+   236→   236→| GET/PUT | `/api/settings` | Get merged settings / upsert settings |
+   237→   237→| GET/POST | `/api/services` | List (?all=true) / Create service |
+   238→   238→| GET/PUT/DELETE | `/api/services/[id]` | Single service CRUD |
+   239→   239→| PUT | `/api/services/reorder` | Reorder services |
+   240→   240→| GET/POST/PUT/DELETE | `/api/plans` | List / Create / Update / Delete plans |
+   241→   241→| GET/PUT/DELETE | `/api/plans/[id]` | Single plan CRUD |
+   242→   242→| PUT | `/api/plans/reorder` | Reorder plans |
+   243→   243→| GET/POST/PUT/DELETE | `/api/categories` | List / Create / Update / Delete categories |
+   244→   244→| PUT/DELETE | `/api/categories/[id]` | Update / Delete single category |
+   245→   245→| GET/POST/PUT/DELETE | `/api/icons` | Full icon CRUD |
+   246→   246→
+   247→   247→### Project Workflow
+   248→   248→
+   249→   249→| Method | Path | Purpose |
+   250→   250→|---|---|---|
+   251→   251→| GET/POST | `/api/projects` | List (filter by status, search) / Create project |
+   252→   252→| GET/PUT/DELETE | `/api/projects/[id]` | Single project CRUD |
+   253→   253→| POST | `/api/projects/[id]/agreement` | Sign agreement (auto-advances status) |
+   254→   254→| GET/POST/DELETE | `/api/projects/[id]/documents` | List / Upload / Delete project documents |
+   255→   255→| POST | `/api/projects/[id]/questionnaire` | Save questionnaire responses |
+   256→   256→
+   257→   257→### Templates
+   258→   258→
+   259→   259→| Method | Path | Purpose |
+   260→   260→|---|---|---|
+   261→   261→| GET/POST | `/api/agreement-templates` | List / Create agreement templates |
+   262→   262→| GET/PUT/DELETE | `/api/agreement-templates/[id]` | Single agreement template CRUD |
+   263→   263→| GET/POST | `/api/questionnaire-templates` | List (with sections+questions) / Create |
+   264→   264→| GET/PUT/DELETE | `/api/questionnaire-templates/[id]` | Single template CRUD (nested rebuild on update) |
+   265→   265→| GET/POST | `/api/report-templates` | List / Create report templates (NO [id] route yet) |
+   266→   266→
+   267→   267→### Other
+   268→   268→
+   269→   269→| Method | Path | Purpose |
+   270→   270→|---|---|---|
+   271→   271→| GET/POST | `/api/activity-log` | List (filter by projectId, entityType) / Create log entry |
+   272→   272→
+   273→   273→---
+   274→   274→
+   275→   275→## 6. ADMIN PANEL (page.tsx) — 9 TABS
+   276→   276→
+   277→   277→`src/app/page.tsx` is ~1406 lines, monolithic (all types, components, state inline).
+   278→   278→
+   279→   279→### Architecture
+   280→   280→- **All types defined inline**: Settings, CategoryItem, ServiceItem, PlanItem, IconItem, TabId
+   281→   281→- **Helper components inline**: SortableRow, CopyBtn, SettingsCard, FormField, ColorField, Toast, BvIcon
+   282→   282→- **Uses QuestionnaireBuilder and AgreementBuilder** from `src/components/admin/`
+   283→   283→- **Uses ProjectsTab** from `src/components/admin/projects-tab.tsx`
+   284→   284→- **No external component imports** beyond shadcn/ui, lucide-react, and the 3 admin components above
+   285→   285→
+   286→   286→### The 9 Tabs
+   287→   287→
+   288→   288→1. **Dashboard** — Stat cards (total services, plans, projects, active projects, completed, revenue), quick links to Projects and Client Portal, Quick Start guide
+   289→   289→2. **Services** — Sortable table with drag handles, category dots, prices, visibility/featured toggles. Modal form: name, description, shortDescription, price, icon (dropdown from DB), turnaround days, button type/label/url, WC product ID, category, questionnaire template, agreement template, required documents (JSON editor), visible, featured
+   290→   290→3. **Subscription Plans** — Sortable table with color swatches. Modal: name, subtitle, price, color picker, button label, WC product ID, category, visible, featured, dynamic features list (add/remove)
+   291→   291→4. **Categories** — Table with name, slug (auto-generated), color swatch, service/plan counts. Edit modal
+   292→   292→5. **Icon Manager** — Table with live SVG preview, name, label, category badge. Add/edit modal: name (slug), label, category dropdown (7 categories), SVG path textarea with live preview. Full CRUD
+   293→   293→6. **Questionnaires** — Full questionnaire builder component (`src/components/admin/questionnaire-builder.tsx`, 942 lines). Create/edit/delete templates with sections and questions. Supports 13 question types, drag-reorder, conditional logic, shared sections
+   294→   294→7. **Agreements** — Agreement template builder (`src/components/admin/agreement-builder.tsx`, 505 lines). Create/edit/delete templates with HTML content editor, preview mode, service linking
+   295→   295→8. **Projects** — Project management tab (`src/components/admin/projects-tab.tsx`, 1113 lines). Create projects, view details, manage agreements, questionnaires, documents, status transitions, internal notes
+   296→   296→9. **Settings** — 8 grouped cards: Branding, Colors, Services, Plans, Currency, Footer, Trust Badges, Layout. Logo upload, all brand colors configurable
+   297→   297→
+   298→   298→### Key Patterns
+   299→   299→- **Icons are 100% dynamic** — loaded from DB via `/api/icons`, stored in `iconMap` (Record<name, svgPath>), used by `BvIcon` component everywhere
+   300→   300→- **Drag-and-drop** uses @dnd-kit with `SortableContext` and `useSortable`
+   301→   301→- **Toast notifications** via custom `Toast` component in page.tsx (not sonner)
+   302→   302→- **All forms** use controlled components with `Record<string, unknown>` state
+   303→   303→
+   304→   304→### Styling
+   305→   305→- WP admin style: dark sidebar (#1d2327), light content area (#f0f0f1)
+   306→   306→- Gold accent: #D4AF37 for primary buttons
+   307→   307→- Navy: #002B5C for headings
+   308→   308→- All brand colors inline via `style={{}}`
+   309→   309→
+   310→   310→---
+   311→   311→
+   312→   312→## 7. CLIENT PORTAL (standalone page)
+   313→   313→
+   314→   314→`src/app/client-portal/page.tsx` — 614 lines, completely separate from admin.
+   315→   315→
+   316→   316→### Features
+   317→   317→- Professional header with BusinessVance branding, notification bell, user avatar, mobile hamburger menu
+   318→   318→- Project selector bar (appears when client has multiple projects)
+   319→   319→- Welcome header with project number and client name
+   320→   320→- Project progress checklist (6 steps: Payment → Agreement → Questionnaire → Documents → Report → Delivered)
+   321→   321→- My Services cards with progress bars and status badges
+   322→   322→- Agreement status card (signed/unsigned with details)
+   323→   323→- Questionnaire accordion with 6 sections, section locking (complete previous to unlock next)
+   324→   324→- Document upload center with 4 document categories
+   325→   325→- Client portal footer with contact details
+   326→   326→- Responsive layout (auto-fit grids)
+   327→   327→- Falls back to demo data when no real projects exist
+   328→   328→- Uses sonner toast directly
+   329→   329→
+   330→   330→### Key Difference from Admin
+   331→   331→- Has its OWN header/footer (no admin sidebar)
+   332→   332→- Uses `toast` from sonner (not the admin's custom toast)
+   333→   333→- No admin controls or settings access
+   334→   334→
+   335→   335→---
+   336→   336→
+   337→   337→## 8. PHASE 2 CORE PLATFORM FOUNDATION
+   338→   338→
+   339→   339→14 new files in `src/lib/` — internal architecture modules, NO user-facing changes.
+   340→   340→
+   341→   341→### `src/lib/interfaces/types.ts` (189 lines)
+   342→   342→Shared TypeScript interfaces & enums:
+   343→   343→- EventCallback, FilterCallback, EventSubscription
+   344→   344→- LogLevel (DEBUG/INFO/WARNING/ERROR), LogEntry, LoggerConfig
+   345→   345→- ValidationResult, FieldRule
+   346→   346→- ApiResponse (with pagination meta)
+   347→   347→- BvRole enum (administrator/consultant/client), Capability
+   348→   348→- NotificationChannel (email/dashboard/sms/push), NotificationPayload, NotificationResult, NotificationTransport
+   349→   349→- MigrationRecord, MigrationDefinition
+   350→   350→- PaginationParams, QueryResult
+   351→   351→
+   352→   352→### `src/lib/core/bv-constants.ts` (241 lines)
+   353→   353→- Platform identity: BV_PLATFORM_NAME='BusinessVance', BV_PLATFORM_VERSION='2.0.0', BV_API_NAMESPACE='businessvance/v1', BV_DB_VERSION='2.0.0'
+   354→   354→- PROJECT_STATUSES: 10 states (order-received, project-created, awaiting-agreement, awaiting-questionnaire, awaiting-documents, information-review, in-progress, quality-check, completed, delivered, archived)
+   355→   355→- PROJECT_STATUS_LABELS, PROJECT_STATUS_PROGRESS, PROJECT_STATUS_SEQUENCE
+   356→   356→- TEMPLATE_STATUSES, QUESTION_TYPES (13), BUTTON_TYPES, DOCUMENT_CATEGORIES (7)
+   357→   357→- ACTIVITY_ACTIONS (10), ACTIVITY_ENTITY_TYPES (10), REPORT_STATUSES
+   358→   358→- BV_EVENTS: 22 event constants (18 actions + 4 filters)
+   359→   359→- Pagination defaults, project number format (BV-YYYY-NNNNNN), roles
+   360→   360→
+   361→   361→### `src/lib/core/bv-logger.ts` (191 lines)
+   362→   362→Singleton logger: `logger.info()`, `logger.warning()`, `logger.error()`, `logger.debug()`. 1000-entry buffer. Context-scoped: `logger.withContext('ModuleName')`. Colored console output.
+   363→   363→
+   364→   364→### `src/lib/core/bv-events.ts` (211 lines)
+   365→   365→Singleton event bus: `events.on()`, `events.once()`, `events.off()`, `events.offAll()`, `events.dispatch()` (fire-and-forget), `events.applyFilter()` (transform-and-return). Priority-sorted listeners.
+   366→   366→
+   367→   367→### `src/lib/core/bv-validator.ts` (272 lines)
+   368→   368→Singleton validator: 9 single-field validators (email, phone, URL, integer, price, required, WooCommerceProductId, slug, projectNumber) + `validateFields(data, rules)` multi-field engine + `parseJsonSafe()`.
+   369→   369→
+   370→   370→### `src/lib/core/bv-response.ts` (181 lines)
+   371→   371→Singleton response builder: `bvResponse.success()`, `successMessage()`, `successWithData()`, `paginated()`, `error()`, `badRequest()`, `unauthorized()`, `forbidden()`, `notFound()`, `serverError()`, `validationError()`. Auto-logs errors.
+   372→   372→
+   373→   373→### `src/lib/core/bv-capabilities.ts` (282 lines)
+   374→   374→28 capability definitions across 3 roles. `capabilities.can(role, cap)`, `canAll()`, `canAny()`, `require()` (throws). `getCapabilitiesForRole()`. Deny-by-default for unknown capabilities.
+   375→   375→
+   376→   376→### `src/lib/core/bv-helper.ts` (269 lines)
+   377→   377→17 utility functions: generateSlug, generateProjectNumber, sanitizeString, truncate, parseSafeFloat, parseSafeInt, formatCurrency, formatDate, timeAgo, isValidStatusTransition, isForwardTransition, getNextStatus, parseJsonSafe, pick, omit, groupBy, cleanObject, formatFileSize.
+   378→   378→
+   379→   379→### `src/lib/api/base-controller.ts` (189 lines)
+   380→   380→Abstract `BaseController<T>` class: `extractPagination()`, `buildPagination()`, `buildOrderBy()`, `parseBody()`, `extractId()` (handles Next.js 16 Promise params), `dispatchCreated/Updated/Deleted()`, `handleErrors()` wrapper, `paginatedFind()`.
+   381→   381→
+   382→   382→### `src/lib/api/api-helpers.ts` (137 lines)
+   383→   383→`getApiNamespace()`, `getApiPath(resource, id?)`, `getStringParam()`, `getBoolParam()`, `getNumericParam()`, `checkPermission()`, `requireAdmin()`, `getApiHeaders()`.
+   384→   384→
+   385→   385→### `src/lib/services/notification-service.ts` (174 lines)
+   386→   386→Singleton notification service: `registerTransport()`, `unregisterTransport()`, `notify()`, `notifyMulti()`. Uses FILTER_NOTIFICATION_PAYLOAD hook. Enable/disable toggle.
+   387→   387→
+   388→   388→### `src/lib/services/database-versioning.ts` (176 lines)
+   389→   389→Migration framework: `register(migration)`, `runMigrations()`, `getPendingMigrations()`, `getCurrentVersion()`, `isUpToDate()`. Version tracked in PluginSetting table.
+   390→   390→
+   391→   391→### Barrel Exports
+   392→   392→- `src/lib/core/index.ts` — exports all core modules
+   393→   393→- `src/lib/api/index.ts` — exports BaseController and all helpers
+   394→   394→- `src/lib/services/index.ts` — exports notificationService and dbVersion
+   395→   395→- `src/lib/interfaces/index.ts` — exports all types
+   396→   396→
+   397→   397→---
+   398→   398→
+   399→   399→## 9. PLUGIN SETTINGS (29 configurable keys)
+   400→   400→
+   401→   401→All stored as key/value strings in `PluginSetting` table. Defaults in `/api/settings/route.ts`.
+   402→   402→
+   403→   403→### Branding
+   404→   404→- `brand_name` ("BUSINESSVANCE"), `brand_tagline` ("INSIGHT. STRATEGY. SUCCESS."), `brand_description`, `header_icon` ("shield"), `logo_url`
+   405→   405→
+   406→   406→### Colors
+   407→   407→- `color_primary` (#0A2647), `color_primary_dark` (#071a33), `color_primary_light` (#144272)
+   408→   408→- `color_accent` (#F4A261), `color_accent_alt` (#2A9D8F), `color_gold` (#D4AF37)
+   409→   409→- `color_text` (#333333), `color_text_light` (#666666), `color_bg` (#ffffff)
+   410→   410→
+   411→   411→### Sections
+   412→   412→- `services_section_title`, `services_section_subtitle`, `show_services_section`
+   413→   413→- `plans_section_title`, `plans_section_subtitle`, `show_plans_section`
+   414→   414→
+   415→   415→### Currency
+   416→   416→- `currency_symbol` ("R"), `currency_position` ("before")
+   417→   417→
+   418→   418→### Footer
+   419→   419→- `footer_company_name`, `footer_website`, `footer_phone`, `footer_email`, `footer_copyright`
+   420→   420→
+   421→   421→### Layout
+   422→   422→- `container_max_width` ("1200px"), `enable_animations` ("true"), `show_trust_badges` ("true"), `show_featured_badge` ("true"), `default_service_button_label` ("ADD TO CART")
+   423→   423→
+   424→   424→### Trust Badges
+   425→   425→- `trust_badges` — JSON array of 4 badges (shield-check, clock, lock, star)
+   426→   426→
+   427→   427→---
+   428→   428→
+   429→   429→## 10. ICON SYSTEM
+   430→   430→
+   431→   431→22 icons seeded in `prisma/seed.ts` across 7 categories:
+   432→   432→- **Business**: clipboard-list, file-text, presentation, handshake
+   433→   433→- **Finance**: calculator, trending-up
+   434→   434→- **General**: clock, search, heart-pulse, wrench
+   435→   435→- **Marketing**: megaphone
+   436→   436→- **People**: users
+   437→   437→- **Security**: shield, shield-check, lock, shield-alert
+   438→   438→- **Status**: check-circle, award, star, crown, check
+   439→   439→
+   440→   440→The `BvIcon` component in page.tsx renders SVG icons by looking up `iconMap[name]`. Falls back to a document icon if not found.
+   441→   441→
+   442→   442→---
+   443→   443→
+   444→   444→## 11. PROJECT LIFECYCLE (10 States)
+   445→   445→
+   446→   446→```
+   447→   447→order-received → project-created → awaiting-agreement → awaiting-questionnaire → 
+   448→   448→awaiting-documents → information-review → in-progress → quality-check → 
+   449→   449→completed → delivered → archived
+   450→   450→```
+   451→   451→
+   452→   452→Each status has a default progress percentage (0, 5, 10, 25, 50, 60, 75, 90, 100, 100, 100).
+   453→   453→
+   454→   454→### 22 Internal Events
+   455→   455→**Actions (18)**: INITIALIZED, PROJECT_CREATED/UPDATED/DELETED/STATUS_CHANGED, QUESTIONNAIRE_COMPLETED/ASSIGNED, AGREEMENT_SIGNED/ASSIGNED, DOCUMENT_UPLOADED/DELETED, REPORT_UPLOADED/DELIVERED, MESSAGE_SENT, NOTE_ADDED, NOTIFICATION_SENT/DISPATCHED, TEMPLATE_CREATED/UPDATED
+   456→   456→
+   457→   457→**Filters (4)**: FILTER_PROJECT_NUMBER, FILTER_SLUG, FILTER_API_RESPONSE, FILTER_NOTIFICATION_PAYLOAD
+   458→   458→
+   459→   459→### 28 Capabilities across 3 Roles
+   460→   460→- **Administrator** (14): manage_settings, manage_categories, manage_icons, manage_services, manage_plans, manage_questionnaire_templates, manage_agreement_templates, manage_report_templates, manage_workflow_templates, manage_notification_templates, view_all_projects, create_projects, delete_projects, assign_consultant, view_analytics, deliver_reports
+   461→   461→- **Consultant** (8): view_assigned_projects, edit_projects, change_project_status, upload_documents, view_internal_notes, add_internal_notes, upload_reports, send_messages
+   462→   462→- **Client** (6): view_own_projects, sign_agreement, fill_questionnaire, upload_documents, view_reports, send_messages
+   463→   463→
+   464→   464→---
+   465→   465→
+   466→   466→## 12. WORDPRESS PLUGIN (`businessvance-services-manager/`)
+   467→   467→
+   468→   468→A complete, production-ready WordPress plugin:
+   469→   469→- **4 custom DB tables**: bv_categories, bv_services, bv_plans, bv_plan_features
+   470→   470→- **Admin panel**: 5 menu pages (Dashboard, Services, Plans, Categories, Settings)
+   471→   471→- **3 shortcodes**: `[businessvance_services]`, `[businessvance_onceoff]`, `[businessvance_subscriptions]`
+   472→   472→- **WooCommerce integration**: add-to-cart URLs, product linking, optional dependency
+   473→   473→- **AJAX handlers**: drag-drop reorder, visibility toggle, WC product search
+   474→   474→- **Responsive frontend**: desktop table → mobile cards at 768px
+   475→   475→- **Trust badges, animations, CSS custom properties**
+   476→   476→- **PHP files**: 4,428 lines total across 13 files
+   477→   477→- **CSS/JS assets**: 1,673 lines total
+   478→   478→
+   479→   479→The plugin has its own code and does NOT depend on the Next.js app.
+   480→   480→
+   481→   481→---
+   482→   482→
+   483→   483→## 13. ARCHITECTURE DECISIONS (from Phase 1.5 Blueprint)
+   484→   484→
+   485→   485→1. **WordPress plugin is production platform** — Next.js is reference prototype only
+   486→   486→2. **Project is central entity** — everything links to Project
+   487→   487→3. **10-state lifecycle** — refined from original 9 states
+   488→   488→4. **Event-driven architecture** — 22 events for loose coupling
+   489→   489→5. **3 user applications**: Admin Dashboard, Consultant Dashboard (not yet built), Client Portal (standalone)
+   490→   490→6. **API namespace**: `businessvance/v1`
+   491→   491→7. **Database versioning** via PluginSetting table
+   492→   492→8. **Phase 2 core foundation** is built but NOT yet wired into existing API routes
+   493→   493→9. **No authentication** in the Next.js prototype (WordPress handles auth in production)
+   494→   494→10. **SOLID/DRY principles** with singleton pattern for core services
+   495→   495→
+   496→   496→### Development Roadmap
+   497→   497→- ✅ Phase 1: Core services (categories, services, plans, icons, settings)
+   498→   498→- ✅ Phase 1.5: Architecture blueprint (analysis only)
+   499→   499→- ✅ Phase 2: Core platform foundation (14 new lib files, 0 existing files modified)
+   500→   500→- ✅ Client Portal separated from admin into standalone `/client-portal` page
+   501→   501→- 🔲 Phase 2B: Wire core foundation into existing API routes (use bvResponse, validator, events, etc.)
+   502→   502→- 🔲 Phase 2C: Consultant Dashboard
+   503→   503→- 🔲 Phase 2D: Notification system (actual transport implementations)
+   504→   504→- 🔲 Phase 2E: Client Portal production (real API integration, replace demo data)
+   505→   505→- 🔲 Phase 2F: WooCommerce integration in Next.js prototype
+   506→   506→- 🔲 Phase 3: Reports, Messages, Notes, Activity Timeline UI
+   507→   507→
+   508→   508→### What's Missing / TODO
+   509→   509→- `report-templates/[id]` API route (only list/create exists)
+   510→   510→- `projects/[id]/reports` API route
+   511→   511→- `projects/[id]/messages` API route
+   512→   512→- `projects/[id]/notes` API route
+   513→   513→- Activity Timeline UI in admin and client portal
+   514→   514→- Reports tab in admin
+   515→   515→- Messages tab in admin
+   516→   516→- Wire Phase 2 core modules (bvResponse, validator, events, capabilities) into existing API routes
+   517→   517→- Consultant Dashboard page
+   518→   518→- Actual notification transport implementations (email, SMS, push)
+   519→   519→- Database migration execution on startup
+   520→   520→
+   521→   521→---
+   522→   522→
+   523→   523→## 14. IMPORTANT RULES FOR AI AGENTS
+   524→   524→
+   525→   525→1. **Two visible routes**: `/` (admin, 9 tabs) and `/client-portal` (standalone client page)
+   526→   526→2. **Port 3000 only** — Dev server runs on port 3000. Never use other ports for the Next.js app.
+   527→   527→3. **Use API routes** — All backend logic goes in `src/app/api/`, NOT server actions.
+   528→   528→4. **z-ai-web-dev-sdk** — MUST be used in backend only, never client-side.
+   529→   529→5. **No indigo/blue** unless user requests it.
+   530→   530→6. **shadcn/ui** — Use existing components in `src/components/ui/`. Don't build from scratch.
+   531→   531→7. **Don't remove dynamic functionality** — Icons, settings, and data are all dynamic from the database.
+   532→   532→8. **Page.tsx is monolithic** — All admin UI is in one file with inline helper components.
+   533→   533→9. **Sticky footer** — If footer exists, it must stick to bottom on short pages.
+   534→   534→10. **Browser verify** — After making changes, verify in the Preview Panel (not localhost URL).
+   535→   535→11. **ESLint** — Run `bun run lint` to check. Config is very permissive (most rules off).
+   536→   536→12. **Phase 2 core modules exist** but are NOT yet used by existing API routes. They're ready to be wired in.
+   537→   537→13. **Client Portal is separate** — It's at `/client-portal`, NOT a tab in admin. The old `src/components/admin/client-portal.tsx` still exists but is NOT imported anywhere.
+   538→   538→14. **Don't modify shadcn/ui components** in `src/components/ui/`.
+   539→   539→15. **Use `use client`** directive for all interactive components.
+   540→   540→
+   541→   541→---
+   542→   542→
+   543→   543→## 15. BRAND COLORS
+   544→   544→
+   545→   545→| Color | Hex | Usage |
+   546→   546→|---|---|---|
+   547→   547→| Primary Navy | #002B5C | Headings, sidebar active state |
+   548→   548→| Primary Dark | #071a33 | Darker variant |
+   549→   549→| Primary Light | #144272 | Lighter variant |
+   550→   550→| Gold Accent | #D4AF37 | Primary buttons, highlights |
+   551→   551→| Gold Dark | #B8962E | Gold hover state |
+   552→   552→| Teal Alt | #2A9D8F / #008080 | Alternative accent |
+   553→   553→| Orange Accent | #F4A261 / #FF9900 | Warm accent |
+   554→   554→| Admin BG | #f0f0f1 | Content background |
+   555→   555→| Sidebar BG | #1d2327 | Sidebar background |
+   556→   556→| WP Blue | #2271b1 | WP-style links/active items |
+   557→   557→| WP Red | #d63638 | Delete/danger actions |
+   558→   558→
+   559→   559→CSS variables defined in `globals.css`: `--bv-navy`, `--bv-gold`, `--bv-gold-dark`, `--bv-teal`, `--bv-white`, `--bv-light-gray`.
+   560→   560→
+   561→   561→---
+   562→   562→
+   563→   563→## 16. HOW TO SET UP FROM SCRATCH
+   564→   564→
+   565→   565→```bash
+   566→   566→# 1. Install dependencies
+   567→   567→bun install
+   568→   568→
+   569→   569→# 2. Create .env from example
+   570→   570→cp .env.example .env
+   571→   571→# (DATABASE_URL is already set to file:./db/custom.db)
+   572→   572→
+   573→   573→# 3. Push schema to SQLite
+   574→   574→bun run db:push
+   575→   575→
+   576→   576→# 4. Seed the database (settings, categories, services, plans, icons, test project)
+   577→   577→bunx prisma db seed
+   578→   578→
+   579→   579→# 5. Start dev server
+   580→   580→bun run dev
+   581→   581→# Server runs on port 3000
+   582→   582→```
+   583→   583→
+   584→   584→---
+   585→   585→
+   586→   586→## 17. FILE SIZE REFERENCE
+   587→   587→
+   588→   588→| File | Lines | Purpose |
+   589→   589→|---|---|---|
+   590→   590→| src/app/page.tsx | 1,406 | Admin panel (9 tabs, all inline) |
+   591→   591→| src/app/client-portal/page.tsx | 614 | Standalone client portal |
+   592→   592→| src/components/admin/projects-tab.tsx | 1,113 | Projects management tab |
+   593→   593→| src/components/admin/questionnaire-builder.tsx | 942 | Questionnaire template builder |
+   594→   594→| src/components/admin/client-portal.tsx | 463 | OLD portal (unused) |
+   595→   595→| src/components/admin/agreement-builder.tsx | 505 | Agreement template builder |
+   596→   596→| prisma/schema.prisma | 361 | Database schema (20 models) |
+   597→   597→| prisma/seed.ts | 590 | Seed data |
+   598→   598→| Phase 2 core files (12) | 2,512 | Core platform foundation |
+   599→   599→| WP plugin PHP | 4,428 | WordPress plugin |
+   600→   600→| WP plugin CSS/JS | 1,673 | WordPress plugin assets |

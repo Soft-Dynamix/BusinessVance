@@ -1,0 +1,614 @@
+     1→     1→<?php
+     2→     2→/**
+     3→     3→ * BusinessVance Services Manager - Admin Plans
+     4→     4→ *
+     5→     5→ * Full CRUD management for monthly subscription plans including features.
+     6→     6→ *
+     7→     7→ * @package BusinessVance_Services_Manager
+     8→     8→ * @since   1.0.0
+     9→     9→ */
+    10→    10→
+    11→    11→if ( ! defined( 'ABSPATH' ) ) {
+    12→    12→    exit;
+    13→    13→}
+    14→    14→
+    15→    15→/**
+    16→    16→ * BV_Admin_Plans
+    17→    17→ *
+    18→    18→ * Handles the admin plans management page.
+    19→    19→ */
+    20→    20→class BV_Admin_Plans {
+    21→    21→
+    22→    22→    /**
+    23→    23→     * Render the plans management page.
+    24→    24→     *
+    25→    25→     * @return void
+    26→    26→     */
+    27→    27→    public static function render_page() {
+    28→    28→        self::handle_save();
+    29→    29→        self::handle_delete();
+    30→    30→
+    31→    31→        $edit_plan  = null;
+    32→    32→        $is_editing = false;
+    33→    33→        $edit_id    = isset( $_GET['edit'] ) ? absint( $_GET['edit'] ) : 0;
+    34→    34→
+    35→    35→        if ( $edit_id > 0 ) {
+    36→    36→            global $wpdb;
+    37→    37→            $table     = $wpdb->prefix . 'bv_plans';
+    38→    38→            $edit_plan = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE id = %d", $edit_id ) );
+    39→    39→            if ( $edit_plan ) {
+    40→    40→                $is_editing = true;
+    41→    41→            }
+    42→    42→        }
+    43→    43→
+    44→    44→        if ( $is_editing && $edit_plan ) {
+    45→    45→            self::render_form( $edit_plan );
+    46→    46→        } else {
+    47→    47→            self::render_list();
+    48→    48→        }
+    49→    49→    }
+    50→    50→
+    51→    51→    /**
+    52→    52→     * Render the plans list table.
+    53→    53→     *
+    54→    54→     * @return void
+    55→    55→     */
+    56→    56→    private static function render_list() {
+    57→    57→        global $wpdb;
+    58→    58→
+    59→    59→        $table          = $wpdb->prefix . 'bv_plans';
+    60→    60→        $categories_table = $wpdb->prefix . 'bv_categories';
+    61→    61→        $features_table = $wpdb->prefix . 'bv_plan_features';
+    62→    62→
+    63→    63→        $plans = $wpdb->get_results(
+    64→    64→            "SELECT p.*, c.name AS category_name,
+    65→    65→                (SELECT COUNT(*) FROM $features_table f WHERE f.plan_id = p.id) AS feature_count
+    66→    66→             FROM $table p
+    67→    67→             LEFT JOIN $categories_table c ON p.category_id = c.id
+    68→    68→             ORDER BY p.display_order ASC, p.id DESC"
+    69→    69→        );
+    70→    70→        ?>
+    71→    71→        <div class="wrap bv-admin-wrap">
+    72→    72→            <h1 class="bv-page-title">
+    73→    73→                Plans
+    74→    74→                <a href="<?php echo esc_url( admin_url( 'admin.php?page=bv-plans&edit=0#bv-form' ) ); ?>" class="page-title-action">Add New Plan</a>
+    75→    75→            </h1>
+    76→    76→
+    77→    77→            <table class="wp-list-table widefat fixed striped bv-sortable-table" data-nonce="<?php echo esc_attr( wp_create_nonce( 'bv_reorder_plans' ) ); ?>">
+    78→    78→                <thead>
+    79→    79→                    <tr>
+    80→    80→                        <th style="width:40px;" class="column-order">Order</th>
+    81→    81→                        <th>Color</th>
+    82→    82→                        <th>Name</th>
+    83→    83→                        <th style="width:90px;">Price/mo</th>
+    84→    84→                        <th style="width:60px;">Features</th>
+    85→    85→                        <th style="width:80px;">Button</th>
+    86→    86→                        <th style="width:60px;">Visible</th>
+    87→    87→                        <th style="width:60px;">Feat.</th>
+    88→    88→                        <th style="width:120px;">Actions</th>
+    89→    89→                    </tr>
+    90→    90→                </thead>
+    91→    91→                <tbody class="bv-sortable-rows" data-type="plans">
+    92→    92→                    <?php if ( empty( $plans ) ) : ?>
+    93→    93→                        <tr><td colspan="9" style="text-align:center; padding:40px;">No plans yet. Click "Add New Plan" to create one.</td></tr>
+    94→    94→                    <?php else : ?>
+    95→    95→                        <?php foreach ( $plans as $p ) : ?>
+    96→    96→                            <tr data-id="<?php echo esc_attr( $p->id ); ?>">
+    97→    97→                                <td class="bv-drag-handle" title="Drag to reorder">⠿</td>
+    98→    98→                                <td><span style="display:inline-block;width:22px;height:22px;border-radius:50%;background:<?php echo esc_attr( $p->color ); ?>;"></span></td>
+    99→    99→                                <td>
+   100→   100→                                    <strong><?php echo esc_html( $p->name ); ?></strong>
+   101→   101→                                    <?php if ( $p->subtitle ) : ?>
+   102→   102→                                        <br><small style="color:#666;"><?php echo esc_html( $p->subtitle ); ?></small>
+   103→   103→                                    <?php endif; ?>
+   104→   104→                                </td>
+   105→   105→                                <td>R <?php echo esc_html( number_format( (float) $p->price, 2 ) ); ?></td>
+   106→   106→                                <td><?php echo esc_html( $p->feature_count ); ?></td>
+   107→   107→                                <td>
+   108→   108→                                    <span class="bv-badge bv-badge-<?php echo esc_attr( $p->button_type ); ?>">
+   109→   109→                                        <?php echo esc_html( strtoupper( $p->button_type ) ); ?>
+   110→   110→                                    </span>
+   111→   111→                                </td>
+   112→   112→                                <td>
+   113→   113→                                    <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=bv-plans&action=bv_toggle_plan_visibility&id=' . absint( $p->id ) ), 'bv_toggle_visibility_' . $p->id ) ); ?>"
+   114→   114→                                       class="bv-toggle-btn <?php echo $p->visible ? 'bv-toggle-on' : 'bv-toggle-off'; ?>"
+   115→   115→                                       title="Toggle visibility">
+   116→   116→                                        <?php echo $p->visible ? '👁' : '🚫'; ?>
+   117→   117→                                    </a>
+   118→   118→                                </td>
+   119→   119→                                <td>
+   120→   120→                                    <?php if ( $p->featured ) : ?>
+   121→   121→                                        <span title="Featured">⭐</span>
+   122→   122→                                    <?php endif; ?>
+   123→   123→                                </td>
+   124→   124→                                <td>
+   125→   125→                                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=bv-plans&edit=' . absint( $p->id ) ) ); ?>" class="button button-small">Edit</a>
+   126→   126→                                    <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=bv-plans&action=bv_delete_plan&id=' . absint( $p->id ) ), 'bv_delete_plan_' . $p->id ) ); ?>"
+   127→   127→                                       class="button button-small button-link-delete"
+   128→   128→                                       onclick="return confirm('Delete this plan and its features?');">Delete</a>
+   129→   129→                                </td>
+   130→   130→                            </tr>
+   131→   131→                        <?php endforeach; ?>
+   132→   132→                    <?php endif; ?>
+   133→   133→                </tbody>
+   134→   134→            </table>
+   135→   135→        </div>
+   136→   136→        <?php
+   137→   137→    }
+   138→   138→
+   139→   139→    /**
+   140→   140→     * Render the add/edit plan form.
+   141→   141→     *
+   142→   142→     * @param object $plan The plan object.
+   143→   143→     * @return void
+   144→   144→     */
+   145→   145→    private static function render_form( $plan ) {
+   146→   146→        global $wpdb;
+   147→   147→
+   148→   148→        $categories_table = $wpdb->prefix . 'bv_categories';
+   149→   149→        $categories = $wpdb->get_results( "SELECT * FROM $categories_table ORDER BY name ASC" );
+   150→   150→
+   151→   151→        $is_edit   = true;
+   152→   152→        $form_data = $plan;
+   153→   153→
+   154→   154→        // Fetch existing features.
+   155→   155→        $features_table = $wpdb->prefix . 'bv_plan_features';
+   156→   156→        $features       = $wpdb->get_results(
+   157→   157→            $wpdb->prepare( "SELECT * FROM $features_table WHERE plan_id = %d ORDER BY id ASC", $plan->id )
+   158→   158→        );
+   159→   159→
+   160→   160→        // Build category options.
+   161→   161→        $cat_options = '<option value="">— None —</option>';
+   162→   162→        foreach ( $categories as $cat ) {
+   163→   163→            $selected = ( $form_data->category_id == $cat->id ) ? ' selected' : '';
+   164→   164→            $cat_options .= '<option value="' . esc_attr( $cat->id ) . '"' . $selected . '>' . esc_html( $cat->name ) . '</option>';
+   165→   165→        }
+   166→   166→        ?>
+   167→   167→        <div class="wrap bv-admin-wrap" id="bv-form">
+   168→   168→            <h1 class="bv-page-title">
+   169→   169→                Edit Plan
+   170→   170→                <a href="<?php echo esc_url( admin_url( 'admin.php?page=bv-plans' ) ); ?>" class="page-title-action">← Back to list</a>
+   171→   171→            </h1>
+   172→   172→
+   173→   173→            <form method="post" action="" class="bv-form-card">
+   174→   174→                <?php wp_nonce_field( 'bv_save_plan', 'bv_plan_nonce' ); ?>
+   175→   175→                <input type="hidden" name="bv_action" value="bv_save_plan">
+   176→   176→                <input type="hidden" name="plan_id" value="<?php echo esc_attr( $form_data->id ); ?>">
+   177→   177→
+   178→   178→                <div class="bv-form-grid">
+   179→   179→                    <div class="bv-form-main">
+   180→   180→                        <div class="bv-field-row">
+   181→   181→                            <div class="bv-field" style="flex:2;">
+   182→   182→                                <label for="plan-name">Plan Name <span class="required">*</span></label>
+   183→   183→                                <input type="text" id="plan-name" name="name" value="<?php echo esc_attr( $form_data->name ); ?>" required class="large-text" placeholder="e.g. Starter Plan">
+   184→   184→                            </div>
+   185→   185→                            <div class="bv-field" style="flex:1;">
+   186→   186→                                <label for="plan-color">Color</label>
+   187→   187→                                <input type="color" id="plan-color" name="color" value="<?php echo esc_attr( $form_data->color ); ?>" style="width:100%; height:38px; border:none; cursor:pointer; border-radius:4px;">
+   188→   188→                            </div>
+   189→   189→                        </div>
+   190→   190→
+   191→   191→                        <div class="bv-field">
+   192→   192→                            <label for="plan-subtitle">Subtitle</label>
+   193→   193→                            <input type="text" id="plan-subtitle" name="subtitle" value="<?php echo esc_attr( $form_data->subtitle ); ?>" class="large-text" placeholder="e.g. Perfect for small businesses">
+   194→   194→                        </div>
+   195→   195→
+   196→   196→                        <div class="bv-field-row">
+   197→   197→                            <div class="bv-field" style="flex:1;">
+   198→   198→                                <label for="plan-price">Monthly Price (ZAR) <span class="required">*</span></label>
+   199→   199→                                <input type="number" id="plan-price" name="price" value="<?php echo esc_attr( $form_data->price ); ?>" required step="0.01" min="0" class="regular-text" placeholder="0.00">
+   200→   200→                            </div>
+   201→   201→                            <div class="bv-field" style="flex:1;">
+   202→   202→                                <label for="plan-order">Display Order</label>
+   203→   203→                                <input type="number" id="plan-order" name="display_order" value="<?php echo esc_attr( $form_data->display_order ); ?>" min="0" class="small-text">
+   204→   204→                            </div>
+   205→   205→                        </div>
+   206→   206→
+   207→   207→                        <!-- Features Section -->
+   208→   208→                        <div class="bv-field">
+   209→   209→                            <label>Plan Features</label>
+   210→   210→                            <div id="bv-features-list">
+   211→   211→                                <?php foreach ( $features as $i => $f ) : ?>
+   212→   212→                                    <div class="bv-feature-row">
+   213→   213→                                        <input type="text" name="features[]" value="<?php echo esc_attr( $f->text ); ?>" class="regular-text" placeholder="Feature description">
+   214→   214→                                        <button type="button" class="button bv-remove-feature" title="Remove feature">−</button>
+   215→   215→                                    </div>
+   216→   216→                                <?php endforeach; ?>
+   217→   217→                            </div>
+   218→   218→                            <button type="button" class="button" id="bv-add-feature" style="margin-top:8px;">+ Add Feature</button>
+   219→   219→                        </div>
+   220→   220→                    </div>
+   221→   221→
+   222→   222→                    <div class="bv-form-sidebar">
+   223→   223→                        <div class="bv-field">
+   224→   224→                            <label for="plan-category">Category</label>
+   225→   225→                            <select id="plan-category" name="category_id"><?php echo $cat_options; ?></select>
+   226→   226→                        </div>
+   227→   227→
+   228→   228→                        <div class="bv-field">
+   229→   229→                            <label for="plan-button-label">Button Label</label>
+   230→   230→                            <input type="text" id="plan-button-label" name="button_label" value="<?php echo esc_attr( $form_data->button_label ); ?>" class="regular-text">
+   231→   231→                        </div>
+   232→   232→
+   233→   233→                        <div class="bv-field">
+   234→   234→                            <label for="plan-button-type">Button Type</label>
+   235→   235→                            <select id="plan-button-type" name="button_type">
+   236→   236→                                <option value="cart" <?php selected( $form_data->button_type, 'cart' ); ?>>Add to Cart</option>
+   237→   237→                                <option value="quote" <?php selected( $form_data->button_type, 'quote' ); ?>>Request Quote</option>
+   238→   238→                                <option value="booking" <?php selected( $form_data->button_type, 'booking' ); ?>>Book Consultation</option>
+   239→   239→                                <option value="link" <?php selected( $form_data->button_type, 'link' ); ?>>External Link</option>
+   240→   240→                            </select>
+   241→   241→                        </div>
+   242→   242→
+   243→   243→                        <div class="bv-field" id="plan-url-field" style="<?php echo $form_data->button_type === 'link' ? '' : 'display:none;'; ?>">
+   244→   244→                            <label for="plan-button-url">Button URL</label>
+   245→   245→                            <input type="url" id="plan-button-url" name="button_url" value="<?php echo esc_url( $form_data->button_url ); ?>" class="regular-text" placeholder="https://...">
+   246→   246→                        </div>
+   247→   247→
+   248→   248→                        <div class="bv-field">
+   249→   249→                            <label for="plan-wc-product">WooCommerce Product ID</label>
+   250→   250→                            <div style="display:flex; gap:6px; align-items:center;">
+   251→   251→                                <input type="text" id="plan-wc-product" name="woocommerce_product_id" value="<?php echo esc_attr( $form_data->woocommerce_product_id ); ?>" class="regular-text" placeholder="e.g. 42">
+   252→   252→                                <button type="button" class="button bv-browse-products" data-target="plan-wc-product">Browse</button>
+   253→   253→                            </div>
+   254→   254→                            <p class="description">Used for "Add to Cart" button type.</p>
+   255→   255→                        </div>
+   256→   256→
+   257→   257→                        <div class="bv-field bv-field-checkbox">
+   258→   258→                            <label><input type="checkbox" name="visible" value="1" <?php checked( $form_data->visible, 1 ); ?>> Visible</label>
+   259→   259→                        </div>
+   260→   260→
+   261→   261→                        <div class="bv-field bv-field-checkbox">
+   262→   262→                            <label><input type="checkbox" name="featured" value="1" <?php checked( $form_data->featured, 1 ); ?>> Featured</label>
+   263→   263→                        </div>
+   264→   264→                    </div>
+   265→   265→                </div>
+   266→   266→
+   267→   267→                <div class="bv-form-actions">
+   268→   268→                    <?php submit_button( 'Update Plan', 'primary', 'bv_submit', false ); ?>
+   269→   269→                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=bv-plans' ) ); ?>" class="button">Cancel</a>
+   270→   270→                </div>
+   271→   271→            </form>
+   272→   272→        </div>
+   273→   273→
+   274→   274→        <!-- WooCommerce Product Browse Modal (shared) -->
+   275→   275→        <div id="bv-wc-modal" style="display:none;">
+   276→   276→            <div class="bv-wc-modal-backdrop"></div>
+   277→   277→            <div class="bv-wc-modal-content">
+   278→   278→                <div class="bv-wc-modal-header">
+   279→   279→                    <h2>Select WooCommerce Product</h2>
+   280→   280→                    <button type="button" class="bv-wc-modal-close">&times;</button>
+   281→   281→                </div>
+   282→   282→                <div class="bv-wc-modal-body">
+   283→   283→                    <input type="text" id="bv-wc-search" class="regular-text" placeholder="Search products..." style="width:100%; margin-bottom:15px;">
+   284→   284→                    <div id="bv-wc-results" style="max-height:400px; overflow-y:auto;">
+   285→   285→                        <p class="bv-wc-loading" style="text-align:center; padding:40px;">Searching...</p>
+   286→   286→                    </div>
+   287→   287→                </div>
+   288→   288→            </div>
+   289→   289→        </div>
+   290→   290→        <?php
+   291→   291→    }
+   292→   292→
+   293→   293→    /**
+   294→   294→     * Render the "Add New Plan" form (no pre-existing plan).
+   295→   295→     *
+   296→   296→     * @return void
+   297→   297→     */
+   298→   298→    public static function render_new_form() {
+   299→   299→        global $wpdb;
+   300→   300→
+   301→   301→        $categories_table = $wpdb->prefix . 'bv_categories';
+   302→   302→        $categories = $wpdb->get_results( "SELECT * FROM $categories_table ORDER BY name ASC" );
+   303→   303→
+   304→   304→        $form_data = (object) array(
+   305→   305→            'id'                    => 0,
+   306→   306→            'name'                  => '',
+   307→   307→            'subtitle'              => '',
+   308→   308→            'price'                 => 0,
+   309→   309→            'color'                 => '#002B5C',
+   310→   310→            'button_label'          => 'GET STARTED',
+   311→   311→            'button_type'           => 'cart',
+   312→   312→            'button_url'            => '',
+   313→   313→            'woocommerce_product_id' => '',
+   314→   314→            'category_id'           => null,
+   315→   315→            'visible'               => 1,
+   316→   316→            'featured'              => 0,
+   317→   317→            'display_order'         => 0,
+   318→   318→        );
+   319→   319→
+   320→   320→        // Build category options.
+   321→   321→        $cat_options = '<option value="">— None —</option>';
+   322→   322→        foreach ( $categories as $cat ) {
+   323→   323→            $cat_options .= '<option value="' . esc_attr( $cat->id ) . '">' . esc_html( $cat->name ) . '</option>';
+   324→   324→        }
+   325→   325→        ?>
+   326→   326→        <div class="wrap bv-admin-wrap" id="bv-form">
+   327→   327→            <h1 class="bv-page-title">
+   328→   328→                Add New Plan
+   329→   329→                <a href="<?php echo esc_url( admin_url( 'admin.php?page=bv-plans' ) ); ?>" class="page-title-action">← Back to list</a>
+   330→   330→            </h1>
+   331→   331→
+   332→   332→            <form method="post" action="" class="bv-form-card">
+   333→   333→                <?php wp_nonce_field( 'bv_save_plan', 'bv_plan_nonce' ); ?>
+   334→   334→                <input type="hidden" name="bv_action" value="bv_save_plan">
+   335→   335→
+   336→   336→                <div class="bv-form-grid">
+   337→   337→                    <div class="bv-form-main">
+   338→   338→                        <div class="bv-field-row">
+   339→   339→                            <div class="bv-field" style="flex:2;">
+   340→   340→                                <label for="plan-name">Plan Name <span class="required">*</span></label>
+   341→   341→                                <input type="text" id="plan-name" name="name" value="" required class="large-text" placeholder="e.g. Starter Plan">
+   342→   342→                            </div>
+   343→   343→                            <div class="bv-field" style="flex:1;">
+   344→   344→                                <label for="plan-color">Color</label>
+   345→   345→                                <input type="color" id="plan-color" name="color" value="#002B5C" style="width:100%; height:38px; border:none; cursor:pointer; border-radius:4px;">
+   346→   346→                            </div>
+   347→   347→                        </div>
+   348→   348→
+   349→   349→                        <div class="bv-field">
+   350→   350→                            <label for="plan-subtitle">Subtitle</label>
+   351→   351→                            <input type="text" id="plan-subtitle" name="subtitle" value="" class="large-text" placeholder="e.g. Perfect for small businesses">
+   352→   352→                        </div>
+   353→   353→
+   354→   354→                        <div class="bv-field-row">
+   355→   355→                            <div class="bv-field" style="flex:1;">
+   356→   356→                                <label for="plan-price">Monthly Price (ZAR) <span class="required">*</span></label>
+   357→   357→                                <input type="number" id="plan-price" name="price" value="0" required step="0.01" min="0" class="regular-text" placeholder="0.00">
+   358→   358→                            </div>
+   359→   359→                            <div class="bv-field" style="flex:1;">
+   360→   360→                                <label for="plan-order">Display Order</label>
+   361→   361→                                <input type="number" id="plan-order" name="display_order" value="0" min="0" class="small-text">
+   362→   362→                            </div>
+   363→   363→                        </div>
+   364→   364→
+   365→   365→                        <!-- Features Section -->
+   366→   366→                        <div class="bv-field">
+   367→   367→                            <label>Plan Features</label>
+   368→   368→                            <div id="bv-features-list">
+   369→   369→                                <div class="bv-feature-row">
+   370→   370→                                    <input type="text" name="features[]" value="" class="regular-text" placeholder="Feature description">
+   371→   371→                                    <button type="button" class="button bv-remove-feature" title="Remove feature">−</button>
+   372→   372→                                </div>
+   373→   373→                            </div>
+   374→   374→                            <button type="button" class="button" id="bv-add-feature" style="margin-top:8px;">+ Add Feature</button>
+   375→   375→                        </div>
+   376→   376→                    </div>
+   377→   377→
+   378→   378→                    <div class="bv-form-sidebar">
+   379→   379→                        <div class="bv-field">
+   380→   380→                            <label for="plan-category">Category</label>
+   381→   381→                            <select id="plan-category" name="category_id"><?php echo $cat_options; ?></select>
+   382→   382→                        </div>
+   383→   383→
+   384→   384→                        <div class="bv-field">
+   385→   385→                            <label for="plan-button-label">Button Label</label>
+   386→   386→                            <input type="text" id="plan-button-label" name="button_label" value="GET STARTED" class="regular-text">
+   387→   387→                        </div>
+   388→   388→
+   389→   389→                        <div class="bv-field">
+   390→   390→                            <label for="plan-button-type">Button Type</label>
+   391→   391→                            <select id="plan-button-type" name="button_type">
+   392→   392→                                <option value="cart" selected>Add to Cart</option>
+   393→   393→                                <option value="quote">Request Quote</option>
+   394→   394→                                <option value="booking">Book Consultation</option>
+   395→   395→                                <option value="link">External Link</option>
+   396→   396→                            </select>
+   397→   397→                        </div>
+   398→   398→
+   399→   399→                        <div class="bv-field" id="plan-url-field" style="display:none;">
+   400→   400→                            <label for="plan-button-url">Button URL</label>
+   401→   401→                            <input type="url" id="plan-button-url" name="button_url" value="" class="regular-text" placeholder="https://...">
+   402→   402→                        </div>
+   403→   403→
+   404→   404→                        <div class="bv-field">
+   405→   405→                            <label for="plan-wc-product">WooCommerce Product ID</label>
+   406→   406→                            <div style="display:flex; gap:6px; align-items:center;">
+   407→   407→                                <input type="text" id="plan-wc-product" name="woocommerce_product_id" value="" class="regular-text" placeholder="e.g. 42">
+   408→   408→                                <button type="button" class="button bv-browse-products" data-target="plan-wc-product">Browse</button>
+   409→   409→                            </div>
+   410→   410→                            <p class="description">Used for "Add to Cart" button type.</p>
+   411→   411→                        </div>
+   412→   412→
+   413→   413→                        <div class="bv-field bv-field-checkbox">
+   414→   414→                            <label><input type="checkbox" name="visible" value="1" checked> Visible</label>
+   415→   415→                        </div>
+   416→   416→
+   417→   417→                        <div class="bv-field bv-field-checkbox">
+   418→   418→                            <label><input type="checkbox" name="featured" value="1"> Featured</label>
+   419→   419→                        </div>
+   420→   420→                    </div>
+   421→   421→                </div>
+   422→   422→
+   423→   423→                <div class="bv-form-actions">
+   424→   424→                    <?php submit_button( 'Add Plan', 'primary', 'bv_submit', false ); ?>
+   425→   425→                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=bv-plans' ) ); ?>" class="button">Cancel</a>
+   426→   426→                </div>
+   427→   427→            </form>
+   428→   428→        </div>
+   429→   429→
+   430→   430→        <!-- WooCommerce Product Browse Modal -->
+   431→   431→        <div id="bv-wc-modal" style="display:none;">
+   432→   432→            <div class="bv-wc-modal-backdrop"></div>
+   433→   433→            <div class="bv-wc-modal-content">
+   434→   434→                <div class="bv-wc-modal-header">
+   435→   435→                    <h2>Select WooCommerce Product</h2>
+   436→   436→                    <button type="button" class="bv-wc-modal-close">&times;</button>
+   437→   437→                </div>
+   438→   438→                <div class="bv-wc-modal-body">
+   439→   439→                    <input type="text" id="bv-wc-search" class="regular-text" placeholder="Search products..." style="width:100%; margin-bottom:15px;">
+   440→   440→                    <div id="bv-wc-results" style="max-height:400px; overflow-y:auto;">
+   441→   441→                        <p class="bv-wc-loading" style="text-align:center; padding:40px;">Searching...</p>
+   442→   442→                    </div>
+   443→   443→                </div>
+   444→   444→            </div>
+   445→   445→        </div>
+   446→   446→        <?php
+   447→   447→    }
+   448→   448→
+   449→   449→    /**
+   450→   450→     * Handle save (create/update) plan and its features.
+   451→   451→     *
+   452→   452→     * @return void
+   453→   453→     */
+   454→   454→    private static function handle_save() {
+   455→   455→        if ( ! isset( $_POST['bv_action'] ) || $_POST['bv_action'] !== 'bv_save_plan' ) {
+   456→   456→            return;
+   457→   457→        }
+   458→   458→
+   459→   459→        if ( ! isset( $_POST['bv_plan_nonce'] ) || ! wp_verify_nonce( $_POST['bv_plan_nonce'], 'bv_save_plan' ) ) {
+   460→   460→            wp_die( 'Security check failed.' );
+   461→   461→        }
+   462→   462→
+   463→   463→        global $wpdb;
+   464→   464→        $table          = $wpdb->prefix . 'bv_plans';
+   465→   465→        $features_table = $wpdb->prefix . 'bv_plan_features';
+   466→   466→
+   467→   467→        $name      = sanitize_text_field( wp_unslash( $_POST['name'] ) );
+   468→   468→        $subtitle  = sanitize_text_field( wp_unslash( $_POST['subtitle'] ?? '' ) );
+   469→   469→        $price     = ! empty( $_POST['price'] ) ? floatval( $_POST['price'] ) : 0;
+   470→   470→        $color     = ! empty( $_POST['color'] ) ? sanitize_hex_color( wp_unslash( $_POST['color'] ) ) : '#002B5C';
+   471→   471→        $btn_label = sanitize_text_field( wp_unslash( $_POST['button_label'] ?? 'GET STARTED' ) );
+   472→   472→        $btn_type  = in_array( $_POST['button_type'] ?? 'cart', array( 'cart', 'quote', 'booking', 'link' ), true )
+   473→   473→                     ? $_POST['button_type'] : 'cart';
+   474→   474→        $btn_url   = esc_url_raw( wp_unslash( $_POST['button_url'] ?? '' ) );
+   475→   475→        $wc_id     = sanitize_text_field( wp_unslash( $_POST['woocommerce_product_id'] ?? '' ) );
+   476→   476→        $cat_id    = ! empty( $_POST['category_id'] ) ? absint( $_POST['category_id'] ) : null;
+   477→   477→        $visible   = isset( $_POST['visible'] ) ? 1 : 0;
+   478→   478→        $featured  = isset( $_POST['featured'] ) ? 1 : 0;
+   479→   479→        $order     = absint( $_POST['display_order'] ?? 0 );
+   480→   480→
+   481→   481→        // Features from the dynamic form.
+   482→   482→        $features_input = isset( $_POST['features'] ) && is_array( $_POST['features'] )
+   483→   483→            ? array_map( 'sanitize_text_field', wp_unslash( $_POST['features'] ) )
+   484→   484→            : array();
+   485→   485→
+   486→   486→        if ( empty( $name ) ) {
+   487→   487→            wp_admin_notice( 'Plan name is required.', array( 'type' => 'error' ) );
+   488→   488→            return;
+   489→   489→        }
+   490→   490→
+   491→   491→        $edit_id = isset( $_POST['plan_id'] ) ? absint( $_POST['plan_id'] ) : 0;
+   492→   492→
+   493→   493→        $data = array(
+   494→   494→            'name'                  => $name,
+   495→   495→            'subtitle'              => $subtitle,
+   496→   496→            'price'                 => $price,
+   497→   497→            'color'                 => $color,
+   498→   498→            'button_label'          => $btn_label,
+   499→   499→            'button_type'           => $btn_type,
+   500→   500→            'button_url'            => $btn_url,
+   501→   501→            'woocommerce_product_id' => $wc_id,
+   502→   502→            'category_id'           => $cat_id,
+   503→   503→            'visible'               => $visible,
+   504→   504→            'featured'              => $featured,
+   505→   505→            'display_order'         => $order,
+   506→   506→        );
+   507→   507→        $format = array( '%s', '%s', '%f', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d' );
+   508→   508→
+   509→   509→        if ( $edit_id > 0 ) {
+   510→   510→            $wpdb->update( $table, $data, array( 'id' => $edit_id ), $format, array( '%d' ) );
+   511→   511→
+   512→   512→            // Delete old features and insert new ones.
+   513→   513→            $wpdb->delete( $features_table, array( 'plan_id' => $edit_id ), array( '%d' ) );
+   514→   514→            foreach ( $features_input as $f_text ) {
+   515→   515→                if ( ! empty( trim( $f_text ) ) ) {
+   516→   516→                    $wpdb->insert(
+   517→   517→                        $features_table,
+   518→   518→                        array( 'plan_id' => $edit_id, 'text' => $f_text ),
+   519→   519→                        array( '%d', '%s' )
+   520→   520→                    );
+   521→   521→                }
+   522→   522→            }
+   523→   523→
+   524→   524→            wp_admin_notice( 'Plan updated successfully.', array( 'type' => 'success' ) );
+   525→   525→        } else {
+   526→   526→            $wpdb->insert( $table, $data, $format );
+   527→   527→            $edit_id = $wpdb->insert_id;
+   528→   528→
+   529→   529→            // Insert features.
+   530→   530→            foreach ( $features_input as $f_text ) {
+   531→   531→                if ( ! empty( trim( $f_text ) ) ) {
+   532→   532→                    $wpdb->insert(
+   533→   533→                        $features_table,
+   534→   534→                        array( 'plan_id' => $edit_id, 'text' => $f_text ),
+   535→   535→                        array( '%d', '%s' )
+   536→   536→                    );
+   537→   537→                }
+   538→   538→            }
+   539→   539→
+   540→   540→            wp_admin_notice( 'Plan created successfully.', array( 'type' => 'success' ) );
+   541→   541→        }
+   542→   542→
+   543→   543→        // Sync WooCommerce product meta.
+   544→   544→        if ( ! empty( $wc_id ) && function_exists( 'wc_get_product' ) ) {
+   545→   545→            update_post_meta( $wc_id, '_bv_plan_id', $edit_id );
+   546→   546→        }
+   547→   547→    }
+   548→   548→
+   549→   549→    /**
+   550→   550→     * Handle delete plan and its features.
+   551→   551→     *
+   552→   552→     * @return void
+   553→   553→     */
+   554→   554→    private static function handle_delete() {
+   555→   555→        if ( ! isset( $_GET['action'] ) || $_GET['action'] !== 'bv_delete_plan' ) {
+   556→   556→            return;
+   557→   557→        }
+   558→   558→
+   559→   559→        $id = isset( $_GET['id'] ) ? absint( $_GET['id'] ) : 0;
+   560→   560→        if ( $id <= 0 ) {
+   561→   561→            return;
+   562→   562→        }
+   563→   563→
+   564→   564→        if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( $_GET['_wpnonce'], 'bv_delete_plan_' . $id ) ) {
+   565→   565→            wp_die( 'Security check failed.' );
+   566→   566→        }
+   567→   567→
+   568→   568→        global $wpdb;
+   569→   569→        $plans_table    = $wpdb->prefix . 'bv_plans';
+   570→   570→        $features_table = $wpdb->prefix . 'bv_plan_features';
+   571→   571→
+   572→   572→        // Clean up WC meta.
+   573→   573→        $wc_id = $wpdb->get_var( $wpdb->prepare( "SELECT woocommerce_product_id FROM $plans_table WHERE id = %d", $id ) );
+   574→   574→        if ( ! empty( $wc_id ) ) {
+   575→   575→            delete_post_meta( $wc_id, '_bv_plan_id' );
+   576→   576→        }
+   577→   577→
+   578→   578→        $wpdb->delete( $features_table, array( 'plan_id' => $id ), array( '%d' ) );
+   579→   579→        $wpdb->delete( $plans_table, array( 'id' => $id ), array( '%d' ) );
+   580→   580→
+   581→   581→        wp_safe_redirect( admin_url( 'admin.php?page=bv-plans&bv_deleted=1' ) );
+   582→   582→        exit;
+   583→   583→    }
+   584→   584→
+   585→   585→    /**
+   586→   586→     * Handle visibility toggle for plans.
+   587→   587→     *
+   588→   588→     * @return void
+   589→   589→     */
+   590→   590→    public static function handle_visibility_toggle() {
+   591→   591→        if ( ! isset( $_GET['action'] ) || $_GET['action'] !== 'bv_toggle_plan_visibility' ) {
+   592→   592→            return;
+   593→   593→        }
+   594→   594→
+   595→   595→        $id = isset( $_GET['id'] ) ? absint( $_GET['id'] ) : 0;
+   596→   596→        if ( $id <= 0 ) {
+   597→   597→            return;
+   598→   598→        }
+   599→   599→
+   600→   600→        if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( $_GET['_wpnonce'], 'bv_toggle_visibility_' . $id ) ) {
+   601→   601→            wp_die( 'Security check failed.' );
+   602→   602→        }
+   603→   603→
+   604→   604→        global $wpdb;
+   605→   605→        $table = $wpdb->prefix . 'bv_plans';
+   606→   606→
+   607→   607→        $wpdb->query(
+   608→   608→            $wpdb->prepare( "UPDATE $table SET visible = IF(visible = 1, 0, 1) WHERE id = %d", $id )
+   609→   609→        );
+   610→   610→
+   611→   611→        wp_safe_redirect( admin_url( 'admin.php?page=bv-plans' ) );
+   612→   612→        exit;
+   613→   613→    }
+   614→   614→}
