@@ -1,0 +1,1576 @@
+     1→<?php
+     2→/**
+     3→ * Client Portal for BusinessVance Services Manager
+     4→ *
+     5→ * Provides a front-end portal for WooCommerce customers who have purchased
+     6→ * BusinessVance services. Includes project management, document handling,
+     7→ * questionnaire responses, agreement signing, messaging, and report downloads.
+     8→ *
+     9→ * @package BusinessVance_Services_Manager
+    10→ * @since   1.0.0
+    11→ */
+    12→
+    13→if ( ! defined( 'ABSPATH' ) ) {
+    14→        exit;
+    15→}
+    16→
+    17→class BV_Client_Portal {
+    18→
+    19→        /**
+    20→         * Constructor — hooks into WordPress.
+    21→         */
+    22→        public function __construct() {
+    23→                add_shortcode( 'businessvance_client_portal', array( $this, 'render_portal' ) );
+    24→                add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+    25→                add_action( 'wp_ajax_bv_portal_upload_document', array( $this, 'ajax_upload_document' ) );
+    26→                add_action( 'wp_ajax_bv_portal_submit_questionnaire', array( $this, 'ajax_submit_questionnaire' ) );
+    27→                add_action( 'wp_ajax_bv_portal_sign_agreement', array( $this, 'ajax_sign_agreement' ) );
+    28→                add_action( 'wp_ajax_bv_portal_send_message', array( $this, 'ajax_send_message' ) );
+    29→                add_action( 'wp_ajax_bv_portal_download_report', array( $this, 'ajax_download_report' ) );
+    30→        }
+    31→
+    32→        /* ==========================================================================
+    33→           SHORTCODE RENDERING
+    34→           ========================================================================== */
+    35→
+    36→        /**
+    37→         * Render the client portal shortcode output.
+    38→         *
+    39→         * @param array $atts Shortcode attributes.
+    40→         * @return string HTML output.
+    41→         */
+    42→        public function render_portal( $atts ) {
+    43→                if ( ! is_user_logged_in() ) {
+    44→                        return $this->render_login_prompt();
+    45→                }
+    46→
+    47→                global $wpdb;
+    48→
+    49→                $user_id    = get_current_user_id();
+    50→                $user       = get_userdata( $user_id );
+    51→                $first_name = get_user_meta( $user_id, 'first_name', true );
+    52→                $last_name  = get_user_meta( $user_id, 'last_name', true );
+    53→                $company    = get_user_meta( $user_id, 'billing_company', true );
+    54→                $display_name = $user->display_name;
+    55→
+    56→                // Determine active project.
+    57→                $active_project_id = isset( $_GET['project_id'] ) ? absint( $_GET['project_id'] ) : 0;
+    58→                $active_tab        = isset( $_GET['tab'] ) ? sanitize_text_field( $_GET['tab'] ) : 'overview';
+    59→
+    60→                // Fetch all projects for this client.
+    61→                $projects_table = $wpdb->prefix . 'bv_projects';
+    62→                $projects = $wpdb->get_results(
+    63→                        $wpdb->prepare(
+    64→                                "SELECT * FROM {$projects_table} WHERE client_user_id = %d ORDER BY created_at DESC",
+    65→                                $user_id
+    66→                        )
+    67→                );
+    68→
+    69→                if ( empty( $projects ) ) {
+    70→                        return $this->render_no_projects( $display_name );
+    71→                }
+    72→
+    73→                // If no active project, default to the first one.
+    74→                if ( ! $active_project_id ) {
+    75→                        $active_project_id = absint( $projects[0]->id );
+    76→                }
+    77→
+    78→                // Verify the active project belongs to this user.
+    79→                $active_project = null;
+    80→                foreach ( $projects as $p ) {
+    81→                        if ( absint( $p->id ) === $active_project_id ) {
+    82→                                $active_project = $p;
+    83→                                break;
+    84→                        }
+    85→                }
+    86→                if ( ! $active_project ) {
+    87→                        $active_project   = $projects[0];
+    88→                        $active_project_id = absint( $active_project->id );
+    89→                        $active_tab       = 'overview';
+    90→                }
+    91→
+    92→                // Load project details.
+    93→                $project_data = $this->load_project_data( $active_project_id );
+    94→
+    95→                // Valid tabs.
+    96→                $valid_tabs = array( 'overview', 'agreement', 'questionnaire', 'documents', 'reports', 'messages' );
+    97→                if ( ! in_array( $active_tab, $valid_tabs, true ) ) {
+    98→                        $active_tab = 'overview';
+    99→                }
+   100→
+   101→                // Build output.
+   102→                ob_start();
+   103→                ?>
+   104→                <div class="bv-portal" id="bv-portal-root">
+   105→                        <?php echo $this->render_portal_header( $display_name, $company ); ?>
+   106→                        <?php echo $this->render_project_sidebar( $projects, $active_project_id ); ?>
+   107→                        <?php echo $this->render_project_content( $active_project, $project_data, $active_tab ); ?>
+   108→                </div>
+   109→                <?php
+   110→                return ob_get_clean();
+   111→        }
+   112→
+   113→        /**
+   114→         * Load all related data for a project.
+   115→         *
+   116→         * @param int $project_id The project ID.
+   117→         * @return array Associative array of project data.
+   118→         */
+   119→        private function load_project_data( $project_id ) {
+   120→                global $wpdb;
+   121→
+   122→                $data = array(
+   123→                        'services'    => array(),
+   124→                        'agreement'   => null,
+   125→                        'documents'   => array(),
+   126→                        'responses'   => array(),
+   127→                        'reports'     => array(),
+   128→                        'messages'    => array(),
+   129→                        'notes_count' => 0,
+   130→                );
+   131→
+   132→                // Services.
+   133→                $data['services'] = $wpdb->get_results(
+   134→                        $wpdb->prepare(
+   135→                                "SELECT s.* FROM {$wpdb->prefix}bv_project_services ps
+   136→                                  JOIN {$wpdb->prefix}bv_services s ON ps.service_id = s.id
+   137→                                  WHERE ps.project_id = %d",
+   138→                                $project_id
+   139→                        )
+   140→                );
+   141→
+   142→                // Agreement.
+   143→                $agreements = $wpdb->get_results(
+   144→                        $wpdb->prepare(
+   145→                                "SELECT * FROM {$wpdb->prefix}bv_project_agreements
+   146→                                  WHERE project_id = %d ORDER BY id DESC LIMIT 1",
+   147→                                $project_id
+   148→                        )
+   149→                );
+   150→                $data['agreement'] = ! empty( $agreements ) ? $agreements[0] : null;
+   151→
+   152→                // Documents.
+   153→                $data['documents'] = $wpdb->get_results(
+   154→                        $wpdb->prepare(
+   155→                                "SELECT * FROM {$wpdb->prefix}bv_project_documents
+   156→                                  WHERE project_id = %d ORDER BY created_at DESC",
+   157→                                $project_id
+   158→                        )
+   159→                );
+   160→
+   161→                // Questionnaire responses.
+   162→                $data['responses'] = $wpdb->get_results(
+   163→                        $wpdb->prepare(
+   164→                                "SELECT r.*, q.label, q.type FROM {$wpdb->prefix}bv_questionnaire_responses r
+   165→                                  JOIN {$wpdb->prefix}bv_questionnaire_questions q ON r.question_id = q.id
+   166→                                  WHERE r.project_id = %d",
+   167→                                $project_id
+   168→                        )
+   169→                );
+   170→
+   171→                // Reports.
+   172→                $data['reports'] = $wpdb->get_results(
+   173→                        $wpdb->prepare(
+   174→                                "SELECT * FROM {$wpdb->prefix}bv_project_reports
+   175→                                  WHERE project_id = %d ORDER BY created_at DESC",
+   176→                                $project_id
+   177→                        )
+   178→                );
+   179→
+   180→                // Messages.
+   181→                $data['messages'] = $wpdb->get_results(
+   182→                        $wpdb->prepare(
+   183→                                "SELECT * FROM {$wpdb->prefix}bv_project_messages
+   184→                                  WHERE project_id = %d ORDER BY created_at ASC",
+   185→                                $project_id
+   186→                        )
+   187→                );
+   188→
+   189→                // Notes count (admin-only data, loaded but not displayed to client).
+   190→                $data['notes_count'] = (int) $wpdb->get_var(
+   191→                        $wpdb->prepare(
+   192→                                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_project_notes WHERE project_id = %d",
+   193→                                $project_id
+   194→                        )
+   195→                );
+   196→
+   197→                return $data;
+   198→        }
+   199→
+   200→        /* ==========================================================================
+   201→           RENDER HELPERS
+   202→           ========================================================================== */
+   203→
+   204→        /**
+   205→         * Render login prompt for unauthenticated users.
+   206→         */
+   207→        private function render_login_prompt() {
+   208→                $login_url = wp_login_url( get_permalink() );
+   209→                ob_start();
+   210→                ?>
+   211→                <div class="bv-portal bv-portal-login-prompt">
+   212→                        <style>
+   213→                                .bv-portal-login-prompt {
+   214→                                        max-width: 480px;
+   215→                                        margin: 60px auto;
+   216→                                        text-align: center;
+   217→                                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen-Sans, Ubuntu, Cantarell, sans-serif;
+   218→                                }
+   219→                                .bv-login-box {
+   220→                                        background: #fff;
+   221→                                        border-radius: 12px;
+   222→                                        padding: 48px 40px;
+   223→                                        box-shadow: 0 1px 4px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.04);
+   224→                                        border: 1px solid #e2e8f0;
+   225→                                }
+   226→                                .bv-login-icon {
+   227→                                        margin-bottom: 20px;
+   228→                                }
+   229→                                .bv-login-box h2 {
+   230→                                        margin: 0 0 12px;
+   231→                                        font-size: 22px;
+   232→                                        font-weight: 600;
+   233→                                        color: #002B5C;
+   234→                                }
+   235→                                .bv-login-box p {
+   236→                                        margin: 0 0 24px;
+   237→                                        font-size: 14px;
+   238→                                        color: #64748b;
+   239→                                        line-height: 1.6;
+   240→                                }
+   241→                                .bv-btn {
+   242→                                        display: inline-flex;
+   243→                                        align-items: center;
+   244→                                        justify-content: center;
+   245→                                        padding: 10px 24px;
+   246→                                        border-radius: 6px;
+   247→                                        font-size: 14px;
+   248→                                        font-weight: 500;
+   249→                                        cursor: pointer;
+   250→                                        border: none;
+   251→                                        text-decoration: none;
+   252→                                        transition: all 0.2s ease;
+   253→                                }
+   254→                                .bv-btn-primary {
+   255→                                        background: #002B5C;
+   256→                                        color: #fff;
+   257→                                }
+   258→                                .bv-btn-primary:hover {
+   259→                                        background: #003d7a;
+   260→                                        color: #fff;
+   261→                                }
+   262→                        </style>
+   263→                        <div class="bv-login-box">
+   264→                                <div class="bv-login-icon">
+   265→                                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#002B5C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+   266→                                </div>
+   267→                                <h2><?php esc_html_e( 'Client Portal Access', 'businessvance' ); ?></h2>
+   268→                                <p><?php esc_html_e( 'Please log in to access your BusinessVance service portal, manage your projects, download reports, and communicate with your consulting team.', 'businessvance' ); ?></p>
+   269→                                <a href="<?php echo esc_url( $login_url ); ?>" class="bv-btn bv-btn-primary"><?php esc_html_e( 'Log In to Your Account', 'businessvance' ); ?></a>
+   270→                        </div>
+   271→                </div>
+   272→                <?php
+   273→                return ob_get_clean();
+   274→        }
+   275→
+   276→        /**
+   277→         * Render the no-projects message.
+   278→         */
+   279→        private function render_no_projects( $display_name ) {
+   280→                ob_start();
+   281→                ?>
+   282→                <div class="bv-portal">
+   283→                        <?php echo $this->render_portal_header( $display_name, '' ); ?>
+   284→                        <div class="bv-no-projects">
+   285→                                <style>
+   286→                                        .bv-no-projects {
+   287→                                                display: flex;
+   288→                                                align-items: center;
+   289→                                                justify-content: center;
+   290→                                                min-height: 400px;
+   291→                                        }
+   292→                                        .bv-empty-state {
+   293→                                                text-align: center;
+   294→                                                padding: 60px 40px;
+   295→                                        }
+   296→                                        .bv-empty-icon {
+   297→                                                margin-bottom: 16px;
+   298→                                        opacity: 0.6;
+   299→                                        }
+   300→                                        .bv-empty-state h3 {
+   301→                                                margin: 0 0 8px;
+   302→                                                font-size: 18px;
+   303→                                                font-weight: 600;
+   304→                                                color: #334155;
+   305→                                        }
+   306→                                        .bv-empty-state p {
+   307→                                                margin: 0;
+   308→                                                font-size: 14px;
+   309→                                                color: #64748b;
+   310→                                                max-width: 400px;
+   311→                                                margin-left: auto;
+   312→                                                margin-right: auto;
+   313→                                        }
+   314→                                </style>
+   315→                                <div class="bv-empty-state">
+   316→                                        <div class="bv-empty-icon">
+   317→                                                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+   318→                                        </div>
+   319→                                        <h3><?php esc_html_e( 'No Active Projects', 'businessvance' ); ?></h3>
+   320→                                        <p><?php esc_html_e( "You don't have any active projects yet. Once you purchase a BusinessVance service, your projects will appear here.", 'businessvance' ); ?></p>
+   321→                                </div>
+   322→                        </div>
+   323→                </div>
+   324→                <?php
+   325→                return ob_get_clean();
+   326→        }
+   327→
+   328→        /**
+   329→         * Render the portal header.
+   330→         */
+   331→        private function render_portal_header( $display_name, $company ) {
+   332→                ob_start();
+   333→                ?>
+   334→                <header class="bv-portal-header">
+   335→                        <div class="bv-header-inner">
+   336→                                <div class="bv-header-brand">
+   337→                                        <span class="bv-logo-mark"></span>
+   338→                                        <span class="bv-logo-text">BusinessVance</span>
+   339→                                </div>
+   340→                                <div class="bv-header-user">
+   341→                                        <div class="bv-user-info">
+   342→                                                <span class="bv-user-avatar"><?php echo esc_html( mb_substr( $display_name, 0, 1, 'UTF-8' ) ); ?></span>
+   343→                                                <div class="bv-user-details">
+   344→                                                        <span class="bv-user-name"><?php echo esc_html( $display_name ); ?></span>
+   345→                                                        <?php if ( $company ) : ?>
+   346→                                                                <span class="bv-user-company"><?php echo esc_html( $company ); ?></span>
+   347→                                                        <?php endif; ?>
+   348→                                                </div>
+   349→                                        </div>
+   350→                                        <a href="<?php echo esc_url( wp_logout_url( get_permalink() ) ); ?>" class="bv-logout-link"><?php esc_html_e( 'Sign Out', 'businessvance' ); ?></a>
+   351→                                </div>
+   352→                        </div>
+   353→                </header>
+   354→                <?php
+   355→                return ob_get_clean();
+   356→        }
+   357→
+   358→        /**
+   359→         * Render the project sidebar.
+   360→         */
+   361→        private function render_project_sidebar( $projects, $active_project_id ) {
+   362→                ob_start();
+   363→                ?>
+   364→                <aside class="bv-sidebar" id="bv-sidebar">
+   365→                        <div class="bv-sidebar-header">
+   366→                                <h3 class="bv-sidebar-title"><?php esc_html_e( 'Your Projects', 'businessvance' ); ?></h3>
+   367→                                <span class="bv-sidebar-count"><?php echo esc_html( count( $projects ) ); ?></span>
+   368→                        </div>
+   369→                        <div class="bv-sidebar-projects">
+   370→                                <?php foreach ( $projects as $project ) : ?>
+   371→                                        <?php
+   372→                                        $is_active  = absint( $project->id ) === $active_project_id;
+   373→                                        $status     = isset( $project->status ) ? $project->status : 'pending';
+   374→                                        $status_lbl = $this->get_status_label( $status );
+   375→                                        $progress   = isset( $project->progress ) ? absint( $project->progress ) : 0;
+   376→                                        $created    = isset( $project->created_at ) ? $project->created_at : '';
+   377→                                        ?>
+   378→                                        <a href="<?php echo esc_url( add_query_arg( 'project_id', absint( $project->id ), get_permalink() ) ); ?>"
+   379→                                           class="bv-project-card <?php echo $is_active ? 'bv-project-card--active' : ''; ?>">
+   380→                                                <div class="bv-project-card-top">
+   381→                                                        <span class="bv-project-name"><?php echo esc_html( $project->name ); ?></span>
+   382→                                                        <span class="bv-status-badge bv-status-badge--<?php echo esc_attr( $status ); ?>"><?php echo esc_html( $status_lbl ); ?></span>
+   383→                                                </div>
+   384→                                                <?php if ( ! empty( $project->description ) ) : ?>
+   385→                                                        <p class="bv-project-desc"><?php echo esc_html( mb_substr( $project->description, 0, 80 ) ); ?><?php echo mb_strlen( $project->description ) > 80 ? '&hellip;' : ''; ?></p>
+   386→                                                <?php endif; ?>
+   387→                                                <div class="bv-project-card-progress">
+   388→                                                        <div class="bv-progress-bar">
+   389→                                                                <div class="bv-progress-fill" style="width: <?php echo esc_attr( $progress ); ?>%;"></div>
+   390→                                                        </div>
+   391→                                                        <span class="bv-progress-text"><?php echo esc_html( $progress ); ?>%</span>
+   392→                                                </div>
+   393→                                                <?php if ( $created ) : ?>
+   394→                                                        <span class="bv-project-date"><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $created ) ) ); ?></span>
+   395→                                                <?php endif; ?>
+   396→                                        </a>
+   397→                                <?php endforeach; ?>
+   398→                                </div>
+   399→                        </aside>
+   400→                <?php
+   401→                return ob_get_clean();
+   402→        }
+   403→
+   404→        /**
+   405→         * Render the main project content area with tabs.
+   406→         */
+   407→        private function render_project_content( $project, $data, $active_tab ) {
+   408→                $project_id  = absint( $project->id );
+   409→                $base_url    = add_query_arg( 'project_id', $project_id, get_permalink() );
+   410→                $nonce       = wp_create_nonce( 'bv_portal_action' );
+   411→                $ajax_url    = admin_url( 'admin-ajax.php' );
+   412→
+   413→                $tabs = array(
+   414→                        'overview'      => array(
+   415→                                'label' => __( 'Overview', 'businessvance' ),
+   416→                                'icon'  => 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1',
+   417→                        ),
+   418→                        'agreement'     => array(
+   419→                                'label' => __( 'Agreement', 'businessvance' ),
+   420→                                'icon'  => 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+   421→                        ),
+   422→                        'questionnaire' => array(
+   423→                                'label' => __( 'Questionnaire', 'businessvance' ),
+   424→                                'icon'  => 'M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+   425→                        ),
+   426→                        'documents'     => array(
+   427→                                'label' => __( 'Documents', 'businessvance' ),
+   428→                                'icon'  => 'M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12',
+   429→                        ),
+   430→                        'reports'       => array(
+   431→                                'label' => __( 'Reports', 'businessvance' ),
+   432→                                'icon'  => 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+   433→                        ),
+   434→                        'messages'      => array(
+   435→                                'label' => __( 'Messages', 'businessvance' ),
+   436→                                'icon'  => 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z',
+   437→                        ),
+   438→                );
+   439→
+   440→                // Unread messages count.
+   441→                $unread = 0;
+   442→                foreach ( $data['messages'] as $msg ) {
+   443→                        if ( isset( $msg->is_read ) && ! $msg->is_read && isset( $msg->sender_role ) && $msg->sender_role !== 'client' ) {
+   444→                                $unread++;
+   445→                        }
+   446→                }
+   447→
+   448→                ob_start();
+   449→                ?>
+   450→                <main class="bv-content" id="bv-content">
+   451→                        <!-- Project Title -->
+   452→                        <div class="bv-content-header">
+   453→                                <div>
+   454→                                        <h1 class="bv-content-title"><?php echo esc_html( $project->name ); ?></h1>
+   455→                                        <p class="bv-content-subtitle"><?php echo esc_html( isset( $project->description ) ? $project->description : '' ); ?></p>
+   456→                                </div>
+   457→                                <span class="bv-status-badge bv-status-badge--<?php echo esc_attr( isset( $project->status ) ? $project->status : 'pending' ); ?> bv-status-badge--lg"><?php echo esc_html( $this->get_status_label( isset( $project->status ) ? $project->status : 'pending' ) ); ?></span>
+   458→                        </div>
+   459→
+   460→                        <!-- Tabs -->
+   461→                        <nav class="bv-tabs" role="tablist">
+   462→                                <?php foreach ( $tabs as $tab_slug => $tab_info ) : ?>
+   463→                                        <?php
+   464→                                        $is_current = ( $tab_slug === $active_tab );
+   465→                                        $badge = '';
+   466→                                        if ( 'messages' === $tab_slug && $unread > 0 ) {
+   467→                                                $badge = '<span class="bv-tab-badge">' . esc_html( $unread ) . '</span>';
+   468→                                        }
+   469→                                        ?>
+   470→                                        <a href="<?php echo esc_url( add_query_arg( 'tab', $tab_slug, $base_url ) ); ?>"
+   471→                                           class="bv-tab <?php echo $is_current ? 'bv-tab--active' : ''; ?>"
+   472→                                           role="tab"
+   473→                                           aria-selected="<?php echo $is_current ? 'true' : 'false'; ?>">
+   474→                                                <svg class="bv-tab-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="<?php echo esc_attr( $tab_info['icon'] ); ?>"/></svg>
+   475→                                                <span><?php echo esc_html( $tab_info['label'] ); ?></span>
+   476→                                                <?php echo $badge; ?>
+   477→                                        </a>
+   478→                                <?php endforeach; ?>
+   479→                        </nav>
+   480→
+   481→                        <!-- Tab Content -->
+   482→                        <div class="bv-tab-content">
+   483→                                <?php
+   484→                                switch ( $active_tab ) {
+   485→                                        case 'overview':
+   486→                                                echo $this->render_tab_overview( $project, $data );
+   487→                                                break;
+   488→                                        case 'agreement':
+   489→                                                echo $this->render_tab_agreement( $project, $data, $nonce, $ajax_url );
+   490→                                                break;
+   491→                                        case 'questionnaire':
+   492→                                                echo $this->render_tab_questionnaire( $project, $data, $nonce, $ajax_url );
+   493→                                                break;
+   494→                                        case 'documents':
+   495→                                                echo $this->render_tab_documents( $project, $data, $nonce, $ajax_url );
+   496→                                                break;
+   497→                                        case 'reports':
+   498→                                                echo $this->render_tab_reports( $project, $data, $nonce, $ajax_url );
+   499→                                                break;
+   500→                                        case 'messages':
+   501→                                                echo $this->render_tab_messages( $project, $data, $nonce, $ajax_url );
+   502→                                                break;
+   503→                                }
+   504→                                ?>
+   505→                        </div>
+   506→
+   507→                        <!-- Hidden data for JS -->
+   508→                        <input type="hidden" id="bv_portal_nonce" value="<?php echo esc_attr( $nonce ); ?>" />
+   509→                        <input type="hidden" id="bv_portal_ajax" value="<?php echo esc_url( $ajax_url ); ?>" />
+   510→                        <input type="hidden" id="bv_portal_project_id" value="<?php echo esc_attr( $project_id ); ?>" />
+   511→                </main>
+   512→                <?php
+   513→                return ob_get_clean();
+   514→        }
+   515→
+   516→        /* ==========================================================================
+   517→           TAB RENDERERS
+   518→           ========================================================================== */
+   519→
+   520→        /**
+   521→         * Render the Overview tab.
+   522→         */
+   523→        private function render_tab_overview( $project, $data ) {
+   524→                $status    = isset( $project->status ) ? $project->status : 'pending';
+   525→                $progress  = isset( $project->progress ) ? absint( $project->progress ) : 0;
+   526→                $created   = isset( $project->created_at ) ? $project->created_at : '';
+   527→                $updated   = isset( $project->updated_at ) ? $project->updated_at : '';
+   528→                $deadline  = isset( $project->deadline ) ? $project->deadline : '';
+   529→                $budget    = isset( $project->budget ) ? $project->budget : '';
+   530→
+   531→                ob_start();
+   532→                ?>
+   533→                <div class="bv-overview">
+   534→                        <!-- Stats Row -->
+   535→                        <div class="bv-stats-row">
+   536→                                <div class="bv-stat-card">
+   537→                                        <span class="bv-stat-label"><?php esc_html_e( 'Status', 'businessvance' ); ?></span>
+   538→                                        <span class="bv-stat-value bv-status-badge bv-status-badge--<?php echo esc_attr( $status ); ?>"><?php echo esc_html( $this->get_status_label( $status ) ); ?></span>
+   539→                                </div>
+   540→                                <div class="bv-stat-card">
+   541→                                        <span class="bv-stat-label"><?php esc_html_e( 'Progress', 'businessvance' ); ?></span>
+   542→                                        <span class="bv-stat-value"><?php echo esc_html( $progress ); ?>%</span>
+   543→                                        <div class="bv-progress-bar bv-progress-bar--lg">
+   544→                                                <div class="bv-progress-fill" style="width: <?php echo esc_attr( $progress ); ?>%;"></div>
+   545→                                        </div>
+   546→                                </div>
+   547→                                <div class="bv-stat-card">
+   548→                                        <span class="bv-stat-label"><?php esc_html_e( 'Services', 'businessvance' ); ?></span>
+   549→                                        <span class="bv-stat-value"><?php echo esc_html( count( $data['services'] ) ); ?></span>
+   550→                                </div>
+   551→                                <div class="bv-stat-card">
+   552→                                        <span class="bv-stat-label"><?php esc_html_e( 'Documents', 'businessvance' ); ?></span>
+   553→                                        <span class="bv-stat-value"><?php echo esc_html( count( $data['documents'] ) ); ?></span>
+   554→                                </div>
+   555→                                <div class="bv-stat-card">
+   556→                                        <span class="bv-stat-label"><?php esc_html_e( 'Reports', 'businessvance' ); ?></span>
+   557→                                        <span class="bv-stat-value"><?php echo esc_html( count( $data['reports'] ) ); ?></span>
+   558→                                </div>
+   559→                                <div class="bv-stat-card">
+   560→                                        <span class="bv-stat-label"><?php esc_html_e( 'Messages', 'businessvance' ); ?></span>
+   561→                                        <span class="bv-stat-value"><?php echo esc_html( count( $data['messages'] ) ); ?></span>
+   562→                                </div>
+   563→                        </div>
+   564→
+   565→                        <!-- Details Grid -->
+   566→                        <div class="bv-details-grid">
+   567→                                <div class="bv-detail-card">
+   568→                                        <h3 class="bv-detail-card-title"><?php esc_html_e( 'Project Details', 'businessvance' ); ?></h3>
+   569→                                        <div class="bv-detail-list">
+   570→                                                <div class="bv-detail-item">
+   571→                                                        <span class="bv-detail-label"><?php esc_html_e( 'Created', 'businessvance' ); ?></span>
+   572→                                                        <span class="bv-detail-value"><?php echo $created ? esc_html( date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $created ) ) ) : '—'; ?></span>
+   573→                                                </div>
+   574→                                                <div class="bv-detail-item">
+   575→                                                        <span class="bv-detail-label"><?php esc_html_e( 'Last Updated', 'businessvance' ); ?></span>
+   576→                                                        <span class="bv-detail-value"><?php echo $updated ? esc_html( date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $updated ) ) ) : '—'; ?></span>
+   577→                                                </div>
+   578→                                                <?php if ( $deadline ) : ?>
+   579→                                                <div class="bv-detail-item">
+   580→                                                        <span class="bv-detail-label"><?php esc_html_e( 'Deadline', 'businessvance' ); ?></span>
+   581→                                                        <span class="bv-detail-value <?php echo ( strtotime( $deadline ) < time() && 'completed' !== $status ) ? 'bv-text-danger' : ''; ?>"><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $deadline ) ) ); ?></span>
+   582→                                                </div>
+   583→                                                <?php endif; ?>
+   584→                                                <?php if ( $budget ) : ?>
+   585→                                                <div class="bv-detail-item">
+   586→                                                        <span class="bv-detail-label"><?php esc_html_e( 'Budget', 'businessvance' ); ?></span>
+   587→                                                        <span class="bv-detail-value"><?php echo esc_html( function_exists( 'wc_price' ) ? wc_price( $budget ) : '$' . number_format( (float) $budget, 2 ) ); ?></span>
+   588→                                                </div>
+   589→                                                <?php endif; ?>
+   590→                                        </div>
+   591→                                </div>
+   592→
+   593→                                <!-- Services Card -->
+   594→                                <div class="bv-detail-card">
+   595→                                        <h3 class="bv-detail-card-title"><?php esc_html_e( 'Included Services', 'businessvance' ); ?></h3>
+   596→                                        <?php if ( ! empty( $data['services'] ) ) : ?>
+   597→                                                <ul class="bv-service-list">
+   598→                                                        <?php foreach ( $data['services'] as $svc ) : ?>
+   599→                                                                <li class="bv-service-item">
+   600→                                                                        <span class="bv-service-name"><?php echo esc_html( $svc->name ); ?></span>
+   601→                                                                        <?php if ( ! empty( $svc->description ) ) : ?>
+   602→                                                                                <span class="bv-service-desc"><?php echo esc_html( $svc->description ); ?></span>
+   603→                                                                        <?php endif; ?>
+   604→                                                                </li>
+   605→                                                        <?php endforeach; ?>
+   606→                                                </ul>
+   607→                                        <?php else : ?>
+   608→                                                <p class="bv-empty-text"><?php esc_html_e( 'No services assigned yet.', 'businessvance' ); ?></p>
+   609→                                        <?php endif; ?>
+   610→                                </div>
+   611→
+   612→                                <!-- Timeline Card -->
+   613→                                <div class="bv-detail-card">
+   614→                                        <h3 class="bv-detail-card-title"><?php esc_html_e( 'Timeline', 'businessvance' ); ?></h3>
+   615→                                        <div class="bv-timeline">
+   616→                                                <?php
+   617→                                                $phases = $this->get_project_phases( $status, $progress );
+   618→                                                foreach ( $phases as $i => $phase ) :
+   619→                                                        ?>
+   620→                                                        <div class="bv-timeline-item <?php echo $phase['active'] ? 'bv-timeline-item--active' : ''; ?> <?php echo $phase['done'] ? 'bv-timeline-item--done' : ''; ?>">
+   621→                                                                <div class="bv-timeline-dot"></div>
+   622→                                                                <div class="bv-timeline-content">
+   623→                                                                        <span class="bv-timeline-label"><?php echo esc_html( $phase['label'] ); ?></span>
+   624→                                                                        <span class="bv-timeline-status"><?php echo esc_html( $phase['status_text'] ); ?></span>
+   625→                                                                </div>
+   626→                                                        </div>
+   627→                                                <?php endforeach; ?>
+   628→                                        </div>
+   629→                                </div>
+   630→                        </div>
+   631→
+   632→                        <!-- Quick Actions -->
+   633→                        <div class="bv-quick-actions">
+   634→                                <h3 class="bv-section-title"><?php esc_html_e( 'Quick Actions', 'businessvance' ); ?></h3>
+   635→                                <div class="bv-actions-grid">
+   636→                                        <?php if ( $data['agreement'] && empty( $data['agreement']->signed_at ) ) : ?>
+   637→                                                <a href="<?php echo esc_url( add_query_arg( 'tab', 'agreement', $base_url ) ); ?>" class="bv-action-card bv-action-card--warning">
+   638→                                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+   639→                                                        <span class="bv-action-label"><?php esc_html_e( 'Sign Agreement', 'businessvance' ); ?></span>
+   640→                                                        <span class="bv-action-desc"><?php esc_html_e( 'Review and sign your service agreement', 'businessvance' ); ?></span>
+   641→                                                </a>
+   642→                                        <?php endif; ?>
+   643→                                        <a href="<?php echo esc_url( add_query_arg( 'tab', 'documents', $base_url ) ); ?>" class="bv-action-card">
+   644→                                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+   645→                                                <span class="bv-action-label"><?php esc_html_e( 'Upload Document', 'businessvance' ); ?></span>
+   646→                                                <span class="bv-action-desc"><?php esc_html_e( 'Share files with your consultant', 'businessvance' ); ?></span>
+   647→                                        </a>
+   648→                                        <a href="<?php echo esc_url( add_query_arg( 'tab', 'messages', $base_url ) ); ?>" class="bv-action-card">
+   649→                                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7A8.38 8.38 0 013 12a8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
+   650→                                                <span class="bv-action-label"><?php esc_html_e( 'Send Message', 'businessvance' ); ?></span>
+   651→                                                <span class="bv-action-desc"><?php esc_html_e( 'Communicate with your team', 'businessvance' ); ?></span>
+   652→                                        </a>
+   653→                                </div>
+   654→                        </div>
+   655→                </div>
+   656→                <?php
+   657→                return ob_get_clean();
+   658→        }
+   659→
+   660→        /**
+   661→         * Render the Agreement tab.
+   662→         */
+   663→        private function render_tab_agreement( $project, $data, $nonce, $ajax_url ) {
+   664→                $agreement = $data['agreement'];
+   665→                ob_start();
+   666→                ?>
+   667→                <div class="bv-agreement" id="bv-agreement-section">
+   668→                        <?php if ( $agreement ) : ?>
+   669→                                <div class="bv-agreement-header">
+   670→                                        <h2 class="bv-section-title"><?php esc_html_e( 'Service Agreement', 'businessvance' ); ?></h2>
+   671→                                        <?php if ( ! empty( $agreement->signed_at ) ) : ?>
+   672→                                                <span class="bv-signed-badge">
+   673→                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2A9D8F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+   674→                                                        <?php esc_html_e( 'Signed', 'businessvance' ); ?>
+   675→                                                </span>
+   676→                                        <?php else : ?>
+   677→                                                <span class="bv-pending-badge"><?php esc_html_e( 'Awaiting Your Signature', 'businessvance' ); ?></span>
+   678→                                        <?php endif; ?>
+   679→                                </div>
+   680→
+   681→                                <div class="bv-agreement-meta">
+   682→                                        <?php if ( ! empty( $agreement->created_at ) ) : ?>
+   683→                                                <span class="bv-meta-item">
+   684→                                                        <strong><?php esc_html_e( 'Issued:', 'businessvance' ); ?></strong>
+   685→                                                        <?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $agreement->created_at ) ) ); ?>
+   686→                                                </span>
+   687→                                        <?php endif; ?>
+   688→                                        <?php if ( ! empty( $agreement->signed_at ) ) : ?>
+   689→                                                <span class="bv-meta-item">
+   690→                                                        <strong><?php esc_html_e( 'Signed:', 'businessvance' ); ?></strong>
+   691→                                                        <?php echo esc_html( date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $agreement->signed_at ) ) ); ?>
+   692→                                                </span>
+   693→                                        <?php endif; ?>
+   694→                                        <?php if ( ! empty( $agreement->signature_ip ) ) : ?>
+   695→                                                <span class="bv-meta-item">
+   696→                                                        <strong><?php esc_html_e( 'IP Address:', 'businessvance' ); ?></strong>
+   697→                                                        <?php echo esc_html( $agreement->signature_ip ); ?>
+   698→                                                </span>
+   699→                                        <?php endif; ?>
+   700→                                </div>
+   701→
+   702→                                <div class="bv-agreement-body">
+   703→                                        <?php
+   704→                                        $agreement_text = ! empty( $agreement->content ) ? $agreement->content : ( ! empty( $agreement->text ) ? $agreement->text : '' );
+   705→                                        if ( $agreement_text ) :
+   706→                                                echo wpautop( wp_kses_post( $agreement_text ) );
+   707→                                        else :
+   708→                                        ?>
+   709→                                                <p class="bv-empty-text"><?php esc_html_e( 'The agreement content has not been added yet.', 'businessvance' ); ?></p>
+   710→                                        <?php endif; ?>
+   711→                                </div>
+   712→
+   713→                                <?php if ( empty( $agreement->signed_at ) && ! empty( $agreement_text ) ) : ?>
+   714→                                        <div class="bv-agreement-actions">
+   715→                                                <label class="bv-agreement-checkbox-label">
+   716→                                                        <input type="checkbox" id="bv-agree-checkbox" class="bv-agree-checkbox" />
+   717→                                                        <?php esc_html_e( 'I have read and agree to the terms and conditions outlined above.', 'businessvance' ); ?>
+   718→                                                </label>
+   719→                                                <button type="button"
+   720→                                                                id="bv-sign-agreement-btn"
+   721→                                                                class="bv-btn bv-btn-primary"
+   722→                                                                disabled
+   723→                                                                data-project-id="<?php echo esc_attr( absint( $project->id ) ); ?>"
+   724→                                                                data-agreement-id="<?php echo esc_attr( absint( $agreement->id ) ); ?>">
+   725→                                                        <?php esc_html_e( 'Sign Agreement', 'businessvance' ); ?>
+   726→                                                </button>
+   727→                                        </div>
+   728→                                <?php endif; ?>
+   729→                        <?php else : ?>
+   730→                                <div class="bv-empty-state">
+   731→                                        <div class="bv-empty-icon">
+   732→                                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+   733→                                        </div>
+   734→                                        <h3><?php esc_html_e( 'No Agreement Yet', 'businessvance' ); ?></h3>
+   735→                                        <p><?php esc_html_e( 'An agreement will be prepared by your consultant and made available here for your review and signature.', 'businessvance' ); ?></p>
+   736→                                </div>
+   737→                        <?php endif; ?>
+   738→                </div>
+   739→                <?php
+   740→                return ob_get_clean();
+   741→        }
+   742→
+   743→        /**
+   744→         * Render the Questionnaire tab.
+   745→         */
+   746→        private function render_tab_questionnaire( $project, $data, $nonce, $ajax_url ) {
+   747→                $responses = $data['responses'];
+   748→                ob_start();
+   749→                ?>
+   750→                <div class="bv-questionnaire" id="bv-questionnaire-section">
+   751→                        <div class="bv-questionnaire-header">
+   752→                                <h2 class="bv-section-title"><?php esc_html_e( 'Project Questionnaire', 'businessvance' ); ?></h2>
+   753→                                <p class="bv-section-desc"><?php esc_html_e( 'Please complete all questions to help your consultant better understand your needs.', 'businessvance' ); ?></p>
+   754→                        </div>
+   755→
+   756→                        <?php if ( ! empty( $responses ) ) : ?>
+   757→                                <form id="bv-questionnaire-form" class="bv-questionnaire-form" data-project-id="<?php echo esc_attr( absint( $project->id ) ); ?>">
+   758→                                        <?php foreach ( $responses as $resp ) : ?>
+   759→                                                <div class="bv-question-group">
+   760→                                                        <label class="bv-question-label" for="bv-q-<?php echo esc_attr( absint( $resp->question_id ) ); ?>">
+   761→                                                                <?php echo esc_html( $resp->label ); ?>
+   762→                                                        </label>
+   763→                                                        <?php
+   764→                                                        $q_type   = isset( $resp->type ) ? $resp->type : 'text';
+   765→                                                        $value    = isset( $resp->response ) ? $resp->response : '';
+   766→                                                        $q_id     = absint( $resp->question_id );
+   767→                                                        ?>
+   768→                                                        <input type="hidden" name="question_ids[]" value="<?php echo esc_attr( $q_id ); ?>" />
+   769→                                                        <?php if ( 'textarea' === $q_type ) : ?>
+   770→                                                                <textarea id="bv-q-<?php echo esc_attr( $q_id ); ?>" name="answers[<?php echo esc_attr( $q_id ); ?>]" class="bv-input bv-textarea" rows="4"><?php echo esc_textarea( $value ); ?></textarea>
+   771→                                                        <?php elseif ( 'select' === $q_type ) : ?>
+   772→                                                                <select id="bv-q-<?php echo esc_attr( $q_id ); ?>" name="answers[<?php echo esc_attr( $q_id ); ?>]" class="bv-input bv-select">
+   773→                                                                        <option value=""><?php esc_html_e( 'Select...', 'businessvance' ); ?></option>
+   774→                                                                        <?php
+   775→                                                                        $options = ! empty( $resp->options ) ? maybe_unserialize( $resp->options ) : array();
+   776→                                                                        if ( ! is_array( $options ) ) {
+   777→                                                                                $options = array();
+   778→                                                                        }
+   779→                                                                        foreach ( $options as $opt ) : ?>
+   780→                                                                                <option value="<?php echo esc_attr( $opt ); ?>" <?php selected( $value, $opt ); ?>><?php echo esc_html( $opt ); ?></option>
+   781→                                                                        <?php endforeach; ?>
+   782→                                                                </select>
+   783→                                                        <?php else : ?>
+   784→                                                                <input type="text" id="bv-q-<?php echo esc_attr( $q_id ); ?>" name="answers[<?php echo esc_attr( $q_id ); ?>]" class="bv-input" value="<?php echo esc_attr( $value ); ?>" />
+   785→                                                        <?php endif; ?>
+   786→                                                </div>
+   787→                                        <?php endforeach; ?>
+   788→                                        <div class="bv-form-actions">
+   789→                                                <button type="submit" class="bv-btn bv-btn-primary" id="bv-save-questionnaire-btn">
+   790→                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+   791→                                                        <?php esc_html_e( 'Save Responses', 'businessvance' ); ?>
+   792→                                                </button>
+   793→                                                <span class="bv-save-indicator" id="bv-save-indicator"></span>
+   794→                                        </div>
+   795→                                </form>
+   796→                        <?php else : ?>
+   797→                                <div class="bv-empty-state">
+   798→                                        <div class="bv-empty-icon">
+   799→                                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+   800→                                        </div>
+   801→                                        <h3><?php esc_html_e( 'No Questionnaire Available', 'businessvance' ); ?></h3>
+   802→                                        <p><?php esc_html_e( 'Your consultant has not yet assigned a questionnaire for this project. It will appear here once available.', 'businessvance' ); ?></p>
+   803→                                </div>
+   804→                        <?php endif; ?>
+   805→                </div>
+   806→                <?php
+   807→                return ob_get_clean();
+   808→        }
+   809→
+   810→        /**
+   811→         * Render the Documents tab.
+   812→         */
+   813→        private function render_tab_documents( $project, $data, $nonce, $ajax_url ) {
+   814→                $documents = $data['documents'];
+   815→                ob_start();
+   816→                ?>
+   817→                <div class="bv-documents" id="bv-documents-section">
+   818→                        <div class="bv-documents-header">
+   819→                                <h2 class="bv-section-title"><?php esc_html_e( 'Project Documents', 'businessvance' ); ?></h2>
+   820→                                <p class="bv-section-desc"><?php esc_html_e( 'Upload files to share with your consulting team. Accepted formats: PDF, DOC, DOCX, XLS, XLSX, JPG, PNG.', 'businessvance' ); ?></p>
+   821→                        </div>
+   822→
+   823→                        <!-- Upload Form -->
+   824→                        <div class="bv-upload-card">
+   825→                                <h3 class="bv-upload-title"><?php esc_html_e( 'Upload New Document', 'businessvance' ); ?></h3>
+   826→                                <form id="bv-document-upload-form" class="bv-upload-form" enctype="multipart/form-data">
+   827→                                        <div class="bv-upload-dropzone" id="bv-upload-dropzone">
+   828→                                                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+   829→                                                <p class="bv-upload-text"><?php esc_html_e( 'Drag & drop files here or', 'businessvance' ); ?></p>
+   830→                                                <label class="bv-btn bv-btn-outline bv-upload-btn">
+   831→                                                        <?php esc_html_e( 'Browse Files', 'businessvance' ); ?>
+   832→                                                        <input type="file" id="bv-document-file" name="document" class="bv-upload-input" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" />
+   833→                                                </label>
+   834→                                                <p class="bv-upload-hint"><?php esc_html_e( 'Maximum file size: 10MB', 'businessvance' ); ?></p>
+   835→                                        </div>
+   836→                                        <div class="bv-upload-meta">
+   837→                                                <input type="text" id="bv-document-name" name="document_name" class="bv-input" placeholder="<?php esc_attr_e( 'Document title (optional)', 'businessvance' ); ?>" />
+   838→                                                <textarea id="bv-document-desc" name="document_description" class="bv-input bv-textarea" rows="2" placeholder="<?php esc_attr_e( 'Brief description (optional)', 'businessvance' ); ?>"></textarea>
+   839→                                        </div>
+   840→                                        <div class="bv-form-actions">
+   841→                                                <button type="submit" class="bv-btn bv-btn-primary" id="bv-upload-btn" disabled>
+   842→                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+   843→                                                        <?php esc_html_e( 'Upload Document', 'businessvance' ); ?>
+   844→                                                </button>
+   845→                                                <span class="bv-upload-indicator" id="bv-upload-indicator"></span>
+   846→                                        </div>
+   847→                                </form>
+   848→                        </div>
+   849→
+   850→                        <!-- Documents List -->
+   851→                        <div class="bv-documents-list">
+   852→                                <h3 class="bv-list-title"><?php esc_html_e( 'Uploaded Documents', 'businessvance' ); ?> <span class="bv-list-count"><?php echo esc_html( count( $documents ) ); ?></span></h3>
+   853→                                <?php if ( ! empty( $documents ) ) : ?>
+   854→                                        <div class="bv-document-table-wrapper">
+   855→                                                <table class="bv-document-table">
+   856→                                                        <thead>
+   857→                                                                <tr>
+   858→                                                                        <th><?php esc_html_e( 'Document', 'businessvance' ); ?></th>
+   859→                                                                        <th><?php esc_html_e( 'Description', 'businessvance' ); ?></th>
+   860→                                                                        <th><?php esc_html_e( 'Uploaded', 'businessvance' ); ?></th>
+   861→                                                                        <th><?php esc_html_e( 'Size', 'businessvance' ); ?></th>
+   862→                                                                </tr>
+   863→                                                        </thead>
+   864→                                                        <tbody>
+   865→                                                                <?php foreach ( $documents as $doc ) : ?>
+   866→                                                                        <?php
+   867→                                                                        $doc_name   = ! empty( $doc->name ) ? $doc->name : ( ! empty( $doc->file_name ) ? $doc->file_name : 'Untitled' );
+   868→                                                                        $doc_desc   = ! empty( $doc->description ) ? $doc->description : '';
+   869→                                                                        $doc_date   = ! empty( $doc->created_at ) ? $doc->created_at : '';
+   870→                                                                        $doc_size   = ! empty( $doc->file_size ) ? size_format( absint( $doc->file_size ) ) : '—';
+   871→                                                                        $ext        = strtolower( pathinfo( $doc_name, PATHINFO_EXTENSION ) );
+   872→                                                                        $icon_class = $this->get_file_icon_class( $ext );
+   873→                                                                        ?>
+   874→                                                                        <tr>
+   875→                                                                                <td>
+   876→                                                                                        <div class="bv-doc-name-cell">
+   877→                                                                                                <span class="bv-doc-icon <?php echo esc_attr( $icon_class ); ?>"><?php echo esc_html( strtoupper( $ext ?: 'FILE' ) ); ?></span>
+   878→                                                                                                <span class="bv-doc-filename"><?php echo esc_html( $doc_name ); ?></span>
+   879→                                                                                        </div>
+   880→                                                                                </td>
+   881→                                                                                <td class="bv-doc-desc-cell"><?php echo esc_html( $doc_desc ); ?></td>
+   882→                                                                                <td><?php echo $doc_date ? esc_html( date_i18n( get_option( 'date_format' ), strtotime( $doc_date ) ) ) : '—'; ?></td>
+   883→                                                                                <td><?php echo esc_html( $doc_size ); ?></td>
+   884→                                                                        </tr>
+   885→                                                                <?php endforeach; ?>
+   886→                                                        </tbody>
+   887→                                                </table>
+   888→                                        </div>
+   889→                                <?php else : ?>
+   890→                                        <div class="bv-empty-state bv-empty-state--compact">
+   891→                                                <p class="bv-empty-text"><?php esc_html_e( 'No documents have been uploaded yet.', 'businessvance' ); ?></p>
+   892→                                        </div>
+   893→                                <?php endif; ?>
+   894→                        </div>
+   895→                </div>
+   896→                <?php
+   897→                return ob_get_clean();
+   898→        }
+   899→
+   900→        /**
+   901→         * Render the Reports tab.
+   902→         */
+   903→        private function render_tab_reports( $project, $data, $nonce, $ajax_url ) {
+   904→                $reports = $data['reports'];
+   905→                ob_start();
+   906→                ?>
+   907→                <div class="bv-reports" id="bv-reports-section">
+   908→                        <div class="bv-reports-header">
+   909→                                <h2 class="bv-section-title"><?php esc_html_e( 'Delivered Reports', 'businessvance' ); ?></h2>
+   910→                                <p class="bv-section-desc"><?php esc_html_e( 'Download reports and deliverables prepared by your consulting team.', 'businessvance' ); ?></p>
+   911→                        </div>
+   912→
+   913→                        <?php if ( ! empty( $reports ) ) : ?>
+   914→                                <div class="bv-reports-list">
+   915→                                        <?php foreach ( $reports as $report ) : ?>
+   916→                                                <?php
+   917→                                                $report_name = ! empty( $report->title ) ? $report->title : ( ! empty( $report->name ) ? $report->name : __( 'Untitled Report', 'businessvance' ) );
+   918→                                                $report_desc = ! empty( $report->description ) ? $report->description : '';
+   919→                                                $report_date = ! empty( $report->created_at ) ? $report->created_at : '';
+   920→                                                $report_file = ! empty( $report->file_path ) ? $report->file_path : ( ! empty( $report->file_url ) ? $report->file_url : '' );
+   921→                                                $report_size = ! empty( $report->file_size ) ? size_format( absint( $report->file_size ) ) : '';
+   922→                                                $ext         = strtolower( pathinfo( $report_file, PATHINFO_EXTENSION ) );
+   923→                                                $icon_class  = $this->get_file_icon_class( $ext );
+   924→                                                ?>
+   925→                                                <div class="bv-report-card">
+   926→                                                        <div class="bv-report-icon <?php echo esc_attr( $icon_class ); ?>">
+   927→                                                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+   928→                                                                <span><?php echo esc_html( strtoupper( $ext ?: 'FILE' ) ); ?></span>
+   929→                                                        </div>
+   930→                                                        <div class="bv-report-info">
+   931→                                                                <h4 class="bv-report-name"><?php echo esc_html( $report_name ); ?></h4>
+   932→                                                                <?php if ( $report_desc ) : ?>
+   933→                                                                        <p class="bv-report-desc"><?php echo esc_html( $report_desc ); ?></p>
+   934→                                                                <?php endif; ?>
+   935→                                                                <div class="bv-report-meta">
+   936→                                                                        <?php if ( $report_date ) : ?>
+   937→                                                                                <span class="bv-report-date"><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $report_date ) ) ); ?></span>
+   938→                                                                        <?php endif; ?>
+   939→                                                                        <?php if ( $report_size ) : ?>
+   940→                                                                                <span class="bv-report-size"><?php echo esc_html( $report_size ); ?></span>
+   941→                                                                        <?php endif; ?>
+   942→                                                                </div>
+   943→                                                        </div>
+   944→                                                        <div class="bv-report-actions">
+   945→                                                                <?php if ( $report_file ) : ?>
+   946→                                                                        <button type="button"
+   947→                                                                                        class="bv-btn bv-btn-primary bv-download-btn"
+   948→                                                                                        data-report-id="<?php echo esc_attr( absint( $report->id ) ); ?>"
+   949→                                                                                        data-project-id="<?php echo esc_attr( absint( $project->id ) ); ?>">
+   950→                                                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+   951→                                                                                        <?php esc_html_e( 'Download', 'businessvance' ); ?>
+   952→                                                                        </button>
+   953→                                                                <?php endif; ?>
+   954→                                                        </div>
+   955→                                                </div>
+   956→                                        <?php endforeach; ?>
+   957→                                </div>
+   958→                        <?php else : ?>
+   959→                                <div class="bv-empty-state">
+   960→                                        <div class="bv-empty-icon">
+   961→                                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+   962→                                        </div>
+   963→                                        <h3><?php esc_html_e( 'No Reports Yet', 'businessvance' ); ?></h3>
+   964→                                        <p><?php esc_html_e( 'Reports and deliverables will appear here once your consultant has prepared them.', 'businessvance' ); ?></p>
+   965→                                </div>
+   966→                        <?php endif; ?>
+   967→                </div>
+   968→                <?php
+   969→                return ob_get_clean();
+   970→        }
+   971→
+   972→        /**
+   973→         * Render the Messages tab.
+   974→         */
+   975→        private function render_tab_messages( $project, $data, $nonce, $ajax_url ) {
+   976→                $messages = $data['messages'];
+   977→                $user_id  = get_current_user_id();
+   978→
+   979→                ob_start();
+   980→                ?>
+   981→                <div class="bv-messages" id="bv-messages-section">
+   982→                        <div class="bv-messages-header">
+   983→                                <h2 class="bv-section-title"><?php esc_html_e( 'Project Messages', 'businessvance' ); ?></h2>
+   984→                                <p class="bv-section-desc"><?php esc_html_e( 'Communicate directly with your consulting team regarding this project.', 'businessvance' ); ?></p>
+   985→                        </div>
+   986→
+   987→                        <!-- Message Thread -->
+   988→                        <div class="bv-message-thread" id="bv-message-thread">
+   989→                                <?php if ( ! empty( $messages ) ) : ?>
+   990→                                        <?php foreach ( $messages as $msg ) : ?>
+   991→                                                <?php
+   992→                                                $is_client   = ( isset( $msg->sender_role ) && 'client' === $msg->sender_role ) || ( isset( $msg->sender_id ) && absint( $msg->sender_id ) === $user_id );
+   993→                                                $msg_text   = ! empty( $msg->message ) ? $msg->message : ( ! empty( $msg->content ) ? $msg->content : '' );
+   994→                                                $msg_time   = ! empty( $msg->created_at ) ? $msg->created_at : '';
+   995→                                                $sender_name = ! empty( $msg->sender_name ) ? $msg->sender_name : ( $is_client ? __( 'You', 'businessvance' ) : __( 'Consultant', 'businessvance' ) );
+   996→                                                ?>
+   997→                                                <div class="bv-message <?php echo $is_client ? 'bv-message--client' : 'bv-message--consultant'; ?>">
+   998→                                                        <div class="bv-message-avatar"><?php echo esc_html( mb_substr( $sender_name, 0, 1, 'UTF-8' ) ); ?></div>
+   999→                                                        <div class="bv-message-bubble">
+  1000→                                                                <div class="bv-message-header">
+  1001→                                                                        <span class="bv-message-sender"><?php echo esc_html( $sender_name ); ?></span>
+  1002→                                                                        <?php if ( $msg_time ) : ?>
+  1003→                                                                                <span class="bv-message-time"><?php echo esc_html( date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $msg_time ) ) ); ?></span>
+  1004→                                                                        <?php endif; ?>
+  1005→                                                                </div>
+  1006→                                                                <div class="bv-message-text"><?php echo wp_kses_post( nl2br( esc_html( $msg_text ) ) ); ?></div>
+  1007→                                                        </div>
+  1008→                                                </div>
+  1009→                                        <?php endforeach; ?>
+  1010→                                <?php else : ?>
+  1011→                                        <div class="bv-empty-state bv-empty-state--compact">
+  1012→                                                <p class="bv-empty-text"><?php esc_html_e( 'No messages yet. Start a conversation with your consulting team.', 'businessvance' ); ?></p>
+  1013→                                        </div>
+  1014→                                <?php endif; ?>
+  1015→                        </div>
+  1016→
+  1017→                        <!-- Message Form -->
+  1018→                        <div class="bv-message-form-wrapper">
+  1019→                                <form id="bv-message-form" class="bv-message-form" data-project-id="<?php echo esc_attr( absint( $project->id ) ); ?>">
+  1020→                                        <textarea id="bv-message-text" name="message" class="bv-input bv-textarea bv-message-input" rows="3" placeholder="<?php esc_attr_e( 'Type your message here...', 'businessvance' ); ?>" required></textarea>
+  1021→                                        <div class="bv-message-form-actions">
+  1022→                                                <span class="bv-message-hint"><?php esc_html_e( 'Press Enter to send, Shift+Enter for new line', 'businessvance' ); ?></span>
+  1023→                                                <button type="submit" class="bv-btn bv-btn-primary" id="bv-send-message-btn">
+  1024→                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+  1025→                                                        <?php esc_html_e( 'Send', 'businessvance' ); ?>
+  1026→                                                </button>
+  1027→                                        </div>
+  1028→                                </form>
+  1029→                        </div>
+  1030→                </div>
+  1031→                <?php
+  1032→                return ob_get_clean();
+  1033→        }
+  1034→
+  1035→        /* ==========================================================================
+  1036→           ASSET ENQUEUE
+  1037→           ========================================================================== */
+  1038→
+  1039→        /**
+  1040→         * Enqueue portal CSS and JS only on pages containing the shortcode.
+  1041→         */
+  1042→        public function enqueue_assets() {
+  1043→                global $post;
+  1044→
+  1045→                if ( ! is_a( $post, 'WP_Post' ) ) {
+  1046→                        return;
+  1047→                }
+  1048→
+  1049→                if ( false === strpos( $post->post_content, 'businessvance_client_portal' ) ) {
+  1050→                        return;
+  1051→                }
+  1052→
+  1053→                $plugin_url = plugin_dir_url( __FILE__ ) . '../';
+  1054→
+  1055→                wp_enqueue_style(
+  1056→                        'bv-client-portal',
+  1057→                        $plugin_url . 'assets/css/client-portal.css',
+  1058→                        array(),
+  1059→                        defined( 'BV_VERSION' ) ? BV_VERSION : '1.0.0'
+  1060→                );
+  1061→
+  1062→                wp_enqueue_script(
+  1063→                        'bv-client-portal',
+  1064→                        $plugin_url . 'assets/js/client-portal.js',
+  1065→                        array( 'jquery' ),
+  1066→                        defined( 'BV_VERSION' ) ? BV_VERSION : '1.0.0',
+  1067→                        true
+  1068→                );
+  1069→
+  1070→                wp_localize_script( 'bv-client-portal', 'bvPortalData', array(
+  1071→                        'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+  1072→                        'nonce'   => wp_create_nonce( 'bv_portal_action' ),
+  1073→                ) );
+  1074→        }
+  1075→
+  1076→        /* ==========================================================================
+  1077→           AJAX HANDLERS
+  1078→           ========================================================================== */
+  1079→
+  1080→        /**
+  1081→         * Verify the current user owns the given project.
+  1082→         *
+  1083→         * @param int $project_id Project ID to verify.
+  1084→         * @return bool|WP_Error True if authorized, WP_Error on failure.
+  1085→         */
+  1086→        private function verify_project_ownership( $project_id ) {
+  1087→                if ( ! is_user_logged_in() ) {
+  1088→                        return new WP_Error( 'not_logged_in', __( 'You must be logged in.', 'businessvance' ) );
+  1089→                }
+  1090→
+  1091→                global $wpdb;
+  1092→                $project = $wpdb->get_row(
+  1093→                        $wpdb->prepare(
+  1094→                                "SELECT id, client_user_id FROM {$wpdb->prefix}bv_projects WHERE id = %d",
+  1095→                                absint( $project_id )
+  1096→                        )
+  1097→                );
+  1098→
+  1099→                if ( ! $project ) {
+  1100→                        return new WP_Error( 'project_not_found', __( 'Project not found.', 'businessvance' ) );
+  1101→                }
+  1102→
+  1103→                if ( absint( $project->client_user_id ) !== get_current_user_id() ) {
+  1104→                        return new WP_Error( 'not_authorized', __( 'You do not have access to this project.', 'businessvance' ) );
+  1105→                }
+  1106→
+  1107→                return true;
+  1108→        }
+  1109→
+  1110→        /**
+  1111→         * AJAX: Upload a document for a project.
+  1112→         */
+  1113→        public function ajax_upload_document() {
+  1114→                check_ajax_referer( 'bv_portal_action', 'nonce' );
+  1115→
+  1116→                $project_id = isset( $_POST['project_id'] ) ? absint( $_POST['project_id'] ) : 0;
+  1117→
+  1118→                $ownership = $this->verify_project_ownership( $project_id );
+  1119→                if ( is_wp_error( $ownership ) ) {
+  1120→                        wp_send_json_error( array( 'message' => $ownership->get_error_message() ) );
+  1121→                }
+  1122→
+  1123→                if ( empty( $_FILES['document'] ) ) {
+  1124→                        wp_send_json_error( array( 'message' => __( 'No file uploaded.', 'businessvance' ) ) );
+  1125→                }
+  1126→
+  1127→                $file     = $_FILES['document'];
+  1128→                $allowed  = array( 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png' );
+  1129→                $file_ext = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
+  1130→
+  1131→                if ( ! in_array( $file_ext, $allowed, true ) ) {
+  1132→                        wp_send_json_error( array( 'message' => __( 'File type not allowed.', 'businessvance' ) ) );
+  1133→                }
+  1134→
+  1135→                // 10 MB max.
+  1136→                if ( $file['size'] > 10 * 1024 * 1024 ) {
+  1137→                        wp_send_json_error( array( 'message' => __( 'File exceeds the maximum size of 10MB.', 'businessvance' ) ) );
+  1138→                }
+  1139→
+  1140→                $upload_dir = wp_upload_dir();
+  1141→                $bv_dir     = $upload_dir['basedir'] . '/bv-documents';
+  1142→
+  1143→                if ( ! file_exists( $bv_dir ) ) {
+  1144→                        wp_mkdir_p( $bv_dir );
+  1145→                }
+  1146→
+  1147→                $unique_name = wp_unique_filename( $bv_dir, sanitize_file_name( $file['name'] ) );
+  1148→                $dest_path   = $bv_dir . '/' . $unique_name;
+  1149→
+  1150→                if ( ! move_uploaded_file( $file['tmp_name'], $dest_path ) ) {
+  1151→                        wp_send_json_error( array( 'message' => __( 'Failed to save the uploaded file.', 'businessvance' ) ) );
+  1152→                }
+  1153→
+  1154→                $doc_name        = isset( $_POST['document_name'] ) ? sanitize_text_field( wp_unslash( $_POST['document_name'] ) ) : '';
+  1155→                $doc_description = isset( $_POST['document_description'] ) ? sanitize_textarea_field( wp_unslash( $_POST['document_description'] ) ) : '';
+  1156→
+  1157→                if ( empty( $doc_name ) ) {
+  1158→                        $doc_name = sanitize_file_name( $file['name'] );
+  1159→                }
+  1160→
+  1161→                global $wpdb;
+  1162→                $inserted = $wpdb->insert(
+  1163→                        $wpdb->prefix . 'bv_project_documents',
+  1164→                        array(
+  1165→                                'project_id'  => $project_id,
+  1166→                                'name'        => $doc_name,
+  1167→                                'file_name'   => sanitize_file_name( $file['name'] ),
+  1168→                                'file_path'   => 'bv-documents/' . $unique_name,
+  1169→                                'file_size'   => $file['size'],
+  1170→                                'description' => $doc_description,
+  1171→                                'uploaded_by' => get_current_user_id(),
+  1172→                                'created_at'  => current_time( 'mysql' ),
+  1173→                        ),
+  1174→                        array( '%d', '%s', '%s', '%s', '%d', '%s', '%d', '%s' )
+  1175→                );
+  1176→
+  1177→                if ( ! $inserted ) {
+  1178→                        // Clean up the file on DB failure.
+  1179→                        @unlink( $dest_path );
+  1180→                        wp_send_json_error( array( 'message' => __( 'Failed to save document record.', 'businessvance' ) ) );
+  1181→                }
+  1182→
+  1183→                wp_send_json_success( array(
+  1184→                        'message'  => __( 'Document uploaded successfully.', 'businessvance' ),
+  1185→                        'document' => array(
+  1186→                                'id'          => $wpdb->insert_id,
+  1187→                                'name'        => $doc_name,
+  1188→                                'file_name'   => sanitize_file_name( $file['name'] ),
+  1189→                                'file_size'   => size_format( $file['size'] ),
+  1190→                                'description' => $doc_description,
+  1191→                                'created_at'  => current_time( 'mysql' ),
+  1192→                        ),
+  1193→                ) );
+  1194→        }
+  1195→
+  1196→        /**
+  1197→         * AJAX: Save questionnaire responses.
+  1198→         */
+  1199→        public function ajax_submit_questionnaire() {
+  1200→                check_ajax_referer( 'bv_portal_action', 'nonce' );
+  1201→
+  1202→                $project_id = isset( $_POST['project_id'] ) ? absint( $_POST['project_id'] ) : 0;
+  1203→
+  1204→                $ownership = $this->verify_project_ownership( $project_id );
+  1205→                if ( is_wp_error( $ownership ) ) {
+  1206→                        wp_send_json_error( array( 'message' => $ownership->get_error_message() ) );
+  1207→                }
+  1208→
+  1209→                $answers = isset( $_POST['answers'] ) ? wp_unslash( $_POST['answers'] ) : array();
+  1210→
+  1211→                if ( ! is_array( $answers ) || empty( $answers ) ) {
+  1212→                        wp_send_json_error( array( 'message' => __( 'No answers provided.', 'businessvance' ) ) );
+  1213→                }
+  1214→
+  1215→                global $wpdb;
+  1216→                $updated = 0;
+  1217→
+  1218→                foreach ( $answers as $question_id => $response ) {
+  1219→                        $question_id = absint( $question_id );
+  1220→                        $response    = sanitize_textarea_field( $response );
+  1221→
+  1222→                        if ( empty( $question_id ) ) {
+  1223→                                continue;
+  1224→                        }
+  1225→
+  1226→                        // Check if response already exists.
+  1227→                        $existing = $wpdb->get_var(
+  1228→                                $wpdb->prepare(
+  1229→                                        "SELECT id FROM {$wpdb->prefix}bv_questionnaire_responses WHERE project_id = %d AND question_id = %d",
+  1230→                                        $project_id,
+  1231→                                        $question_id
+  1232→                                )
+  1233→                        );
+  1234→
+  1235→                        if ( $existing ) {
+  1236→                                $result = $wpdb->update(
+  1237→                                        $wpdb->prefix . 'bv_questionnaire_responses',
+  1238→                                        array( 'response' => $response, 'updated_at' => current_time( 'mysql' ) ),
+  1239→                                        array( 'id' => absint( $existing ) ),
+  1240→                                        array( '%s', '%s' ),
+  1241→                                        array( '%d' )
+  1242→                                );
+  1243→                        } else {
+  1244→                                $result = $wpdb->insert(
+  1245→                                        $wpdb->prefix . 'bv_questionnaire_responses',
+  1246→                                        array(
+  1247→                                                        'project_id'  => $project_id,
+  1248→                                                        'question_id' => $question_id,
+  1249→                                                        'response'    => $response,
+  1250→                                                        'created_at'  => current_time( 'mysql' ),
+  1251→                                                        'updated_at'  => current_time( 'mysql' ),
+  1252→                                                ),
+  1253→                                                array( '%d', '%d', '%s', '%s', '%s' )
+  1254→                                        );
+  1255→                        }
+  1256→
+  1257→                        if ( false !== $result ) {
+  1258→                                $updated++;
+  1259→                        }
+  1260→                }
+  1261→
+  1262→                wp_send_json_success( array(
+  1263→                        'message' => sprintf( __( '%d response(s) saved successfully.', 'businessvance' ), $updated ),
+  1264→                        'updated' => $updated,
+  1265→                ) );
+  1266→        }
+  1267→
+  1268→        /**
+  1269→         * AJAX: Sign an agreement.
+  1270→         */
+  1271→        public function ajax_sign_agreement() {
+  1272→                check_ajax_referer( 'bv_portal_action', 'nonce' );
+  1273→
+  1274→                $project_id   = isset( $_POST['project_id'] ) ? absint( $_POST['project_id'] ) : 0;
+  1275→                $agreement_id = isset( $_POST['agreement_id'] ) ? absint( $_POST['agreement_id'] ) : 0;
+  1276→
+  1277→                $ownership = $this->verify_project_ownership( $project_id );
+  1278→                if ( is_wp_error( $ownership ) ) {
+  1279→                        wp_send_json_error( array( 'message' => $ownership->get_error_message() ) );
+  1280→                }
+  1281→
+  1282→                if ( empty( $agreement_id ) ) {
+  1283→                        wp_send_json_error( array( 'message' => __( 'Invalid agreement.', 'businessvance' ) ) );
+  1284→                }
+  1285→
+  1286→                global $wpdb;
+  1287→
+  1288→                $agreement = $wpdb->get_row(
+  1289→                        $wpdb->prepare(
+  1290→                                "SELECT * FROM {$wpdb->prefix}bv_project_agreements WHERE id = %d AND project_id = %d",
+  1291→                                $agreement_id,
+  1292→                                $project_id
+  1293→                        )
+  1294→                );
+  1295→
+  1296→                if ( ! $agreement ) {
+  1297→                        wp_send_json_error( array( 'message' => __( 'Agreement not found.', 'businessvance' ) ) );
+  1298→                }
+  1299→
+  1300→                if ( ! empty( $agreement->signed_at ) ) {
+  1301→                        wp_send_json_error( array( 'message' => __( 'This agreement has already been signed.', 'businessvance' ) ) );
+  1302→                }
+  1303→
+  1304→                $now = current_time( 'mysql' );
+  1305→
+  1306→                $updated = $wpdb->update(
+  1307→                        $wpdb->prefix . 'bv_project_agreements',
+  1308→                        array(
+  1309→                                'signed_at'    => $now,
+  1310→                                'signed_by'    => get_current_user_id(),
+  1311→                                'signature_ip' => sanitize_text_field( $_SERVER['REMOTE_ADDR'] ),
+  1312→                                'user_agent'   => sanitize_text_field( isset( $_SERVER['HTTP_USER_AGENT'] ) ? $_SERVER['HTTP_USER_AGENT'] : '' ),
+  1313→                                'updated_at'   => $now,
+  1314→                        ),
+  1315→                        array( 'id' => $agreement_id ),
+  1316→                        array( '%s', '%d', '%s', '%s', '%s' ),
+  1317→                        array( '%d' )
+  1318→                );
+  1319→
+  1320→                if ( false === $updated ) {
+  1321→                        wp_send_json_error( array( 'message' => __( 'Failed to record signature. Please try again.', 'businessvance' ) ) );
+  1322→                }
+  1323→
+  1324→                wp_send_json_success( array(
+  1325→                        'message'    => __( 'Agreement signed successfully.', 'businessvance' ),
+  1326→                        'signed_at'  => $now,
+  1327→                        'signed_by'  => get_current_user_id(),
+  1328→                        'ip_address' => sanitize_text_field( $_SERVER['REMOTE_ADDR'] ),
+  1329→                ) );
+  1330→        }
+  1331→
+  1332→        /**
+  1333→         * AJAX: Send a project message.
+  1334→         */
+  1335→        public function ajax_send_message() {
+  1336→                check_ajax_referer( 'bv_portal_action', 'nonce' );
+  1337→
+  1338→                $project_id = isset( $_POST['project_id'] ) ? absint( $_POST['project_id'] ) : 0;
+  1339→                $message    = isset( $_POST['message'] ) ? sanitize_textarea_field( wp_unslash( $_POST['message'] ) ) : '';
+  1340→
+  1341→                $ownership = $this->verify_project_ownership( $project_id );
+  1342→                if ( is_wp_error( $ownership ) ) {
+  1343→                        wp_send_json_error( array( 'message' => $ownership->get_error_message() ) );
+  1344→                }
+  1345→
+  1346→                if ( empty( trim( $message ) ) ) {
+  1347→                        wp_send_json_error( array( 'message' => __( 'Message cannot be empty.', 'businessvance' ) ) );
+  1348→                }
+  1349→
+  1350→                $user = wp_get_current_user();
+  1351→                $now  = current_time( 'mysql' );
+  1352→
+  1353→                global $wpdb;
+  1354→
+  1355→                $inserted = $wpdb->insert(
+  1356→                        $wpdb->prefix . 'bv_project_messages',
+  1357→                        array(
+  1358→                                'project_id'  => $project_id,
+  1359→                                'sender_id'   => get_current_user_id(),
+  1360→                                'sender_name' => $user->display_name,
+  1361→                                'sender_role' => 'client',
+  1362→                                'message'     => $message,
+  1363→                                'content'     => $message,
+  1364→                                'is_read'     => 0,
+  1365→                                'created_at'  => $now,
+  1366→                        ),
+  1367→                        array( '%d', '%d', '%s', '%s', '%s', '%s', '%d', '%s' )
+  1368→                );
+  1369→
+  1370→                if ( ! $inserted ) {
+  1371→                        wp_send_json_error( array( 'message' => __( 'Failed to send message. Please try again.', 'businessvance' ) ) );
+  1372→                }
+  1373→
+  1374→                $msg_id = $wpdb->insert_id;
+  1375→
+  1376→                // Build HTML for the new message.
+  1377→                ob_start();
+  1378→                ?>
+  1379→                <div class="bv-message bv-message--client bv-message--new">
+  1380→                        <div class="bv-message-avatar"><?php echo esc_html( mb_substr( $user->display_name, 0, 1, 'UTF-8' ) ); ?></div>
+  1381→                        <div class="bv-message-bubble">
+  1382→                                <div class="bv-message-header">
+  1383→                                        <span class="bv-message-sender"><?php echo esc_html( $user->display_name ); ?></span>
+  1384→                                        <span class="bv-message-time"><?php echo esc_html( date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $now ) ) ); ?></span>
+  1385→                                </div>
+  1386→                                <div class="bv-message-text"><?php echo wp_kses_post( nl2br( esc_html( $message ) ) ); ?></div>
+  1387→                        </div>
+  1388→                </div>
+  1389→                <?php
+  1390→                $html = ob_get_clean();
+  1391→
+  1392→                wp_send_json_success( array(
+  1393→                        'message_id' => $msg_id,
+  1394→                        'html'       => $html,
+  1395→                        'message'    => __( 'Message sent.', 'businessvance' ),
+  1396→                ) );
+  1397→        }
+  1398→
+  1399→        /**
+  1400→         * AJAX: Download a report file.
+  1401→         */
+  1402→        public function ajax_download_report() {
+  1403→                check_ajax_referer( 'bv_portal_action', 'nonce' );
+  1404→
+  1405→                $project_id = isset( $_POST['project_id'] ) ? absint( $_POST['project_id'] ) : 0;
+  1406→                $report_id  = isset( $_POST['report_id'] ) ? absint( $_POST['report_id'] ) : 0;
+  1407→
+  1408→                $ownership = $this->verify_project_ownership( $project_id );
+  1409→                if ( is_wp_error( $ownership ) ) {
+  1410→                        wp_send_json_error( array( 'message' => $ownership->get_error_message() ) );
+  1411→                }
+  1412→
+  1413→                if ( empty( $report_id ) ) {
+  1414→                        wp_send_json_error( array( 'message' => __( 'Invalid report.', 'businessvance' ) ) );
+  1415→                }
+  1416→
+  1417→                global $wpdb;
+  1418→
+  1419→                $report = $wpdb->get_row(
+  1420→                        $wpdb->prepare(
+  1421→                                "SELECT * FROM {$wpdb->prefix}bv_project_reports WHERE id = %d AND project_id = %d",
+  1422→                                $report_id,
+  1423→                                $project_id
+  1424→                        )
+  1425→                );
+  1426→
+  1427→                if ( ! $report ) {
+  1428→                        wp_send_json_error( array( 'message' => __( 'Report not found.', 'businessvance' ) ) );
+  1429→                }
+  1430→
+  1431→                $file_path = ! empty( $report->file_path ) ? $report->file_path : '';
+  1432→                $file_url  = ! empty( $report->file_url ) ? $report->file_url : '';
+  1433→
+  1434→                // Try to resolve the file location.
+  1435→                $upload_dir = wp_upload_dir();
+  1436→                $full_path  = '';
+  1437→
+  1438→                if ( ! empty( $file_path ) ) {
+  1439→                        $relative = $file_path;
+  1440→                        if ( 0 === strpos( $relative, 'bv-documents/' ) || 0 === strpos( $relative, '/bv-documents/' ) ) {
+  1441→                                $full_path = $upload_dir['basedir'] . '/' . ltrim( $relative, '/' );
+  1442→                        } elseif ( file_exists( $file_path ) ) {
+  1443→                                $full_path = $file_path;
+  1444→                        } else {
+  1445→                                $full_path = $upload_dir['basedir'] . '/' . $relative;
+  1446→                        }
+  1447→                }
+  1448→
+  1449→                // If no file_path, try to use file_url.
+  1450→                if ( empty( $full_path ) || ! file_exists( $full_path ) ) {
+  1451→                        if ( ! empty( $file_url ) ) {
+  1452→                                wp_send_json_success( array(
+  1453→                                        'message'      => __( 'Report ready for download.', 'businessvance' ),
+  1454→                                        'download_url' => $file_url,
+  1455→                                        'redirect'     => true,
+  1456→                                ) );
+  1457→                        }
+  1458→                        wp_send_json_error( array( 'message' => __( 'Report file not found. Please contact support.', 'businessvance' ) ) );
+  1459→                }
+  1460→
+  1461→                // Serve the file directly.
+  1462→                $file_name = ! empty( $report->title ) ? $report->title : ( ! empty( $report->name ) ? $report->name : 'report.pdf' );
+  1463→
+  1464→                // Clean file name for download.
+  1465→                $file_name = sanitize_file_name( $file_name );
+  1466→                $ext       = strtolower( pathinfo( $full_path, PATHINFO_EXTENSION ) );
+  1467→                if ( $ext && false === strpos( $file_name, '.' . $ext ) ) {
+  1468→                        $file_name .= '.' . $ext;
+  1469→                }
+  1470→
+  1471→                // Determine MIME type.
+  1472→                $mime_types = array(
+  1473→                        'pdf'  => 'application/pdf',
+  1474→                        'doc'  => 'application/msword',
+  1475→                        'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  1476→                        'xls'  => 'application/vnd.ms-excel',
+  1477→                        'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  1478→                        'png'  => 'image/png',
+  1479→                        'jpg'  => 'image/jpeg',
+  1480→                        'jpeg' => 'image/jpeg',
+  1481→                );
+  1482→                $mime = isset( $mime_types[ $ext ] ) ? $mime_types[ $ext ] : 'application/octet-stream';
+  1483→
+  1484→                wp_send_json_success( array(
+  1485→                        'message'      => __( 'Report ready for download.', 'businessvance' ),
+  1486→                        'download_url' => admin_url( 'admin-ajax.php?action=bv_portal_download_report&nonce=' . wp_create_nonce( 'bv_portal_action' ) . '&project_id=' . $project_id . '&report_id=' . $report_id . '&bv_serve=1' ),
+  1487→                        'file_name'    => $file_name,
+  1488→                ) );
+  1489→        }
+  1490→
+  1491→        /* ==========================================================================
+  1492→           HELPER METHODS
+  1493→           ========================================================================== */
+  1494→
+  1495→        /**
+  1496→         * Get a human-readable status label.
+  1497→         *
+  1498→         * @param string $status The project status slug.
+  1499→         * @return string
+  1500→         */
+  1501→        private function get_status_label( $status ) {
+  1502→                $labels = array(
+  1503→                        'pending'   => __( 'Pending', 'businessvance' ),
+  1504→                        'active'    => __( 'In Progress', 'businessvance' ),
+  1505→                        'on_hold'   => __( 'On Hold', 'businessvance' ),
+  1506→                        'completed' => __( 'Completed', 'businessvance' ),
+  1507→                        'cancelled' => __( 'Cancelled', 'businessvance' ),
+  1508→                );
+  1509→                return isset( $labels[ $status ] ) ? $labels[ $status ] : ucfirst( $status );
+  1510→        }
+  1511→
+  1512→        /**
+  1513→         * Get a CSS class for a file extension icon.
+  1514→         *
+  1515→         * @param string $ext File extension.
+  1516→         * @return string
+  1517→         */
+  1518→        private function get_file_icon_class( $ext ) {
+  1519→                $ext = strtolower( $ext );
+  1520→                $map = array(
+  1521→                        'pdf'  => 'bv-file-pdf',
+  1522→                        'doc'  => 'bv-file-word',
+  1523→                        'docx' => 'bv-file-word',
+  1524→                        'xls'  => 'bv-file-excel',
+  1525→                        'xlsx' => 'bv-file-excel',
+  1526→                        'jpg'  => 'bv-file-image',
+  1527→                        'jpeg' => 'bv-file-image',
+  1528→                        'png'  => 'bv-file-image',
+  1529→                );
+  1530→                return isset( $map[ $ext ] ) ? $map[ $ext ] : 'bv-file-default';
+  1531→        }
+  1532→
+  1533→        /**
+  1534→         * Get project timeline phases based on status and progress.
+  1535→         *
+  1536→         * @param string $status  Project status.
+  1537→         * @param int    $progress Project progress percentage.
+  1538→         * @return array
+  1539→         */
+  1540→        private function get_project_phases( $status, $progress ) {
+  1541→                $phases = array(
+  1542→                        array(
+  1543→                                'label'       => __( 'Project Created', 'businessvance' ),
+  1544→                                'status_text' => __( 'Complete', 'businessvance' ),
+  1545→                                'done'        => true,
+  1546→                                'active'      => false,
+  1547→                        ),
+  1548→                        array(
+  1549→                                'label'       => __( 'Agreement Signed', 'businessvance' ),
+  1550→                                'status_text' => $progress > 0 ? __( 'Complete', 'businessvance' ) : __( 'Pending', 'businessvance' ),
+  1551→                                'done'        => $progress > 0,
+  1552→                                'active'      => 0 === $progress && 'pending' !== $status,
+  1553→                        ),
+  1554→                        array(
+  1555→                                'label'       => __( 'Information Gathering', 'businessvance' ),
+  1556→                                'status_text' => $progress > 25 ? __( 'Complete', 'businessvance' ) : ( $progress > 0 ? __( 'In Progress', 'businessvance' ) : __( 'Pending', 'businessvance' ) ),
+  1557→                                'done'        => $progress > 25,
+  1558→                                'active'      => $progress > 0 && $progress <= 25,
+  1559→                        ),
+  1560→                        array(
+  1561→                                'label'       => __( 'Analysis & Work', 'businessvance' ),
+  1562→                                'status_text' => $progress > 75 ? __( 'Complete', 'businessvance' ) : ( $progress > 25 ? __( 'In Progress', 'businessvance' ) : __( 'Pending', 'businessvance' ) ),
+  1563→                                'done'        => $progress > 75,
+  1564→                                'active'      => $progress > 25 && $progress <= 75,
+  1565→                        ),
+  1566→                        array(
+  1567→                                'label'       => __( 'Reports Delivered', 'businessvance' ),
+  1568→                                'status_text' => 'completed' === $status ? __( 'Complete', 'businessvance' ) : ( $progress > 75 ? __( 'In Progress', 'businessvance' ) : __( 'Pending', 'businessvance' ) ),
+  1569→                                'done'        => 'completed' === $status,
+  1570→                                'active'      => $progress > 75 && 'completed' !== $status,
+  1571→                        ),
+  1572→                );
+  1573→
+  1574→                return $phases;
+  1575→        }
+  1576→}
