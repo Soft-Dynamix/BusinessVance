@@ -76,6 +76,14 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* BusinessVance Brand Colors */
+  --bv-navy: #002B5C;
+  --bv-gold: #D4AF37;
+  --bv-gold-dark: #B8962E;
+  --bv-teal: #008080;
+  --bv-white: #FFFFFF;
+  --bv-light-gray: #F8F9FA;
 }
 
 .dark {
@@ -119,4 +127,48 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Custom Scrollbar Styles */
+.bv-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.bv-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.bv-scrollbar::-webkit-scrollbar-thumb {
+  background: #c4c4c4;
+  border-radius: 3px;
+}
+
+.bv-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #a0a0a0;
+}
+
+/* Firefox scrollbar */
+.bv-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #c4c4c4 transparent;
+}
+
+/* Gold button hover */
+.bv-gold-btn {
+  background-color: var(--bv-gold);
+  color: var(--bv-navy);
+  transition: all 0.2s ease;
+}
+
+.bv-gold-btn:hover {
+  background-color: var(--bv-gold-dark);
+  color: var(--bv-navy);
+}
+
+/* Subtle pattern background */
+.bv-pattern-bg {
+  background-color: white;
+  background-image: radial-gradient(circle at 1px 1px, #f0f0f0 1px, transparent 0);
+  background-size: 32px 32px;
 }

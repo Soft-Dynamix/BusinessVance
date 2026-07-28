@@ -1,31 +1,31 @@
 'use client'
 
-export default function Home() {
+import { useState } from 'react'
+import { AdminLayout } from '@/components/admin/admin-layout'
+import { DashboardTab } from '@/components/admin/dashboard-tab'
+import { ServicesTab } from '@/components/admin/services-tab'
+import { PlansTab } from '@/components/admin/plans-tab'
+import { CategoriesTab } from '@/components/admin/categories-tab'
+import { SettingsTab } from '@/components/admin/settings-tab'
+import { IconsTab } from '@/components/admin/icons-tab'
+import { TemplatesTab } from '@/components/admin/templates-tab'
+
+type TabId = 'dashboard' | 'services' | 'plans' | 'categories' | 'icons' | 'templates' | 'settings'
+
+export default function AdminPage() {
+  const [activeTab, setActiveTab] = useState<TabId>('dashboard')
+
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: '100vh',
-      gap: '2rem',
-      padding: '1rem'
-    }}>
-      <div style={{
-        position: 'relative',
-        width: '6rem',
-        height: '6rem'
-      }}>
-        <img
-          src="/logo.svg"
-          alt="Z.ai Logo"
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'contain'
-          }}
-        />
-      </div>
+    <div className="min-h-screen bg-[#f0f0f1]">
+      <AdminLayout activeTab={activeTab} onTabChange={setActiveTab}>
+        {activeTab === 'dashboard' && <DashboardTab />}
+        {activeTab === 'services' && <ServicesTab />}
+        {activeTab === 'plans' && <PlansTab />}
+        {activeTab === 'categories' && <CategoriesTab />}
+        {activeTab === 'icons' && <IconsTab />}
+        {activeTab === 'templates' && <TemplatesTab />}
+        {activeTab === 'settings' && <SettingsTab />}
+      </AdminLayout>
     </div>
   )
 }
