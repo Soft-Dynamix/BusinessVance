@@ -3,7 +3,7 @@
   "version": "0.2.1",
   "private": true,
   "scripts": {
-    "dev": "DATABASE_URL=file:/home/z/my-project/db/custom.db NODE_OPTIONS=--max-old-space-size=256 node --max-old-space-size=256 .next/standalone/server.js -H 0.0.0.0 2>&1 | tee dev.log",
+    "dev": "DATABASE_URL=file:/home/z/my-project/db/custom.db node .next/standalone/server.js -H 0.0.0.0 >> dev.log 2>&1",
     "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
     "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
     "lint": "eslint .",
