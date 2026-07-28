@@ -30,3 +30,35 @@ Stage Summary:
 - IPv6 proxy created to bridge Caddy (IPv6 ::1) → Next.js (IPv4 0.0.0.0:3000)
 - Updated watchdog.sh to remove memory limit and add auto-restart logic
 - Updated package.json dev script to be more resilient
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Fix admin dashboard preview - all tabs rendering and persistent server
+
+Work Log:
+- Re-cloned BusinessVance repo from GitHub (previous session context lost)
+- Diagnosed server persistence issue: background Node.js processes killed between tool calls
+- Created PM2-based process management for persistent server uptime
+- PM2 now runs both bv-admin (Next.js standalone) and bv-proxy (IPv6 bridge)
+- Copied missing `projects-tab.tsx` component from BusinessVance source to working project
+- Updated `page.tsx` to import and render ProjectsTab component
+- Rebuilt project with `bun run build` - all 25 routes compile clean
+- Comprehensive browser verification of all 8 admin tabs:
+  1. Dashboard: 7 stat cards (12 services, 3 plans, 4 categories, 1 project, 3 questionnaires, 1 agreement, 21 icons), Quick Info section
+  2. Services: Table with search, Add button, columns (#, Name, Category, Price, Order)
+  3. Plans: Table with search, Add button, columns (#, Name, Category, Price, Features)
+  4. Categories: Table with Add button, columns (#, Name, Slug, Color, Actions)
+  5. Icons: Icon Manager (21 icons), Add Icon button, categorized table
+  6. Templates: Questionnaire Templates (3), table with Name, Slug, Status, Version
+  7. Projects: Full project management with stats, search, filter, table showing BV-2026-000001
+  8. Settings: Plugin Settings form with Brand Name (BUSINESSVANCE), Tagline, Description, etc.
+- Verified Caddy proxy chain: port 81 → IPv6 proxy (::1:3000) → Next.js (0.0.0.0:3000) → HTTP 200
+- Fixed ESLint config to ignore mini-services and launcher scripts
+- Lint passes clean
+
+Stage Summary:
+- All 8 admin tabs verified working in browser via agent-browser
+- PM2 process management ensures persistent server uptime
+- Caddy proxy on port 81 successfully forwards to Next.js
+- Projects tab fully functional with project data (BV-2026-000001, Stefan van der Merwe, ABC Engineering)

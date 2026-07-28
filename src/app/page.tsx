@@ -9,8 +9,9 @@ import { CategoriesTab } from '@/components/admin/categories-tab'
 import { SettingsTab } from '@/components/admin/settings-tab'
 import { IconsTab } from '@/components/admin/icons-tab'
 import { TemplatesTab } from '@/components/admin/templates-tab'
+import { ProjectsTab } from '@/components/admin/projects-tab'
 
-type TabId = 'dashboard' | 'services' | 'plans' | 'categories' | 'icons' | 'templates' | 'settings'
+type TabId = 'dashboard' | 'services' | 'plans' | 'categories' | 'icons' | 'templates' | 'projects' | 'settings'
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<TabId>('dashboard')
@@ -24,6 +25,7 @@ export default function AdminPage() {
         {activeTab === 'categories' && <CategoriesTab />}
         {activeTab === 'icons' && <IconsTab />}
         {activeTab === 'templates' && <TemplatesTab />}
+        {activeTab === 'projects' && <ProjectsTab />}
         {activeTab === 'settings' && <SettingsTab />}
       </AdminLayout>
     </div>
