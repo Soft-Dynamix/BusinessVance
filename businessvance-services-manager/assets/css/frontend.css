@@ -1,0 +1,693 @@
+/* ============================================
+   BusinessVance Services Manager - Frontend CSS
+   Matches reference design: Navy #0A2647, Orange #F4A261, Teal #2A9D8F
+   ============================================ */
+
+/* Page Wrapper */
+.bv-page-wrapper {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    color: #333333;
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: #ffffff;
+}
+
+/* ---- HEADER ---- */
+.bv-header {
+    background: linear-gradient(135deg, #0A2647 0%, #144272 100%);
+    padding: 0;
+    position: relative;
+    overflow: hidden;
+}
+
+.bv-header::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #F4A261, #2A9D8F, #F4A261);
+}
+
+.bv-header-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 48px 24px 44px;
+    text-align: center;
+}
+
+.bv-header-stars {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.bv-header-stars svg {
+    color: #F4A261;
+}
+
+.bv-header-brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.bv-shield-logo {
+    width: 72px;
+    height: 72px;
+    background: rgba(244, 162, 97, 0.12);
+    border: 2px solid #F4A261;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #F4A261;
+    position: relative;
+}
+
+.bv-brand-text {
+    color: #fff;
+}
+
+.bv-brand-name {
+    font-size: 36px;
+    font-weight: 800;
+    margin: 0;
+    letter-spacing: 3px;
+    color: #fff;
+}
+
+.bv-brand-tagline {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: #F4A261;
+    letter-spacing: 4px;
+}
+
+.bv-brand-description {
+    margin: 16px auto 0;
+    max-width: 600px;
+    font-size: 15px;
+    color: rgba(255, 255, 255, 0.7);
+    line-height: 1.6;
+}
+
+/* ---- SECTION HEADERS ---- */
+.bv-section-header {
+    text-align: center;
+    margin-bottom: 36px;
+}
+
+.bv-section-banner {
+    display: inline-block;
+    background: #0A2647;
+    color: #fff;
+    padding: 10px 32px;
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    border-radius: 6px 6px 0 0;
+    margin: 0;
+}
+
+.bv-section-sub {
+    display: inline-block;
+    background: #F4A261;
+    color: #fff;
+    padding: 6px 24px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    margin: 0;
+}
+
+.bv-section-sub-alt {
+    color: #F4A261;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: 12px;
+}
+
+/* ---- SERVICES SECTION ---- */
+.bv-services-section {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 50px 24px 60px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* ---- TABLE (Desktop) ---- */
+.bv-table-wrapper {
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    border: 1px solid #e5e7eb;
+}
+
+.bv-services-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.bv-services-table thead {
+    background: #0A2647;
+}
+
+.bv-services-table thead th {
+    padding: 14px 20px;
+    text-align: left;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #ffffff;
+    border: none;
+}
+
+.bv-services-table thead th:last-child {
+    text-align: center;
+}
+
+.bv-services-table tbody tr {
+    transition: background-color 0.15s;
+}
+
+.bv-services-table tbody tr:nth-child(even) {
+    background-color: #F8F9FA;
+}
+
+.bv-services-table tbody tr:hover {
+    background-color: #eef2f7;
+}
+
+.bv-services-table td {
+    padding: 14px 20px;
+    vertical-align: middle;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.bv-services-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Service column */
+.bv-service-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.bv-service-icon {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    background: linear-gradient(135deg, #0A2647, #144272);
+    color: #F4A261;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.bv-service-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: #0A2647;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.bv-featured-badge {
+    display: inline-block;
+    background: linear-gradient(135deg, #F4A261, #E76F51);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Description column */
+.bv-service-desc {
+    font-size: 13px;
+    color: #666;
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* Price column */
+.bv-col-price {
+    text-align: center;
+    width: 200px;
+}
+
+.bv-price-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.bv-service-price {
+    font-size: 15px;
+    font-weight: 800;
+    color: #0A2647;
+}
+
+/* ---- BUTTONS ---- */
+.bv-btn {
+    display: inline-block;
+    padding: 8px 20px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    text-decoration: none;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    line-height: 1.4;
+}
+
+.bv-btn-gold {
+    background: linear-gradient(135deg, #F4A261, #E76F51);
+    color: #fff !important;
+    box-shadow: 0 2px 8px rgba(244, 162, 97, 0.35);
+}
+
+.bv-btn-gold:hover {
+    background: linear-gradient(135deg, #E76F51, #E05A3A);
+    box-shadow: 0 4px 14px rgba(244, 162, 97, 0.45);
+    transform: translateY(-1px);
+    color: #fff !important;
+}
+
+.bv-btn-teal {
+    background: linear-gradient(135deg, #2A9D8F, #21867A);
+    color: #fff !important;
+    box-shadow: 0 2px 8px rgba(42, 157, 143, 0.3);
+}
+
+.bv-btn-teal:hover {
+    background: linear-gradient(135deg, #21867A, #1A7068);
+    transform: translateY(-1px);
+    color: #fff !important;
+}
+
+.bv-btn-navy {
+    background: linear-gradient(135deg, #0A2647, #144272);
+    color: #fff !important;
+    box-shadow: 0 2px 8px rgba(10, 38, 71, 0.3);
+}
+
+.bv-btn-navy:hover {
+    background: linear-gradient(135deg, #144272, #1a5276);
+    transform: translateY(-1px);
+    color: #fff !important;
+}
+
+.bv-btn-block {
+    display: block;
+    width: 100%;
+    padding: 12px 24px;
+}
+
+.bv-btn-sm {
+    padding: 6px 14px;
+    font-size: 11px;
+}
+
+/* ---- MOBILE CARDS ---- */
+.bv-mobile-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.bv-service-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    transition: box-shadow 0.2s;
+}
+
+.bv-service-card:nth-child(even) {
+    background: #F8F9FA;
+}
+
+.bv-service-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+}
+
+.bv-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.bv-card-icon {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    background: linear-gradient(135deg, #0A2647, #144272);
+    color: #F4A261;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.bv-card-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: #0A2647;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.bv-card-desc {
+    font-size: 13px;
+    color: #666;
+    margin: 0 0 12px 0;
+    line-height: 1.4;
+    padding-left: 52px;
+}
+
+.bv-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 12px;
+    border-top: 1px solid #eee;
+}
+
+.bv-card-price {
+    font-size: 15px;
+    font-weight: 800;
+    color: #0A2647;
+}
+
+/* ---- PLANS SECTION ---- */
+.bv-plans-section {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 60px 24px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.bv-plans-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    align-items: stretch;
+}
+
+.bv-plan-card {
+    background: #fff;
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: all 0.3s;
+    position: relative;
+}
+
+.bv-plan-card:hover {
+    box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+    transform: translateY(-4px);
+}
+
+.bv-plan-featured {
+    box-shadow: 0 4px 20px rgba(10, 38, 71, 0.15);
+    border-color: #264653;
+}
+
+.bv-plan-popular {
+    position: absolute;
+    top: 0;
+    right: 0;
+    padding: 6px 16px;
+    border-radius: 0 10px 0 10px;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    z-index: 1;
+}
+
+.bv-plan-header {
+    padding: 28px 24px 20px;
+    color: #fff;
+    text-align: center;
+}
+
+.bv-plan-name {
+    font-size: 22px;
+    font-weight: 800;
+    margin: 0 0 6px 0;
+    color: #fff;
+    letter-spacing: 2px;
+}
+
+.bv-plan-subtitle {
+    font-size: 13px;
+    margin: 0;
+    opacity: 0.85;
+    color: #fff;
+    font-style: italic;
+}
+
+.bv-plan-price-wrap {
+    padding: 20px 24px;
+    text-align: center;
+    background: #fff;
+}
+
+.bv-plan-price {
+    font-size: 32px;
+    font-weight: 900;
+    color: #0A2647;
+    letter-spacing: -0.5px;
+}
+
+.bv-plan-features {
+    flex: 1;
+    padding: 0 24px 20px;
+}
+
+.bv-plan-features ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.bv-plan-features li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 0;
+    font-size: 13px;
+    color: #444;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.bv-plan-features li:last-child {
+    border-bottom: none;
+}
+
+.bv-plan-features li svg {
+    color: #2A9D8F;
+    flex-shrink: 0;
+}
+
+.bv-plan-action {
+    padding: 0 24px 24px;
+}
+
+/* ---- FOOTER ---- */
+.bv-footer {
+    background: linear-gradient(135deg, #0A2647 0%, #071a33 100%);
+    color: #fff;
+    margin-top: auto;
+}
+
+.bv-footer-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 40px 24px 30px;
+}
+
+.bv-trust-badges {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    flex-wrap: wrap;
+    margin-bottom: 30px;
+    padding-bottom: 30px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.bv-trust-badge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: rgba(255,255,255,0.85);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+.bv-trust-badge svg {
+    color: #F4A261;
+}
+
+.bv-footer-contact {
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+.bv-footer-contact p {
+    margin: 4px 0;
+    color: rgba(255,255,255,0.7);
+    font-size: 14px;
+}
+
+.bv-footer-contact strong {
+    color: #fff;
+    font-size: 15px;
+    letter-spacing: 1px;
+}
+
+.bv-footer-copyright {
+    text-align: center;
+}
+
+.bv-footer-copyright p {
+    margin: 0;
+    color: rgba(255,255,255,0.35);
+    font-size: 12px;
+}
+
+/* ---- RESPONSIVE ---- */
+.bv-desktop-only {
+    display: block;
+}
+
+.bv-mobile-only {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .bv-desktop-only {
+        display: none !important;
+    }
+
+    .bv-mobile-only {
+        display: block !important;
+    }
+
+    .bv-header-inner {
+        padding: 32px 16px 28px;
+    }
+
+    .bv-shield-logo {
+        width: 56px;
+        height: 56px;
+    }
+
+    .bv-brand-name {
+        font-size: 26px;
+        letter-spacing: 2px;
+    }
+
+    .bv-brand-tagline {
+        font-size: 10px;
+        letter-spacing: 3px;
+    }
+
+    .bv-brand-description {
+        font-size: 13px;
+    }
+
+    .bv-section-banner {
+        font-size: 14px;
+        padding: 8px 20px;
+    }
+
+    .bv-section-sub {
+        font-size: 10px;
+        padding: 5px 16px;
+    }
+
+    .bv-services-section,
+    .bv-plans-section {
+        padding: 30px 16px 40px;
+    }
+
+    .bv-plans-grid {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+    .bv-plan-name {
+        font-size: 18px;
+    }
+
+    .bv-plan-price {
+        font-size: 26px;
+    }
+
+    .bv-trust-badges {
+        gap: 20px 32px;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .bv-footer-contact p {
+        font-size: 12px;
+        word-break: break-all;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+    .bv-plans-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+    }
+
+    .bv-services-table td {
+        padding: 10px 12px;
+    }
+
+    .bv-service-desc {
+        font-size: 12px;
+    }
+}
