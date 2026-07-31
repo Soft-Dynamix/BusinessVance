@@ -1,0 +1,1102 @@
+     1→<?php
+     2→/**
+     3→ * BusinessVance Services Manager - Database Activator
+     4→ *
+     5→ * Creates all required database tables and seeds demo data on plugin activation.
+     6→ *
+     7→ * @package BusinessVance_Services_Manager
+     8→ * @since   1.0.0
+     9→ */
+    10→
+    11→if ( ! defined( 'ABSPATH' ) ) {
+    12→        exit;
+    13→}
+    14→
+    15→class BV_Activator {
+    16→
+    17→        /**
+    18→         * Plugin activation callback.
+    19→         *
+    20→         * Creates all database tables and seeds initial demo data.
+    21→         *
+    22→         * @since 1.0.0
+    23→         * @return void
+    24→         */
+    25→        public static function activate() {
+    26→                self::create_tables();
+    27→                self::seed_data();
+    28→        }
+    29→
+    30→        /**
+    31→         * Create all plugin database tables using dbDelta.
+    32→         *
+    33→         * @since 1.0.0
+    34→         * @return void
+    35→         */
+    36→        private static function create_tables() {
+    37→                global $wpdb;
+    38→
+    39→                $charset_collate = $wpdb->get_charset_collate();
+    40→
+    41→                require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+    42→
+    43→                // -------------------------------------------------------
+    44→                // 1. bv_categories
+    45→                // -------------------------------------------------------
+    46→                $table_categories = $wpdb->prefix . 'bv_categories';
+    47→
+    48→                $sql_categories = "CREATE TABLE {$table_categories} (
+    49→                        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+    50→                        name varchar(200) NOT NULL DEFAULT '',
+    51→                        slug varchar(200) NOT NULL DEFAULT '',
+    52→                        color varchar(50) NOT NULL DEFAULT '#008080',
+    53→                        created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    54→                        PRIMARY KEY  (id),
+    55→                        UNIQUE KEY slug (slug)
+    56→                ) {$charset_collate};";
+    57→
+    58→                dbDelta( $sql_categories );
+    59→
+    60→                // -------------------------------------------------------
+    61→                // 2. bv_services
+    62→                // -------------------------------------------------------
+    63→                $table_services = $wpdb->prefix . 'bv_services';
+    64→
+    65→                $sql_services = "CREATE TABLE {$table_services} (
+    66→                        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+    67→                        name varchar(255) NOT NULL DEFAULT '',
+    68→                        description text NOT NULL,
+    69→                        price varchar(100) NOT NULL DEFAULT '',
+    70→                        price_display varchar(100) NOT NULL DEFAULT '',
+    71→                        icon varchar(100) NOT NULL DEFAULT 'briefcase',
+    72→                        button_label varchar(200) NOT NULL DEFAULT 'Get Started',
+    73→                        service_type varchar(50) NOT NULL DEFAULT 'onceoff',
+    74→                        woo_product_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+    75→                        questionnaire_template_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+    76→                        category_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+    77→                        is_visible tinyint(1) NOT NULL DEFAULT 1,
+    78→                        is_featured tinyint(1) NOT NULL DEFAULT 0,
+    79→                        display_order int(11) NOT NULL DEFAULT 0,
+    80→                        created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    81→                        updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    82→                        PRIMARY KEY  (id)
+    83→                ) {$charset_collate};";
+    84→
+    85→                dbDelta( $sql_services );
+    86→
+    87→                // -------------------------------------------------------
+    88→                // 3. bv_plans
+    89→                // -------------------------------------------------------
+    90→                $table_plans = $wpdb->prefix . 'bv_plans';
+    91→
+    92→                $sql_plans = "CREATE TABLE {$table_plans} (
+    93→                        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+    94→                        name varchar(255) NOT NULL DEFAULT '',
+    95→                        subtitle varchar(255) NOT NULL DEFAULT '',
+    96→                        price varchar(100) NOT NULL DEFAULT '',
+    97→                        color varchar(50) NOT NULL DEFAULT '',
+    98→                        button_label varchar(255) NOT NULL DEFAULT 'Get Started',
+    99→                        woo_product_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   100→                        category_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   101→                        is_visible tinyint(1) NOT NULL DEFAULT 1,
+   102→                        is_featured tinyint(1) NOT NULL DEFAULT 0,
+   103→                        display_order int(11) NOT NULL DEFAULT 0,
+   104→                        created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   105→                        updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+   106→                        PRIMARY KEY  (id)
+   107→                ) {$charset_collate};";
+   108→
+   109→                dbDelta( $sql_plans );
+   110→
+   111→                // -------------------------------------------------------
+   112→                // 4. bv_plan_features
+   113→                // -------------------------------------------------------
+   114→                $table_plan_features = $wpdb->prefix . 'bv_plan_features';
+   115→
+   116→                $sql_plan_features = "CREATE TABLE {$table_plan_features} (
+   117→                        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+   118→                        plan_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   119→                        feature_text varchar(500) NOT NULL DEFAULT '',
+   120→                        display_order int(11) NOT NULL DEFAULT 0,
+   121→                        PRIMARY KEY  (id)
+   122→                ) {$charset_collate};";
+   123→
+   124→                dbDelta( $sql_plan_features );
+   125→
+   126→                // -------------------------------------------------------
+   127→                // 5. bv_projects
+   128→                // -------------------------------------------------------
+   129→                $table_projects = $wpdb->prefix . 'bv_projects';
+   130→
+   131→                $sql_projects = "CREATE TABLE {$table_projects} (
+   132→                        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+   133→                        project_number varchar(50) NOT NULL DEFAULT '',
+   134→                        client_user_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   135→                        client_name varchar(255) NOT NULL DEFAULT '',
+   136→                        client_email varchar(255) NOT NULL DEFAULT '',
+   137→                        client_phone varchar(50) NOT NULL DEFAULT '',
+   138→                        client_company varchar(255) NOT NULL DEFAULT '',
+   139→                        wc_order_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   140→                        status varchar(50) NOT NULL DEFAULT 'awaiting-agreement',
+   141→                        progress_percent int(11) NOT NULL DEFAULT 0,
+   142→                        notes text NOT NULL,
+   143→                        assigned_to varchar(255) NOT NULL DEFAULT '',
+   144→                        internal_notes text NOT NULL,
+   145→                        created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   146→                        updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+   147→                        PRIMARY KEY  (id),
+   148→                        UNIQUE KEY project_number (project_number)
+   149→                ) {$charset_collate};";
+   150→
+   151→                dbDelta( $sql_projects );
+   152→
+   153→                // -------------------------------------------------------
+   154→                // 6. bv_project_services
+   155→                // -------------------------------------------------------
+   156→                $table_project_services = $wpdb->prefix . 'bv_project_services';
+   157→
+   158→                $sql_project_services = "CREATE TABLE {$table_project_services} (
+   159→                        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+   160→                        project_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   161→                        service_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   162→                        status varchar(50) NOT NULL DEFAULT 'pending',
+   163→                        created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   164→                        PRIMARY KEY  (id)
+   165→                ) {$charset_collate};";
+   166→
+   167→                dbDelta( $sql_project_services );
+   168→
+   169→                // -------------------------------------------------------
+   170→                // 7. bv_project_agreements
+   171→                // -------------------------------------------------------
+   172→                $table_project_agreements = $wpdb->prefix . 'bv_project_agreements';
+   173→
+   174→                $sql_project_agreements = "CREATE TABLE {$table_project_agreements} (
+   175→                        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+   176→                        project_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   177→                        template_content text NOT NULL,
+   178→                        full_name varchar(255) NOT NULL DEFAULT '',
+   179→                        ip_address varchar(45) NOT NULL DEFAULT '',
+   180→                        user_agent text NOT NULL,
+   181→                        agreed_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+   182→                        created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   183→                        PRIMARY KEY  (id)
+   184→                ) {$charset_collate};";
+   185→
+   186→                dbDelta( $sql_project_agreements );
+   187→
+   188→                // -------------------------------------------------------
+   189→                // 8. bv_project_documents
+   190→                // -------------------------------------------------------
+   191→                $table_project_documents = $wpdb->prefix . 'bv_project_documents';
+   192→
+   193→                $sql_project_documents = "CREATE TABLE {$table_project_documents} (
+   194→                        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+   195→                        project_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   196→                        service_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   197→                        name varchar(255) NOT NULL DEFAULT '',
+   198→                        filename varchar(255) NOT NULL DEFAULT '',
+   199→                        filepath varchar(500) NOT NULL DEFAULT '',
+   200→                        filesize bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   201→                        mime_type varchar(100) NOT NULL DEFAULT '',
+   202→                        category varchar(50) NOT NULL DEFAULT 'other',
+   203→                        uploaded_by varchar(255) NOT NULL DEFAULT 'client',
+   204→                        created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   205→                        PRIMARY KEY  (id)
+   206→                ) {$charset_collate};";
+   207→
+   208→                dbDelta( $sql_project_documents );
+   209→
+   210→                // -------------------------------------------------------
+   211→                // 9. bv_project_reports
+   212→                // -------------------------------------------------------
+   213→                $table_project_reports = $wpdb->prefix . 'bv_project_reports';
+   214→
+   215→                $sql_project_reports = "CREATE TABLE {$table_project_reports} (
+   216→                        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+   217→                        project_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   218→                        service_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   219→                        title varchar(255) NOT NULL DEFAULT '',
+   220→                        filename varchar(255) NOT NULL DEFAULT '',
+   221→                        filepath varchar(500) NOT NULL DEFAULT '',
+   222→                        filesize bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   223→                        mime_type varchar(100) NOT NULL DEFAULT '',
+   224→                        status varchar(50) NOT NULL DEFAULT 'draft',
+   225→                        version varchar(20) NOT NULL DEFAULT '1.0',
+   226→                        delivered_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+   227→                        created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   228→                        updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+   229→                        PRIMARY KEY  (id)
+   230→                ) {$charset_collate};";
+   231→
+   232→                dbDelta( $sql_project_reports );
+   233→
+   234→                // -------------------------------------------------------
+   235→                // 10. bv_project_messages
+   236→                // -------------------------------------------------------
+   237→                $table_project_messages = $wpdb->prefix . 'bv_project_messages';
+   238→
+   239→                $sql_project_messages = "CREATE TABLE {$table_project_messages} (
+   240→                        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+   241→                        project_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   242→                        sender_type varchar(20) NOT NULL DEFAULT 'client',
+   243→                        sender_name varchar(255) NOT NULL DEFAULT '',
+   244→                        sender_email varchar(255) NOT NULL DEFAULT '',
+   245→                        message text NOT NULL,
+   246→                        is_read tinyint(1) NOT NULL DEFAULT 0,
+   247→                        created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   248→                        PRIMARY KEY  (id)
+   249→                ) {$charset_collate};";
+   250→
+   251→                dbDelta( $sql_project_messages );
+   252→
+   253→                // -------------------------------------------------------
+   254→                // 11. bv_project_notes
+   255→                // -------------------------------------------------------
+   256→                $table_project_notes = $wpdb->prefix . 'bv_project_notes';
+   257→
+   258→                $sql_project_notes = "CREATE TABLE {$table_project_notes} (
+   259→                        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+   260→                        project_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   261→                        author_name varchar(255) NOT NULL DEFAULT '',
+   262→                        content text NOT NULL,
+   263→                        created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   264→                        PRIMARY KEY  (id)
+   265→                ) {$charset_collate};";
+   266→
+   267→                dbDelta( $sql_project_notes );
+   268→
+   269→                // -------------------------------------------------------
+   270→                // 12. bv_questionnaire_templates
+   271→                // -------------------------------------------------------
+   272→                $table_questionnaire_templates = $wpdb->prefix . 'bv_questionnaire_templates';
+   273→
+   274→                $sql_questionnaire_templates = "CREATE TABLE {$table_questionnaire_templates} (
+   275→                        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+   276→                        name varchar(255) NOT NULL DEFAULT '',
+   277→                        slug varchar(200) NOT NULL DEFAULT '',
+   278→                        description text NOT NULL,
+   279→                        version varchar(20) NOT NULL DEFAULT '1.0',
+   280→                        status varchar(50) NOT NULL DEFAULT 'draft',
+   281→                        created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   282→                        updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+   283→                        PRIMARY KEY  (id),
+   284→                        UNIQUE KEY slug (slug)
+   285→                ) {$charset_collate};";
+   286→
+   287→                dbDelta( $sql_questionnaire_templates );
+   288→
+   289→                // -------------------------------------------------------
+   290→                // 13. bv_questionnaire_sections
+   291→                // -------------------------------------------------------
+   292→                $table_questionnaire_sections = $wpdb->prefix . 'bv_questionnaire_sections';
+   293→
+   294→                $sql_questionnaire_sections = "CREATE TABLE {$table_questionnaire_sections} (
+   295→                        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+   296→                        template_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   297→                        title varchar(255) NOT NULL DEFAULT '',
+   298→                        description text NOT NULL,
+   299→                        display_order int(11) NOT NULL DEFAULT 0,
+   300→                        created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   301→                        PRIMARY KEY  (id)
+   302→                ) {$charset_collate};";
+   303→
+   304→                dbDelta( $sql_questionnaire_sections );
+   305→
+   306→                // -------------------------------------------------------
+   307→                // 14. bv_questionnaire_questions
+   308→                // -------------------------------------------------------
+   309→                $table_questionnaire_questions = $wpdb->prefix . 'bv_questionnaire_questions';
+   310→
+   311→                $sql_questionnaire_questions = "CREATE TABLE {$table_questionnaire_questions} (
+   312→                        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+   313→                        section_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   314→                        type varchar(50) NOT NULL DEFAULT 'text',
+   315→                        label varchar(500) NOT NULL DEFAULT '',
+   316→                        placeholder varchar(500) NOT NULL DEFAULT '',
+   317→                        is_required tinyint(1) NOT NULL DEFAULT 0,
+   318→                        options text NOT NULL,
+   319→                        help_text varchar(500) NOT NULL DEFAULT '',
+   320→                        display_order int(11) NOT NULL DEFAULT 0,
+   321→                        created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   322→                        PRIMARY KEY  (id)
+   323→                ) {$charset_collate};";
+   324→
+   325→                dbDelta( $sql_questionnaire_questions );
+   326→
+   327→                // -------------------------------------------------------
+   328→                // 15. bv_questionnaire_responses
+   329→                // -------------------------------------------------------
+   330→                $table_questionnaire_responses = $wpdb->prefix . 'bv_questionnaire_responses';
+   331→
+   332→                $sql_questionnaire_responses = "CREATE TABLE {$table_questionnaire_responses} (
+   333→                        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+   334→                        project_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   335→                        service_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   336→                        question_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   337→                        response_value text NOT NULL,
+   338→                        created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   339→                        PRIMARY KEY  (id)
+   340→                ) {$charset_collate};";
+   341→
+   342→                dbDelta( $sql_questionnaire_responses );
+   343→
+   344→                // -------------------------------------------------------
+   345→                // 16. bv_activity_log
+   346→                // -------------------------------------------------------
+   347→                $table_activity_log = $wpdb->prefix . 'bv_activity_log';
+   348→
+   349→                $sql_activity_log = "CREATE TABLE {$table_activity_log} (
+   350→                        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+   351→                        project_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   352→                        entity_type varchar(50) NOT NULL DEFAULT '',
+   353→                        entity_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   354→                        action varchar(100) NOT NULL DEFAULT '',
+   355→                        description text NOT NULL,
+   356→                        metadata text NOT NULL,
+   357→                        user_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+   358→                        created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   359→                        PRIMARY KEY  (id)
+   360→                ) {$charset_collate};";
+   361→
+   362→                dbDelta( $sql_activity_log );
+   363→
+   364→                // Store the current version for future update comparisons.
+   365→                update_option( 'bv_services_manager_db_version', BV_VERSION, false );
+   366→        }
+   367→
+   368→        /**
+   369→         * Seed demo data into the database.
+   370→         *
+   371→         * Checks if data already exists before inserting. Returns early
+   372→         * if the categories table already has rows, indicating the
+   373→         * plugin has been activated previously.
+   374→         *
+   375→         * @since 1.0.0
+   376→         * @return void
+   377→         */
+   378→        private static function seed_data() {
+   379→                global $wpdb;
+   380→
+   381→                $table_categories = $wpdb->prefix . 'bv_categories';
+   382→
+   383→                // Prevent re-seeding on subsequent activations.
+   384→                $existing_count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table_categories}" );
+   385→
+   386→                if ( $existing_count > 0 ) {
+   387→                        return;
+   388→                }
+   389→
+   390→                // ----------------------------------------------------------------
+   391→                // Seed Categories
+   392→                // ----------------------------------------------------------------
+   393→                $categories = array(
+   394→                        array(
+   395→                                'name'  => 'Research & Analysis',
+   396→                                'slug'  => 'research-analysis',
+   397→                                'color' => '#0A2647',
+   398→                        ),
+   399→                        array(
+   400→                                'name'  => 'Planning & Strategy',
+   401→                                'slug'  => 'planning-strategy',
+   402→                                'color' => '#2A9D8F',
+   403→                        ),
+   404→                        array(
+   405→                                'name'  => 'Advisory & Consulting',
+   406→                                'slug'  => 'advisory-consulting',
+   407→                                'color' => '#F4A261',
+   408→                        ),
+   409→                        array(
+   410→                                'name'  => 'Implementation',
+   411→                                'slug'  => 'implementation',
+   412→                                'color' => '#264653',
+   413→                        ),
+   414→                );
+   415→
+   416→                $category_ids = array();
+   417→
+   418→                foreach ( $categories as $cat ) {
+   419→                        $wpdb->insert(
+   420→                                $table_categories,
+   421→                                array(
+   422→                                        'name'       => $cat['name'],
+   423→                                        'slug'       => $cat['slug'],
+   424→                                        'color'      => $cat['color'],
+   425→                                        'created_at' => current_time( 'mysql' ),
+   426→                                ),
+   427→                                array( '%s', '%s', '%s', '%s' )
+   428→                        );
+   429→                        $category_ids[ $cat['slug'] ] = $wpdb->insert_id;
+   430→                }
+   431→
+   432→                // ----------------------------------------------------------------
+   433→                // Seed Services
+   434→                // ----------------------------------------------------------------
+   435→                $table_services = $wpdb->prefix . 'bv_services';
+   436→
+   437→                $services = array(
+   438→                        // Research & Analysis
+   439→                        array(
+   440→                                'name'          => 'Business Feasibility Report',
+   441→                                'description'   => 'A comprehensive feasibility analysis evaluating the viability of your business concept, including market potential, financial projections, and risk assessment.',
+   442→                                'price'         => '4500.00',
+   443→                                'price_display' => 'R4,500',
+   444→                                'icon'          => 'file-search',
+   445→                                'button_label'  => 'Get Started',
+   446→                                'service_type'  => 'onceoff',
+   447→                                'category_id'   => $category_ids['research-analysis'],
+   448→                                'is_visible'    => 1,
+   449→                                'is_featured'   => 1,
+   450→                                'display_order' => 1,
+   451→                        ),
+   452→                        array(
+   453→                                'name'          => 'Market Research Report',
+   454→                                'description'   => 'In-depth market analysis covering industry trends, competitor landscape, target audience profiling, and market sizing to inform strategic decisions.',
+   455→                                'price'         => '5500.00',
+   456→                                'price_display' => 'R5,500',
+   457→                                'icon'          => 'bar-chart-3',
+   458→                                'button_label'  => 'Get Started',
+   459→                                'service_type'  => 'onceoff',
+   460→                                'category_id'   => $category_ids['research-analysis'],
+   461→                                'is_visible'    => 1,
+   462→                                'is_featured'   => 1,
+   463→                                'display_order' => 2,
+   464→                        ),
+   465→                        array(
+   466→                                'name'          => 'Financial Analysis',
+   467→                                'description'   => 'Detailed financial assessment including cash flow projections, break-even analysis, profit margin evaluation, and funding requirement analysis.',
+   468→                                'price'         => '3800.00',
+   469→                                'price_display' => 'R3,800',
+   470→                                'icon'          => 'trending-up',
+   471→                                'button_label'  => 'Get Started',
+   472→                                'service_type'  => 'onceoff',
+   473→                                'category_id'   => $category_ids['research-analysis'],
+   474→                                'is_visible'    => 1,
+   475→                                'is_featured'   => 0,
+   476→                                'display_order' => 3,
+   477→                        ),
+   478→                        // Planning & Strategy
+   479→                        array(
+   480→                                'name'          => 'Business Plan Development',
+   481→                                'description'   => 'Professional business plan preparation for funding applications, investor pitches, or internal strategic planning with financial models.',
+   482→                                'price'         => '7500.00',
+   483→                                'price_display' => 'R7,500',
+   484→                                'icon'          => 'clipboard-list',
+   485→                                'button_label'  => 'Get Started',
+   486→                                'service_type'  => 'onceoff',
+   487→                                'category_id'   => $category_ids['planning-strategy'],
+   488→                                'is_visible'    => 1,
+   489→                                'is_featured'   => 1,
+   490→                                'display_order' => 4,
+   491→                        ),
+   492→                        array(
+   493→                                'name'          => 'Strategic Growth Plan',
+   494→                                'description'   => 'A tailored growth strategy outlining expansion opportunities, market penetration tactics, and sustainable scaling pathways.',
+   495→                                'price'         => '6500.00',
+   496→                                'price_display' => 'R6,500',
+   497→                                'icon'          => 'target',
+   498→                                'button_label'  => 'Get Started',
+   499→                                'service_type'  => 'onceoff',
+   500→                                'category_id'   => $category_ids['planning-strategy'],
+   501→                                'is_visible'    => 1,
+   502→                                'is_featured'   => 0,
+   503→                                'display_order' => 5,
+   504→                        ),
+   505→                        array(
+   506→                                'name'          => 'Marketing Strategy',
+   507→                                'description'   => 'Comprehensive marketing plan covering digital and traditional channels, brand positioning, customer acquisition, and campaign frameworks.',
+   508→                                'price'         => '5000.00',
+   509→                                'price_display' => 'R5,000',
+   510→                                'icon'          => 'megaphone',
+   511→                                'button_label'  => 'Get Started',
+   512→                                'service_type'  => 'onceoff',
+   513→                                'category_id'   => $category_ids['planning-strategy'],
+   514→                                'is_visible'    => 1,
+   515→                                'is_featured'   => 0,
+   516→                                'display_order' => 6,
+   517→                        ),
+   518→                        // Advisory & Consulting
+   519→                        array(
+   520→                                'name'          => 'Business Advisory Session',
+   521→                                'description'   => 'One-on-one consulting session with experienced business advisors to address specific challenges, explore opportunities, and gain expert insights.',
+   522→                                'price'         => '1500.00',
+   523→                                'price_display' => 'R1,500',
+   524→                                'icon'          => 'message-circle',
+   525→                                'button_label'  => 'Book Session',
+   526→                                'service_type'  => 'onceoff',
+   527→                                'category_id'   => $category_ids['advisory-consulting'],
+   528→                                'is_visible'    => 1,
+   529→                                'is_featured'   => 1,
+   530→                                'display_order' => 7,
+   531→                        ),
+   532→                        array(
+   533→                                'name'          => 'Compliance Assessment',
+   534→                                'description'   => 'Thorough review of your business compliance status covering regulatory requirements, industry standards, and risk mitigation strategies.',
+   535→                                'price'         => '3200.00',
+   536→                                'price_display' => 'R3,200',
+   537→                                'icon'          => 'shield-check',
+   538→                                'button_label'  => 'Get Started',
+   539→                                'service_type'  => 'onceoff',
+   540→                                'category_id'   => $category_ids['advisory-consulting'],
+   541→                                'is_visible'    => 1,
+   542→                                'is_featured'   => 0,
+   543→                                'display_order' => 8,
+   544→                        ),
+   545→                        array(
+   546→                                'name'          => 'Tax Planning Consultation',
+   547→                                'description'   => 'Expert tax planning advice to optimize your tax position, ensure SARS compliance, and identify legitimate tax-saving opportunities.',
+   548→                                'price'         => '2800.00',
+   549→                                'price_display' => 'R2,800',
+   550→                                'icon'          => 'calculator',
+   551→                                'button_label'  => 'Get Started',
+   552→                                'service_type'  => 'onceoff',
+   553→                                'category_id'   => $category_ids['advisory-consulting'],
+   554→                                'is_visible'    => 1,
+   555→                                'is_featured'   => 0,
+   556→                                'display_order' => 9,
+   557→                        ),
+   558→                        // Implementation
+   559→                        array(
+   560→                                'name'          => 'Company Registration',
+   561→                                'description'   => 'End-to-end company registration service with CIPC, including name reservation, incorporation documents, and registration certificates.',
+   562→                                'price'         => '1750.00',
+   563→                                'price_display' => 'R1,750',
+   564→                                'icon'          => 'building-2',
+   565→                                'button_label'  => 'Get Started',
+   566→                                'service_type'  => 'onceoff',
+   567→                                'category_id'   => $category_ids['implementation'],
+   568→                                'is_visible'    => 1,
+   569→                                'is_featured'   => 1,
+   570→                                'display_order' => 10,
+   571→                        ),
+   572→                        array(
+   573→                                'name'          => 'BEE Certificate Assistance',
+   574→                                'description'   => 'Professional assistance with B-BBEE certification, including scorecard assessment, documentation preparation, and affidavit guidance.',
+   575→                                'price'         => '2500.00',
+   576→                                'price_display' => 'R2,500',
+   577→                                'icon'          => 'award',
+   578→                                'button_label'  => 'Get Started',
+   579→                                'service_type'  => 'onceoff',
+   580→                                'category_id'   => $category_ids['implementation'],
+   581→                                'is_visible'    => 1,
+   582→                                'is_featured'   => 0,
+   583→                                'display_order' => 11,
+   584→                        ),
+   585→                        array(
+   586→                                'name'          => 'Logo & Brand Identity',
+   587→                                'description'   => 'Professional logo design and brand identity package including logo concepts, colour palette, typography, and brand guidelines document.',
+   588→                                'price'         => '4200.00',
+   589→                                'price_display' => 'R4,200',
+   590→                                'icon'          => 'palette',
+   591→                                'button_label'  => 'Get Started',
+   592→                                'service_type'  => 'onceoff',
+   593→                                'category_id'   => $category_ids['implementation'],
+   594→                                'is_visible'    => 1,
+   595→                                'is_featured'   => 0,
+   596→                                'display_order' => 12,
+   597→                        ),
+   598→                );
+   599→
+   600→                $service_ids = array();
+   601→
+   602→                foreach ( $services as $svc ) {
+   603→                        $wpdb->insert(
+   604→                                $table_services,
+   605→                                array(
+   606→                                        'name'           => $svc['name'],
+   607→                                        'description'    => $svc['description'],
+   608→                                        'price'          => $svc['price'],
+   609→                                        'price_display'  => $svc['price_display'],
+   610→                                        'icon'           => $svc['icon'],
+   611→                                        'button_label'   => $svc['button_label'],
+   612→                                        'service_type'   => $svc['service_type'],
+   613→                                        'woo_product_id' => 0,
+   614→                                        'category_id'    => $svc['category_id'],
+   615→                                        'is_visible'     => $svc['is_visible'],
+   616→                                        'is_featured'    => $svc['is_featured'],
+   617→                                        'display_order'  => $svc['display_order'],
+   618→                                        'created_at'     => current_time( 'mysql' ),
+   619→                                        'updated_at'     => current_time( 'mysql' ),
+   620→                                ),
+   621→                                array( '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d', '%d', '%s', '%s' )
+   622→                        );
+   623→                        $service_ids[ $svc['name'] ] = $wpdb->insert_id;
+   624→                }
+   625→
+   626→                // ----------------------------------------------------------------
+   627→                // Seed Plans
+   628→                // ----------------------------------------------------------------
+   629→                $table_plans = $wpdb->prefix . 'bv_plans';
+   630→
+   631→                $plans = array(
+   632→                        array(
+   633→                                'name'          => 'STARTER',
+   634→                                'subtitle'      => 'Perfect for new businesses',
+   635→                                'price'         => '299',
+   636→                                'color'         => '#2A9D8F',
+   637→                                'button_label'  => 'Choose Starter',
+   638→                                'is_visible'    => 1,
+   639→                                'is_featured'   => 0,
+   640→                                'display_order' => 1,
+   641→                        ),
+   642→                        array(
+   643→                                'name'          => 'PROFESSIONAL',
+   644→                                'subtitle'      => 'For growing businesses',
+   645→                                'price'         => '599',
+   646→                                'color'         => '#0A2647',
+   647→                                'button_label'  => 'Choose Professional',
+   648→                                'is_visible'    => 1,
+   649→                                'is_featured'   => 1,
+   650→                                'display_order' => 2,
+   651→                        ),
+   652→                        array(
+   653→                                'name'          => 'BUSINESS PARTNER',
+   654→                                'subtitle'      => 'Enterprise-grade support',
+   655→                                'price'         => '999',
+   656→                                'color'         => '#F4A261',
+   657→                                'button_label'  => 'Choose Business Partner',
+   658→                                'is_visible'    => 1,
+   659→                                'is_featured'   => 0,
+   660→                                'display_order' => 3,
+   661→                        ),
+   662→                );
+   663→
+   664→                $plan_ids = array();
+   665→
+   666→                foreach ( $plans as $plan ) {
+   667→                        $wpdb->insert(
+   668→                                $table_plans,
+   669→                                array(
+   670→                                        'name'           => $plan['name'],
+   671→                                        'subtitle'       => $plan['subtitle'],
+   672→                                        'price'          => $plan['price'],
+   673→                                        'color'          => $plan['color'],
+   674→                                        'button_label'   => $plan['button_label'],
+   675→                                        'woo_product_id' => 0,
+   676→                                        'category_id'    => 0,
+   677→                                        'is_visible'     => $plan['is_visible'],
+   678→                                        'is_featured'    => $plan['is_featured'],
+   679→                                        'display_order'  => $plan['display_order'],
+   680→                                        'created_at'     => current_time( 'mysql' ),
+   681→                                        'updated_at'     => current_time( 'mysql' ),
+   682→                                ),
+   683→                                array( '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d', '%d', '%s', '%s' )
+   684→                        );
+   685→                        $plan_ids[ $plan['name'] ] = $wpdb->insert_id;
+   686→                }
+   687→
+   688→                // ----------------------------------------------------------------
+   689→                // Seed Plan Features
+   690→                // ----------------------------------------------------------------
+   691→                $table_plan_features = $wpdb->prefix . 'bv_plan_features';
+   692→
+   693→                $plan_features = array(
+   694→                        // STARTER features
+   695→                        array( 'plan' => 'STARTER', 'feature' => 'Up to 2 advisory sessions per month', 'order' => 1 ),
+   696→                        array( 'plan' => 'STARTER', 'feature' => 'Basic compliance health check', 'order' => 2 ),
+   697→                        array( 'plan' => 'STARTER', 'feature' => 'Email support (48h response)', 'order' => 3 ),
+   698→                        array( 'plan' => 'STARTER', 'feature' => 'Access to resource library', 'order' => 4 ),
+   699→                        array( 'plan' => 'STARTER', 'feature' => 'Monthly business health report', 'order' => 5 ),
+   700→                        // PROFESSIONAL features
+   701→                        array( 'plan' => 'PROFESSIONAL', 'feature' => 'Up to 5 advisory sessions per month', 'order' => 1 ),
+   702→                        array( 'plan' => 'PROFESSIONAL', 'feature' => 'Full compliance assessment', 'order' => 2 ),
+   703→                        array( 'plan' => 'PROFESSIONAL', 'feature' => 'Priority email & phone support (24h)', 'order' => 3 ),
+   704→                        array( 'plan' => 'PROFESSIONAL', 'feature' => 'Quarterly strategy review session', 'order' => 4 ),
+   705→                        array( 'plan' => 'PROFESSIONAL', 'feature' => 'Discounted à la carte services (15%)', 'order' => 5 ),
+   706→                        array( 'plan' => 'PROFESSIONAL', 'feature' => 'Access to resource library & templates', 'order' => 6 ),
+   707→                        array( 'plan' => 'PROFESSIONAL', 'feature' => 'Dedicated account manager', 'order' => 7 ),
+   708→                        // BUSINESS PARTNER features
+   709→                        array( 'plan' => 'BUSINESS PARTNER', 'feature' => 'Unlimited advisory sessions', 'order' => 1 ),
+   710→                        array( 'plan' => 'BUSINESS PARTNER', 'feature' => 'Full compliance & BEE assessment', 'order' => 2 ),
+   711→                        array( 'plan' => 'BUSINESS PARTNER', 'feature' => 'Dedicated phone line & priority support', 'order' => 3 ),
+   712→                        array( 'plan' => 'BUSINESS PARTNER', 'feature' => 'Monthly strategy review sessions', 'order' => 4 ),
+   713→                        array( 'plan' => 'BUSINESS PARTNER', 'feature' => 'Discounted à la carte services (25%)', 'order' => 5 ),
+   714→                        array( 'plan' => 'BUSINESS PARTNER', 'feature' => 'Full resource library, templates & tools', 'order' => 6 ),
+   715→                        array( 'plan' => 'BUSINESS PARTNER', 'feature' => 'Dedicated senior account manager', 'order' => 7 ),
+   716→                        array( 'plan' => 'BUSINESS PARTNER', 'feature' => 'Annual business audit & review', 'order' => 8 ),
+   717→                        array( 'plan' => 'BUSINESS PARTNER', 'feature' => 'VIP access to events & workshops', 'order' => 9 ),
+   718→                );
+   719→
+   720→                foreach ( $plan_features as $pf ) {
+   721→                        $wpdb->insert(
+   722→                                $table_plan_features,
+   723→                                array(
+   724→                                        'plan_id'       => $plan_ids[ $pf['plan'] ],
+   725→                                        'feature_text'  => $pf['feature'],
+   726→                                        'display_order' => $pf['order'],
+   727→                                ),
+   728→                                array( '%d', '%s', '%d' )
+   729→                        );
+   730→                }
+   731→
+   732→                // ----------------------------------------------------------------
+   733→                // Seed Questionnaire Template
+   734→                // ----------------------------------------------------------------
+   735→                $table_templates = $wpdb->prefix . 'bv_questionnaire_templates';
+   736→
+   737→                $wpdb->insert(
+   738→                        $table_templates,
+   739→                        array(
+   740→                                'name'        => 'Standard Client Questionnaire',
+   741→                                'slug'        => 'standard-client-questionnaire',
+   742→                                'description' => 'A comprehensive onboarding questionnaire to gather essential company, contact, and financial information from new clients before starting a project.',
+   743→                                'version'     => '1.0',
+   744→                                'status'      => 'published',
+   745→                                'created_at'  => current_time( 'mysql' ),
+   746→                                'updated_at'  => current_time( 'mysql' ),
+   747→                        ),
+   748→                        array( '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
+   749→                );
+   750→
+   751→                $template_id = $wpdb->insert_id;
+   752→
+   753→                // ----------------------------------------------------------------
+   754→                // Seed Questionnaire Sections
+   755→                // ----------------------------------------------------------------
+   756→                $table_sections = $wpdb->prefix . 'bv_questionnaire_sections';
+   757→
+   758→                $sections = array(
+   759→                        array(
+   760→                                'title'         => 'Company Profile',
+   761→                                'description'   => 'Please provide details about your company or business entity.',
+   762→                                'display_order' => 1,
+   763→                        ),
+   764→                        array(
+   765→                                'title'         => 'Contact Details',
+   766→                                'description'   => 'Provide the primary contact person for this project.',
+   767→                                'display_order' => 2,
+   768→                        ),
+   769→                        array(
+   770→                                'title'         => 'Financial Information',
+   771→                                'description'   => 'Help us understand your financial position so we can tailor our services accordingly.',
+   772→                                'display_order' => 3,
+   773→                        ),
+   774→                );
+   775→
+   776→                $section_ids = array();
+   777→
+   778→                foreach ( $sections as $sec ) {
+   779→                        $wpdb->insert(
+   780→                                $table_sections,
+   781→                                array(
+   782→                                        'template_id'   => $template_id,
+   783→                                        'title'         => $sec['title'],
+   784→                                        'description'   => $sec['description'],
+   785→                                        'display_order' => $sec['display_order'],
+   786→                                        'created_at'    => current_time( 'mysql' ),
+   787→                                ),
+   788→                                array( '%d', '%s', '%s', '%d', '%s' )
+   789→                        );
+   790→                        $section_ids[ $sec['title'] ] = $wpdb->insert_id;
+   791→                }
+   792→
+   793→                // ----------------------------------------------------------------
+   794→                // Seed Questionnaire Questions
+   795→                // ----------------------------------------------------------------
+   796→                $table_questions = $wpdb->prefix . 'bv_questionnaire_questions';
+   797→
+   798→                $questions = array(
+   799→                        // Section 1: Company Profile
+   800→                        array(
+   801→                                'section_id'    => $section_ids['Company Profile'],
+   802→                                'type'          => 'text',
+   803→                                'label'         => 'Company Name',
+   804→                                'placeholder'   => 'e.g. Acme (Pty) Ltd',
+   805→                                'is_required'   => 1,
+   806→                                'options'       => '[]',
+   807→                                'help_text'     => 'The registered legal name of your company.',
+   808→                                'display_order' => 1,
+   809→                        ),
+   810→                        array(
+   811→                                'section_id'    => $section_ids['Company Profile'],
+   812→                                'type'          => 'text',
+   813→                                'label'         => 'Registration Number',
+   814→                                'placeholder'   => 'e.g. 2024/123456/07',
+   815→                                'is_required'   => 0,
+   816→                                'options'       => '[]',
+   817→                                'help_text'     => 'Your CIPC registration number, if applicable.',
+   818→                                'display_order' => 2,
+   819→                        ),
+   820→                        array(
+   821→                                'section_id'    => $section_ids['Company Profile'],
+   822→                                'type'          => 'text',
+   823→                                'label'         => 'Trading Name',
+   824→                                'placeholder'   => 'e.g. Acme Trading',
+   825→                                'is_required'   => 0,
+   826→                                'options'       => '[]',
+   827→                                'help_text'     => 'The name under which your business operates, if different from the registered name.',
+   828→                                'display_order' => 3,
+   829→                        ),
+   830→                        array(
+   831→                                'section_id'    => $section_ids['Company Profile'],
+   832→                                'type'          => 'select',
+   833→                                'label'         => 'Industry',
+   834→                                'placeholder'   => 'Select your industry',
+   835→                                'is_required'   => 1,
+   836→                                'options'       => wp_json_encode( array(
+   837→                                        'Agriculture & Farming',
+   838→                                        'Construction & Engineering',
+   839→                                        'Education & Training',
+   840→                                        'Financial Services',
+   841→                                        'Healthcare & Medical',
+   842→                                        'Information Technology',
+   843→                                        'Manufacturing',
+   844→                                        'Mining & Resources',
+   845→                                        'Professional Services',
+   846→                                        'Real Estate & Property',
+   847→                                        'Retail & Wholesale',
+   848→                                        'Tourism & Hospitality',
+   849→                                        'Transport & Logistics',
+   850→                                        'Other',
+   851→                                ) ),
+   852→                                'help_text'     => 'Choose the industry that best describes your business.',
+   853→                                'display_order' => 4,
+   854→                        ),
+   855→                        array(
+   856→                                'section_id'    => $section_ids['Company Profile'],
+   857→                                'type'          => 'number',
+   858→                                'label'         => 'Years in Business',
+   859→                                'placeholder'   => 'e.g. 3',
+   860→                                'is_required'   => 1,
+   861→                                'options'       => '[]',
+   862→                                'help_text'     => 'How many years has your company been operating?',
+   863→                                'display_order' => 5,
+   864→                        ),
+   865→
+   866→                        // Section 2: Contact Details
+   867→                        array(
+   868→                                'section_id'    => $section_ids['Contact Details'],
+   869→                                'type'          => 'text',
+   870→                                'label'         => 'Primary Contact Name',
+   871→                                'placeholder'   => 'e.g. John Doe',
+   872→                                'is_required'   => 1,
+   873→                                'options'       => '[]',
+   874→                                'help_text'     => 'The main person we should contact regarding this project.',
+   875→                                'display_order' => 1,
+   876→                        ),
+   877→                        array(
+   878→                                'section_id'    => $section_ids['Contact Details'],
+   879→                                'type'          => 'email',
+   880→                                'label'         => 'Email',
+   881→                                'placeholder'   => 'e.g. john@company.co.za',
+   882→                                'is_required'   => 1,
+   883→                                'options'       => '[]',
+   884→                                'help_text'     => 'The email address for all project communications.',
+   885→                                'display_order' => 2,
+   886→                        ),
+   887→                        array(
+   888→                                'section_id'    => $section_ids['Contact Details'],
+   889→                                'type'          => 'phone',
+   890→                                'label'         => 'Phone',
+   891→                                'placeholder'   => 'e.g. +27 82 123 4567',
+   892→                                'is_required'   => 1,
+   893→                                'options'       => '[]',
+   894→                                'help_text'     => 'A contact number where we can reach you during business hours.',
+   895→                                'display_order' => 3,
+   896→                        ),
+   897→                        array(
+   898→                                'section_id'    => $section_ids['Contact Details'],
+   899→                                'type'          => 'text',
+   900→                                'label'         => 'Position',
+   901→                                'placeholder'   => 'e.g. Managing Director',
+   902→                                'is_required'   => 0,
+   903→                                'options'       => '[]',
+   904→                                'help_text'     => 'Your job title or role within the company.',
+   905→                                'display_order' => 4,
+   906→                        ),
+   907→
+   908→                        // Section 3: Financial Information
+   909→                        array(
+   910→                                'section_id'    => $section_ids['Financial Information'],
+   911→                                'type'          => 'select',
+   912→                                'label'         => 'Annual Revenue Range',
+   913→                                'placeholder'   => 'Select your annual revenue range',
+   914→                                'is_required'   => 1,
+   915→                                'options'       => wp_json_encode( array(
+   916→                                        'Under R1M',
+   917→                                        'R1M - R5M',
+   918→                                        'R5M - R20M',
+   919→                                        'R20M - R50M',
+   920→                                        'Over R50M',
+   921→                                ) ),
+   922→                                'help_text'     => 'Your approximate annual revenue helps us recommend the right service level.',
+   923→                                'display_order' => 1,
+   924→                        ),
+   925→                        array(
+   926→                                'section_id'    => $section_ids['Financial Information'],
+   927→                                'type'          => 'select',
+   928→                                'label'         => 'Number of Employees',
+   929→                                'placeholder'   => 'Select employee count',
+   930→                                'is_required'   => 1,
+   931→                                'options'       => wp_json_encode( array(
+   932→                                        '1 - 5 (Micro)',
+   933→                                        '6 - 20 (Small)',
+   934→                                        '21 - 50 (Medium)',
+   935→                                        '51 - 200 (Large)',
+   936→                                        '201+ (Enterprise)',
+   937→                                ) ),
+   938→                                'help_text'     => 'The current number of employees in your organisation.',
+   939→                                'display_order' => 2,
+   940→                        ),
+   941→                );
+   942→
+   943→                foreach ( $questions as $q ) {
+   944→                        $wpdb->insert(
+   945→                                $table_questions,
+   946→                                array(
+   947→                                        'section_id'    => $q['section_id'],
+   948→                                        'type'          => $q['type'],
+   949→                                        'label'         => $q['label'],
+   950→                                        'placeholder'   => $q['placeholder'],
+   951→                                        'is_required'   => $q['is_required'],
+   952→                                        'options'       => $q['options'],
+   953→                                        'help_text'     => $q['help_text'],
+   954→                                        'display_order' => $q['display_order'],
+   955→                                        'created_at'    => current_time( 'mysql' ),
+   956→                                ),
+   957→                                array( '%d', '%s', '%s', '%s', '%d', '%s', '%s', '%d', '%s' )
+   958→                        );
+   959→                }
+   960→
+   961→                // ----------------------------------------------------------------
+   962→                // Store Default Agreement Template
+   963→                // ----------------------------------------------------------------
+   964→                $agreement_template_content = self::get_default_agreement_template();
+   965→                update_option( 'bv_default_agreement_template', $agreement_template_content, false );
+   966→
+   967→                // Mark seeding as complete.
+   968→                update_option( 'bv_services_manager_seeded', '1', false );
+   969→        }
+   970→
+   971→        /**
+   972→         * Return the default engagement / confidentiality agreement template.
+   973→         *
+   974→         * This HTML content is stored as a WordPress option and cloned into
+   975→         * bv_project_agreements rows when a client signs.
+   976→         *
+   977→         * @since  1.0.0
+   978→         * @return string
+   979→         */
+   980→        private static function get_default_agreement_template() {
+   981→                return '<div style="font-family: Georgia, serif; line-height: 1.8; color: #333; max-width: 800px; margin: 0 auto;">
+   982→
+   983→<div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 3px double #D4AF37;">
+   984→<h1 style="color: #0A2647; font-size: 28px; margin: 0 0 5px 0; letter-spacing: 2px;">BUSINESSVANCE</h1>
+   985→<p style="color: #666; font-size: 13px; margin: 0; letter-spacing: 3px;">RESEARCH. ANALYZE. PLAN. SUCCEED.</p>
+   986→<p style="color: #999; font-size: 11px; margin: 5px 0 0 0;">082 377 7490</p>
+   987→</div>
+   988→
+   989→<h2 style="text-align: center; color: #0A2647; font-size: 20px; margin-bottom: 25px;">CLIENT CONFIDENTIALITY AND INFORMATION PROTECTION UNDERTAKING</h2>
+   990→
+   991→<div style="background: #f8f9fa; padding: 15px 20px; border-left: 4px solid #D4AF37; margin-bottom: 25px; border-radius: 0 6px 6px 0;">
+   992→<p style="margin: 0; font-style: italic; color: #555;"><strong>Our commitment</strong> &mdash; BusinessVance recognises that clients may share valuable business ideas, financial information, operating methods and personal details. We commit to treating this information responsibly, confidentially and only for the purpose of delivering the service purchased.</p>
+   993→</div>
+   994→
+   995→<h3 style="color: #0A2647; font-size: 16px; margin-top: 25px; padding-bottom: 6px; border-bottom: 1px solid #e0e0e0;">1. Information Covered by This Undertaking</h3>
+   996→<ul style="padding-left: 20px;">
+   997→<li style="margin-bottom: 8px;">This undertaking applies to information supplied through questionnaires, emails, WhatsApp messages, telephone discussions, documents, meetings or any other communication with BusinessVance.</li>
+   998→<li style="margin-bottom: 8px;">Protected information may include business ideas, products, services, processes, pricing, supplier details, customer information, financial information, marketing plans, research, intellectual property and any other information that is not publicly available.</li>
+   999→</ul>
+  1000→
+  1001→<h3 style="color: #0A2647; font-size: 16px; margin-top: 25px; padding-bottom: 6px; border-bottom: 1px solid #e0e0e0;">2. BusinessVance Confidentiality Commitment</h3>
+  1002→<ul style="padding-left: 20px;">
+  1003→<li style="margin-bottom: 8px;">BusinessVance will treat information supplied by the client as confidential.</li>
+  1004→<li style="margin-bottom: 8px;">Information will be used only to prepare and deliver the product, report or consulting service purchased by the client.</li>
+  1005→<li style="margin-bottom: 8px;">BusinessVance will not sell, publish, disclose or share the client&rsquo;s information or business idea with unauthorised third parties.</li>
+  1006→<li style="margin-bottom: 8px;">Access will be limited to authorised persons who reasonably require the information to complete or administer the client&rsquo;s service.</li>
+  1007→<li style="margin-bottom: 8px;">Reasonable safeguards will be used to protect information against loss, misuse, unauthorised access, alteration or disclosure.</li>
+  1008→</ul>
+  1009→
+  1010→<h3 style="color: #0A2647; font-size: 16px; margin-top: 25px; padding-bottom: 6px; border-bottom: 1px solid #e0e0e0;">3. Protection and Ownership of Business Ideas</h3>
+  1011→<ul style="padding-left: 20px;">
+  1012→<li style="margin-bottom: 8px;">Any business idea, concept, strategy, business model, product name, process or original material submitted by the client remains the property of the client.</li>
+  1013→<li style="margin-bottom: 8px;">Submitting information to BusinessVance does not transfer ownership of the client&rsquo;s idea or intellectual property to BusinessVance.</li>
+  1014→<li style="margin-bottom: 8px;">BusinessVance will not knowingly use, reproduce, market or provide the client&rsquo;s confidential business idea to another person for BusinessVance&rsquo;s own benefit.</li>
+  1015→</ul>
+  1016→
+  1017→<h3 style="color: #0A2647; font-size: 16px; margin-top: 25px; padding-bottom: 6px; border-bottom: 1px solid #e0e0e0;">4. Personal Information and POPIA</h3>
+  1018→<ul style="padding-left: 20px;">
+  1019→<li style="margin-bottom: 8px;">BusinessVance will process personal information only for legitimate purposes connected to the purchased service, administration, communication, recordkeeping and legal compliance.</li>
+  1020→<li style="margin-bottom: 8px;">Personal information will be handled in line with the Protection of Personal Information Act 4 of 2013 (POPIA), where applicable.</li>
+  1021→<li style="margin-bottom: 8px;">The client may request access to or correction of personal information held by BusinessVance, subject to reasonable verification and legal recordkeeping requirements.</li>
+  1022→</ul>
+  1023→
+  1024→<h3 style="color: #0A2647; font-size: 16px; margin-top: 25px; padding-bottom: 6px; border-bottom: 1px solid #e0e0e0;">5. When Information May Be Disclosed</h3>
+  1025→<ul style="padding-left: 20px;">
+  1026→<li style="margin-bottom: 8px;">BusinessVance will not share confidential information unless: the client has provided written permission; disclosure is required by law, court order or lawful regulatory process; or limited disclosure is reasonably necessary to an authorised service provider assisting with the client&rsquo;s project and that provider is required to maintain confidentiality.</li>
+  1027→<li style="margin-bottom: 8px;">This undertaking does not apply to information that is already publicly available through no breach by BusinessVance, was lawfully known before disclosure, or was independently developed without using the client&rsquo;s confidential information.</li>
+  1028→</ul>
+  1029→
+  1030→<h3 style="color: #0A2647; font-size: 16px; margin-top: 25px; padding-bottom: 6px; border-bottom: 1px solid #e0e0e0;">6. Client Responsibilities</h3>
+  1031→<ul style="padding-left: 20px;">
+  1032→<li style="margin-bottom: 8px;">The client is responsible for providing accurate and complete information and for ensuring that the client is authorised to provide any personal, financial or third-party information included in the questionnaire.</li>
+  1033→<li style="margin-bottom: 8px;">The quality and accuracy of the final report or service depend on the completeness and accuracy of the information supplied.</li>
+  1034→<li style="margin-bottom: 8px;">Clients should not provide passwords, banking PINs, full payment-card details or other information that is not required for the purchased service.</li>
+  1035→</ul>
+  1036→
+  1037→<h3 style="color: #0A2647; font-size: 16px; margin-top: 25px; padding-bottom: 6px; border-bottom: 1px solid #e0e0e0;">7. Reports and Completed Work</h3>
+  1038→<ul style="padding-left: 20px;">
+  1039→<li style="margin-bottom: 8px;">Reports and documents prepared specifically for the client are intended for the client&rsquo;s use and will not be published or distributed by BusinessVance without prior permission.</li>
+  1040→<li style="margin-bottom: 8px;">BusinessVance may use anonymous and general information for internal service improvement, provided that the client, business and confidential idea cannot reasonably be identified.</li>
+  1041→</ul>
+  1042→
+  1043→<h3 style="color: #0A2647; font-size: 16px; margin-top: 25px; padding-bottom: 6px; border-bottom: 1px solid #e0e0e0;">8. Information Retention and Security Limitation</h3>
+  1044→<ul style="padding-left: 20px;">
+  1045→<li style="margin-bottom: 8px;">Information may be kept for a reasonable period for service delivery, administration, legal compliance and recordkeeping, after which it will be deleted, destroyed or anonymised where reasonably practical.</li>
+  1046→<li style="margin-bottom: 8px;">BusinessVance will take reasonable precautions to protect information. However, no electronic communication, online form or data-storage system can be guaranteed to be completely secure.</li>
+  1047→</ul>
+  1048→
+  1049→<h3 style="color: #0A2647; font-size: 16px; margin-top: 25px; padding-bottom: 6px; border-bottom: 1px solid #e0e0e0;">9. Duration</h3>
+  1050→<ul style="padding-left: 20px;">
+  1051→<li style="margin-bottom: 8px;">This confidentiality commitment starts when the client provides information to BusinessVance and continues after the report or service has been completed, except where the information lawfully enters the public domain or disclosure is legally required.</li>
+  1052→</ul>
+  1053→
+  1054→<div style="background: #fff8e1; padding: 12px 18px; border-radius: 6px; margin-top: 25px; font-size: 13px; color: #795548;">
+  1055→<strong>Important:</strong> This document records BusinessVance&rsquo;s confidentiality commitment to the client. It does not replace specialised legal advice or a customised non-disclosure agreement where a transaction involves investors, partners, patented technology, trade secrets or unusually high-value intellectual property.
+  1056→</div>
+  1057→
+  1058→<h3 style="color: #0A2647; font-size: 16px; margin-top: 30px; padding-bottom: 6px; border-bottom: 2px solid #D4AF37;">10. Client Acknowledgement and Consent</h3>
+  1059→<p style="margin-bottom: 15px;">By signing below, or by completing and submitting a BusinessVance questionnaire after receiving this undertaking, the client confirms that:</p>
+  1060→<ul style="padding-left: 20px; margin-bottom: 25px;">
+  1061→<li style="margin-bottom: 8px;">The client has read and understood this undertaking.</li>
+  1062→<li style="margin-bottom: 8px;">The client consents to BusinessVance collecting and using submitted information to provide the purchased service.</li>
+  1063→<li style="margin-bottom: 8px;">The client understands how the information may be stored, protected and disclosed in the limited circumstances described above.</li>
+  1064→<li style="margin-bottom: 8px;">The client confirms that the information supplied is accurate to the best of the client&rsquo;s knowledge.</li>
+  1065→</ul>
+  1066→
+  1067→<h3 style="color: #0A2647; font-size: 16px; margin-top: 30px; margin-bottom: 15px;">CLIENT DETAILS</h3>
+  1068→<table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
+  1069→<tr><td style="padding: 10px 12px; border: 1px solid #ddd; width: 40%; font-weight: 600; background: #f8f9fa;">Client full name</td><td style="padding: 10px 12px; border: 1px solid #ddd; width: 60%;">{{CLIENT_NAME}}</td></tr>
+  1070→<tr><td style="padding: 10px 12px; border: 1px solid #ddd; font-weight: 600; background: #f8f9fa;">Business name</td><td style="padding: 10px 12px; border: 1px solid #ddd;">{{BUSINESS_NAME}}</td></tr>
+  1071→<tr><td style="padding: 10px 12px; border: 1px solid #ddd; font-weight: 600; background: #f8f9fa;">Product / service purchased</td><td style="padding: 10px 12px; border: 1px solid #ddd;">{{SERVICE_PURCHASED}}</td></tr>
+  1072→<tr><td style="padding: 10px 12px; border: 1px solid #ddd; font-weight: 600; background: #f8f9fa;">Email address</td><td style="padding: 10px 12px; border: 1px solid #ddd;">{{CLIENT_EMAIL}}</td></tr>
+  1073→<tr><td style="padding: 10px 12px; border: 1px solid #ddd; font-weight: 600; background: #f8f9fa;">Contact number</td><td style="padding: 10px 12px; border: 1px solid #ddd;">{{CLIENT_PHONE}}</td></tr>
+  1074→<tr><td style="padding: 10px 12px; border: 1px solid #ddd; font-weight: 600; background: #f8f9fa;">Client signature</td><td style="padding: 10px 12px; border: 1px solid #ddd;">{{CLIENT_SIGNATURE}}</td></tr>
+  1075→<tr><td style="padding: 10px 12px; border: 1px solid #ddd; font-weight: 600; background: #f8f9fa;">Date</td><td style="padding: 10px 12px; border: 1px solid #ddd;">{{DATE}}</td></tr>
+  1076→</table>
+  1077→
+  1078→<div style="background: #e8f4f8; padding: 15px 20px; border-radius: 6px; margin-bottom: 25px;">
+  1079→<p style="margin: 0; color: #0A2647;"><strong>BUSINESSVANCE DECLARATION</strong></p>
+  1080→<p style="margin: 8px 0 0 0; color: #555;">BusinessVance confirms that the client&rsquo;s information and business idea will be treated as confidential and used only for legitimate purposes connected to the service purchased by the client, subject to the terms of this undertaking.</p>
+  1081→</div>
+  1082→
+  1083→<h3 style="color: #0A2647; font-size: 16px; margin-bottom: 15px;">BUSINESSVANCE DETAILS</h3>
+  1084→<table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
+  1085→<tr><td style="padding: 10px 12px; border: 1px solid #ddd; width: 40%; font-weight: 600; background: #f8f9fa;">Representative name</td><td style="padding: 10px 12px; border: 1px solid #ddd;">Nico du Plessis</td></tr>
+  1086→<tr><td style="padding: 10px 12px; border: 1px solid #ddd; font-weight: 600; background: #f8f9fa;">Signature</td><td style="padding: 10px 12px; border: 1px solid #ddd;">&nbsp;</td></tr>
+  1087→<tr><td style="padding: 10px 12px; border: 1px solid #ddd; font-weight: 600; background: #f8f9fa;">Date</td><td style="padding: 10px 12px; border: 1px solid #ddd;">{{DATE}}</td></tr>
+  1088→</table>
+  1089→
+  1090→<div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 3px double #D4AF37;">
+  1091→<p style="margin: 0; font-weight: 700; color: #0A2647; letter-spacing: 2px;">BUSINESSVANCE</p>
+  1092→<p style="margin: 4px 0 0 0; font-size: 12px; color: #666; letter-spacing: 2px;">Research. Analyze. Plan. Succeed.</p>
+  1093→<p style="margin: 4px 0 0 0; font-size: 12px; color: #666;">Contact: 082 377 7490</p>
+  1094→</div>
+  1095→
+  1096→<p style="text-align: center; margin-top: 20px; font-size: 11px; color: #999;">This document was generated by BusinessVance &mdash; Professional Business Consulting<br />Confidential &middot; For authorised use only</p>
+  1097→
+  1098→<p><strong>IP Address:</strong> {{IP_ADDRESS}}</p>
+  1099→</div>';
+  1100→        }
+  1101→}
+  1102→

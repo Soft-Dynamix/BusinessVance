@@ -395,6 +395,29 @@
         function escAttr(str) {
             return $('<span>').text(str || '').html().replace(/"/g, '&quot;');
         }
+
+        // ── Global import function (called from inline button) ──
+        window.bvQTImportQuestionnaires = function() {
+            if (!confirm('Import Market Research and Business Plan questionnaire templates? Existing templates with the same slug will be skipped.')) return;
+            var $btn = $('#bv-qt-import-btn').prop('disabled', true).text('Importing...');
+            $.post(ajaxurl, { action: 'bv_qt_import_questionnaires', nonce: BVQT.nonce }, function(res) {
+                $btn.prop('disabled', false).html('<span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span> Import Pre-built Questionnaires');
+                if (res.success) {
+                    var msg = res.data.message;
+                    $.each(res.data.results, function(key, r) {
+                        msg += '\n• ' + key + ': ' + r.message + ' (' + r.sections + ' sections, ' + r.questions + ' questions)';
+                    });
+                    alert(msg);
+                    loadTemplates();
+                } else {
+                    alert('Import failed: ' + (res.data.message || 'Unknown error'));
+                }
+            }).fail(function() {
+                $btn.prop('disabled', false).html('<span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span> Import Pre-built Questionnaires');
+                alert('Request failed.');
+            });
+        };
+
     });
 
 })(jQuery);

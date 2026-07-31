@@ -30,6 +30,7 @@ class BV_Questionnaire_Admin {
         add_action( 'wp_ajax_bv_qt_save_question', array( $this, 'ajax_save_question' ) );
         add_action( 'wp_ajax_bv_qt_delete_question', array( $this, 'ajax_delete_question' ) );
         add_action( 'wp_ajax_bv_qt_reorder', array( $this, 'ajax_reorder' ) );
+        add_action( 'wp_ajax_bv_qt_import_questionnaires', array( $this, 'ajax_import_questionnaires' ) );
     }
 
     /**
@@ -582,6 +583,10 @@ class BV_Questionnaire_Admin {
                         <span class="dashicons dashicons-plus-alt2" style="margin-top:4px;margin-right:3px;"></span>
                         Add New Template
                     </button>
+                    <button type="button" id="bv-qt-import-btn" class="button button-secondary" style="margin-left:8px;" onclick="bvQTImportQuestionnaires()">
+                        <span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span>
+                        Import Pre-built Questionnaires
+                    </button>
                 </div>
 
                 <table class="wp-list-table widefat fixed striped" id="bv-qt-templates-table">
@@ -768,5 +773,25 @@ class BV_Questionnaire_Admin {
 
         </div>
         <?php
+    }
+
+    /**
+     * AJAX handler for importing pre-built questionnaire templates.
+     *
+     * @since 2.0.3
+     */
+    public function ajax_import_questionnaires() {
+        $this->verify_nonce();
+
+        if ( ! class_exists( 'BV_Questionnaire_Import' ) ) {
+            require_once BV_PLUGIN_DIR . 'includes/class-bv-questionnaire-import.php';
+        }
+
+        $results = BV_Questionnaire_Import::import_questionnaires();
+
+        wp_send_json_success( array(
+            'message' => 'Import complete.',
+            'results' => $results,
+        ) );
     }
 }

@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.0.3] — 2025-07-31
+
+### Added
+- **Questionnaire Import System** (`class-bv-questionnaire-import.php`)
+  - Market Research Report Questionnaire — 20 sections, 100+ questions covering business overview, target customers, competition, pricing, marketing channels, demand validation, market trends and research focus
+  - Business Plan Questionnaire — 24 sections, 130+ questions covering business concept, legal structure, ownership, products/services, unique value proposition, industry analysis, target market, competitor analysis, pricing/revenue model, marketing/sales strategy, customer service, location/operations, equipment/technology, management/staffing, startup costs, sales forecast, funding/loans, SWOT analysis, growth strategy and supporting documents
+  - Duplicate-safe import — checks by slug, skips existing templates
+  - "Import Pre-built Questionnaires" button on Questionnaire admin page
+  - AJAX handler `bv_qt_import_questionnaires` for one-click import from admin
+  - Import results summary showing sections and questions per template
+
+### Changed
+- Bumped plugin version to 2.0.3
+- Registered `class-bv-questionnaire-import.php` in main plugin includes
+
+---
+
 ## [2.0.1] — 2025-07-31
 
 ### Added
