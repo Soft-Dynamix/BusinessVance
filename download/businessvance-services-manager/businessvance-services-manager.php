@@ -31,6 +31,16 @@ if ( ! file_exists( BV_UPLOAD_DIR ) ) {
     wp_mkdir_p( BV_UPLOAD_DIR );
 }
 
+// Declare WooCommerce HPOS compatibility before WooCommerce loads.
+add_action( 'before_woocommerce_init', function() {
+    if ( class_exists( '\Automattic\WooCommerce\Utilities\FeaturesUtil' ) ) {
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'product_block_editor', __FILE__, true );
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'cart_checkout_blocks', __FILE__, true );
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'mini_cart_block', __FILE__, true );
+    }
+} );
+
 // Include the activator early so activation hooks can use it
 require_once BV_PLUGIN_DIR . 'includes/class-bv-activator.php';
 
