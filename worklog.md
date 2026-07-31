@@ -97,3 +97,76 @@ Stage Summary:
 - Complete WordPress plugin ZIP ready for testing at /home/z/my-project/download/businessvance-services-manager.zip
 - Plugin adds Client Portal ([businessvance_client_portal]) and Consultant Dashboard (BV Consultant admin page)
 - Full project lifecycle: WC purchase → auto-create project → sign agreement → fill questionnaire → upload documents → consultant generates report → client downloads report
+
+---
+Task ID: 4
+Agent: Templates Tab Agent
+Task: Build comprehensive Templates tab with Questionnaire and Agreement management
+
+Work Log:
+- Read worklog (Tasks 1-3) to understand project context and architecture
+- Analyzed existing `templates-tab.tsx` (133 lines, basic tables only)
+- Verified questionnaire-templates API already includes sections → questions in GET response
+- Verified agreement-templates API with CRUD endpoints ([id] route for PUT/DELETE)
+- Confirmed all shadcn/ui components available: Dialog, AlertDialog, Tabs, ScrollArea, Select, Separator, Label, etc.
+- Built comprehensive `templates-tab.tsx` (~560 lines) with:
+  - **Two main tabs** using shadcn Tabs: "Questionnaire Templates" and "Agreement Templates" with count badges
+  - **Questionnaire table** with 8 columns: Name (with slug), Description, Sections count, Questions count, Status (colored badge with icon), Version (mono badge), Linked Services count, Actions (View/Delete)
+  - **View Questionnaire dialog** showing: template name, description, slug, status, version, section count, question count, linked services
+    - Each section rendered with numbered circle, title, shared badge, description
+    - Each question shows: label, type badge (color-coded), required badge, placeholder, help text, parsed options as badges
+    - ScrollArea with max-height for long content
+  - **Agreement table** with 6 columns: Name (with slug), Status, Version, Linked Services, Projects Signed, Actions (Preview/Edit/Delete)
+  - **Agreement Preview** as full-screen overlay (not Dialog) with:
+    - Dark navy header (#0A2647) with gold accent (#D4AF37)
+    - BusinessVance branding divider, document header, rendered HTML content with comprehensive prose styling
+    - Print button that opens new window with print-optimized CSS
+    - Print-friendly: Georgia serif font, proper margins, document footer
+  - **Edit Agreement dialog** with name, status (Select), version fields
+  - **Add Questionnaire dialog** with name, description, version, status fields
+  - **Add Agreement dialog** with name, HTML content (monospace textarea), version, status fields
+  - **Delete confirmation** using AlertDialog with type-specific warnings
+  - All actions (add/edit/delete) have loading spinners
+  - Group-hover action buttons with opacity transition
+  - Status badges: Draft (gray + Clock), Published (emerald + CheckCircle), Archived (amber + Archive)
+  - Question type badges: color-coded by type category (text=sky, select=pink, file=amber, etc.)
+- Verified questionnaire-templates API already includes sections+questions in list endpoint (no changes needed)
+- ESLint passes clean with no errors
+
+Stage Summary:
+- Templates tab fully rebuilt from 133 lines to ~560 lines with comprehensive features
+- Both Questionnaire and Agreement template management with CRUD operations
+- Professional agreement preview with BusinessVance branding and print support
+- All interactions use shadcn/ui components (Dialog, AlertDialog, Tabs, ScrollArea, Select, Badge, Table)
+- Brand colors used throughout: #0A2647 (primary), #D4AF37 (gold accent)
+
+---
+Task ID: 4
+Agent: Main Agent
+Task: Integrate BusinessVance Client Confidentiality Undertaking PDF into agreement template system
+
+Work Log:
+- Extracted text content from uploaded PDF: BusinessVance_Client_Confidentiality_Undertaking_FILLABLE (1).pdf
+- PDF contains 3 pages with 10 sections covering: Information covered, BV commitment, Protection of business ideas, POPIA, Disclosure exceptions, Client responsibilities, Reports/work, Information retention, Duration, Client acknowledgement
+- Converted PDF text to professional HTML with BusinessVance branding (#0A2647 primary, #D4AF37 gold accent)
+- Updated AgreementTemplate in SQLite database: version bumped 1.0 → 2.0, content updated to 13,385 chars
+- Built enhanced TemplatesTab component (~1107 lines) with:
+  - Two main tabs: Questionnaire Templates (3) and Agreement Templates (1) with count badges
+  - Questionnaire table: Name, Description, Sections, Questions, Status (color-coded badge), Version, Linked Services, Actions (View/Delete)
+  - Agreement table: Name, Status, Version, Linked Services, Projects Signed, Actions (Preview/Edit/Delete)
+  - Agreement Preview: Full-screen overlay with professional document rendering, Print button
+  - Add/Edit/Delete dialogs for both template types with AlertDialog confirmations
+- Browser-verified via agent-browser:
+  - Dashboard loads with all 8 sidebar tabs
+  - Templates tab shows Questionnaire Templates (3) with full table data
+  - Agreement Templates tab shows Client Confidentiality Undertaking (v2.0, Published, 12 linked services, 1 project signed)
+  - Preview modal renders all 10 agreement sections with tables (Client Details, BV Details), Nico du Plessis as representative
+- Updated WordPress plugin activator (class-bv-activator.php) with same comprehensive agreement HTML
+- Added template placeholders: {{CLIENT_NAME}}, {{BUSINESS_NAME}}, {{SERVICE_PURCHASED}}, {{CLIENT_EMAIL}}, {{CLIENT_PHONE}}, {{CLIENT_SIGNATURE}}, {{DATE}}, {{IP_ADDRESS}}
+- Fixed Caddyfile to use 127.0.0.1 instead of localhost for IPv4 compatibility
+
+Stage Summary:
+- Confidentiality agreement fully integrated into admin dashboard with professional preview
+- Templates tab now supports CRUD for both questionnaire and agreement templates
+- WordPress plugin seed data updated with matching agreement template
+- Screenshot saved: /home/z/my-project/upload/templates-agreement-preview.png

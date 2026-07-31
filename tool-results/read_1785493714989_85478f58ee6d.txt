@@ -1,0 +1,1107 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useCallback } from 'react'
+     4→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     5→import { Badge } from '@/components/ui/badge'
+     6→import { Button } from '@/components/ui/button'
+     7→import { Input } from '@/components/ui/input'
+     8→import { Label } from '@/components/ui/label'
+     9→import { Textarea } from '@/components/ui/textarea'
+    10→import { Separator } from '@/components/ui/separator'
+    11→import {
+    12→  Table,
+    13→  TableBody,
+    14→  TableCell,
+    15→  TableHead,
+    16→  TableHeader,
+    17→  TableRow,
+    18→} from '@/components/ui/table'
+    19→import {
+    20→  Dialog,
+    21→  DialogContent,
+    22→  DialogHeader,
+    23→  DialogTitle,
+    24→  DialogDescription,
+    25→  DialogFooter,
+    26→} from '@/components/ui/dialog'
+    27→import {
+    28→  AlertDialog,
+    29→  AlertDialogContent,
+    30→  AlertDialogHeader,
+    31→  AlertDialogTitle,
+    32→  AlertDialogDescription,
+    33→  AlertDialogFooter,
+    34→  AlertDialogAction,
+    35→  AlertDialogCancel,
+    36→} from '@/components/ui/alert-dialog'
+    37→import {
+    38→  Tabs,
+    39→  TabsList,
+    40→  TabsTrigger,
+    41→  TabsContent,
+    42→} from '@/components/ui/tabs'
+    43→import { ScrollArea } from '@/components/ui/scroll-area'
+    44→import {
+    45→  Select,
+    46→  SelectContent,
+    47→  SelectItem,
+    48→  SelectTrigger,
+    49→  SelectValue,
+    50→} from '@/components/ui/select'
+    51→import {
+    52→  FileText,
+    53→  FileCheck,
+    54→  Plus,
+    55→  Eye,
+    56→  Pencil,
+    57→  Trash2,
+    58→  Printer,
+    59→  X,
+    60→  Layers,
+    61→  HelpCircle,
+    62→  Hash,
+    63→  Link2,
+    64→  ClipboardCheck,
+    65→  Clock,
+    66→  CheckCircle2,
+    67→  Archive,
+    68→  ChevronRight,
+    69→} from 'lucide-react'
+    70→
+    71→// ─── Types ───────────────────────────────────────────────────────────────────
+    72→
+    73→interface Question {
+    74→  id: string
+    75→  type: string
+    76→  label: string
+    77→  placeholder: string
+    78→  required: boolean
+    79→  options: string
+    80→  helpText: string
+    81→  displayOrder: number
+    82→}
+    83→
+    84→interface Section {
+    85→  id: string
+    86→  title: string
+    87→  description: string
+    88→  displayOrder: number
+    89→  isShared: boolean
+    90→  questions: Question[]
+    91→}
+    92→
+    93→interface QuestionnaireTemplate {
+    94→  id: string
+    95→  name: string
+    96→  slug: string
+    97→  description: string
+    98→  version: string
+    99→  status: string
+   100→  createdAt: string
+   101→  updatedAt: string
+   102→  sections: Section[]
+   103→  _count: { services: number; projects: number }
+   104→}
+   105→
+   106→interface AgreementTemplate {
+   107→  id: string
+   108→  name: string
+   109→  slug: string
+   110→  content: string
+   111→  version: string
+   112→  status: string
+   113→  createdAt: string
+   114→  updatedAt: string
+   115→  _count: { services: number; projects: number }
+   116→}
+   117→
+   118→// ─── Helpers ─────────────────────────────────────────────────────────────────
+   119→
+   120→const statusConfig: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
+   121→  draft: {
+   122→    label: 'Draft',
+   123→    className: 'bg-gray-100 text-gray-700 border-gray-200',
+   124→    icon: <Clock className="w-3 h-3" />,
+   125→  },
+   126→  published: {
+   127→    label: 'Published',
+   128→    className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+   129→    icon: <CheckCircle2 className="w-3 h-3" />,
+   130→  },
+   131→  archived: {
+   132→    label: 'Archived',
+   133→    className: 'bg-amber-50 text-amber-700 border-amber-200',
+   134→    icon: <Archive className="w-3 h-3" />,
+   135→  },
+   136→}
+   137→
+   138→function StatusBadge({ status }: { status: string }) {
+   139→  const config = statusConfig[status] || statusConfig.draft
+   140→  return (
+   141→    <Badge variant="outline" className={`${config.className} gap-1 font-medium`}>
+   142→      {config.icon}
+   143→      {config.label}
+   144→    </Badge>
+   145→  )
+   146→}
+   147→
+   148→function QuestionTypeBadge({ type }: { type: string }) {
+   149→  const colors: Record<string, string> = {
+   150→    text: 'bg-sky-50 text-sky-700 border-sky-200',
+   151→    textarea: 'bg-sky-50 text-sky-700 border-sky-200',
+   152→    number: 'bg-violet-50 text-violet-700 border-violet-200',
+   153→    email: 'bg-cyan-50 text-cyan-700 border-cyan-200',
+   154→    phone: 'bg-cyan-50 text-cyan-700 border-cyan-200',
+   155→    date: 'bg-orange-50 text-orange-700 border-orange-200',
+   156→    select: 'bg-pink-50 text-pink-700 border-pink-200',
+   157→    multiselect: 'bg-pink-50 text-pink-700 border-pink-200',
+   158→    radio: 'bg-rose-50 text-rose-700 border-rose-200',
+   159→    checkbox: 'bg-rose-50 text-rose-700 border-rose-200',
+   160→    file: 'bg-amber-50 text-amber-700 border-amber-200',
+   161→    heading: 'bg-gray-100 text-gray-500 border-gray-200',
+   162→    paragraph: 'bg-gray-100 text-gray-500 border-gray-200',
+   163→  }
+   164→  return (
+   165→    <Badge variant="outline" className={`${colors[type] || 'bg-gray-100 text-gray-600'} text-xs font-medium`}>
+   166→      {type}
+   167→    </Badge>
+   168→  )
+   169→}
+   170→
+   171→function parseOptions(optionsStr: string): string[] {
+   172→  try {
+   173→    const parsed = JSON.parse(optionsStr)
+   174→    return Array.isArray(parsed) ? parsed : []
+   175→  } catch {
+   176→    return []
+   177→  }
+   178→}
+   179→
+   180→// ─── Component ───────────────────────────────────────────────────────────────
+   181→
+   182→export function TemplatesTab() {
+   183→  const [activeTab, setActiveTab] = useState('questionnaires')
+   184→
+   185→  // Data
+   186→  const [questionnaireTemplates, setQuestionnaireTemplates] = useState<QuestionnaireTemplate[]>([])
+   187→  const [agreementTemplates, setAgreementTemplates] = useState<AgreementTemplate[]>([])
+   188→  const [loading, setLoading] = useState(true)
+   189→
+   190→  // Dialogs
+   191→  const [viewQuestionnaire, setViewQuestionnaire] = useState<QuestionnaireTemplate | null>(null)
+   192→  const [deleteTarget, setDeleteTarget] = useState<{ type: 'questionnaire' | 'agreement'; id: string; name: string } | null>(null)
+   193→  const [previewAgreement, setPreviewAgreement] = useState<AgreementTemplate | null>(null)
+   194→  const [editAgreement, setEditAgreement] = useState<AgreementTemplate | null>(null)
+   195→  const [addQuestionnaire, setAddQuestionnaire] = useState(false)
+   196→  const [addAgreement, setAddAgreement] = useState(false)
+   197→
+   198→  // Form state for edit/add
+   199→  const [editForm, setEditForm] = useState({ name: '', status: '', version: '' })
+   200→  const [addQForm, setAddQForm] = useState({ name: '', description: '', version: '1.0', status: 'draft' })
+   201→  const [addAForm, setAddAForm] = useState({ name: '', content: '', version: '1.0', status: 'draft' })
+   202→
+   203→  // Loading states
+   204→  const [actionLoading, setActionLoading] = useState(false)
+   205→
+   206→  const fetchData = useCallback(async () => {
+   207→    try {
+   208→      const [qRes, aRes] = await Promise.all([
+   209→        fetch('/api/questionnaire-templates'),
+   210→        fetch('/api/agreement-templates'),
+   211→      ])
+   212→      if (qRes.ok) {
+   213→        const qData = await qRes.json()
+   214→        setQuestionnaireTemplates(qData.templates || [])
+   215→      }
+   216→      if (aRes.ok) {
+   217→        const aData = await aRes.json()
+   218→        setAgreementTemplates(aData.templates || [])
+   219→      }
+   220→    } catch (e) {
+   221→      console.error(e)
+   222→    } finally {
+   223→      setLoading(false)
+   224→    }
+   225→  }, [])
+   226→
+   227→  useEffect(() => {
+   228→    fetchData()
+   229→  }, [fetchData])
+   230→
+   231→  // ─── Handlers ───────────────────────────────────────────────────────────
+   232→
+   233→  const handleViewQuestionnaire = async (id: string) => {
+   234→    try {
+   235→      const res = await fetch(`/api/questionnaire-templates/${id}`)
+   236→      if (res.ok) {
+   237→        const data = await res.json()
+   238→        setViewQuestionnaire(data.template)
+   239→      }
+   240→    } catch (e) {
+   241→      console.error(e)
+   242→    }
+   243→  }
+   244→
+   245→  const handleDelete = async () => {
+   246→    if (!deleteTarget) return
+   247→    setActionLoading(true)
+   248→    try {
+   249→      const endpoint = deleteTarget.type === 'questionnaire'
+   250→        ? `/api/questionnaire-templates/${deleteTarget.id}`
+   251→        : `/api/agreement-templates/${deleteTarget.id}`
+   252→      const res = await fetch(endpoint, { method: 'DELETE' })
+   253→      if (res.ok) {
+   254→        setDeleteTarget(null)
+   255→        fetchData()
+   256→      }
+   257→    } catch (e) {
+   258→      console.error(e)
+   259→    } finally {
+   260→      setActionLoading(false)
+   261→    }
+   262→  }
+   263→
+   264→  const handleOpenEditAgreement = (template: AgreementTemplate) => {
+   265→    setEditForm({ name: template.name, status: template.status, version: template.version })
+   266→    setEditAgreement(template)
+   267→  }
+   268→
+   269→  const handleSaveEditAgreement = async () => {
+   270→    if (!editAgreement) return
+   271→    setActionLoading(true)
+   272→    try {
+   273→      const res = await fetch(`/api/agreement-templates/${editAgreement.id}`, {
+   274→        method: 'PUT',
+   275→        headers: { 'Content-Type': 'application/json' },
+   276→        body: JSON.stringify(editForm),
+   277→      })
+   278→      if (res.ok) {
+   279→        setEditAgreement(null)
+   280→        fetchData()
+   281→      }
+   282→    } catch (e) {
+   283→      console.error(e)
+   284→    } finally {
+   285→      setActionLoading(false)
+   286→    }
+   287→  }
+   288→
+   289→  const handleAddQuestionnaire = async () => {
+   290→    if (!addQForm.name.trim()) return
+   291→    setActionLoading(true)
+   292→    try {
+   293→      const res = await fetch('/api/questionnaire-templates', {
+   294→        method: 'POST',
+   295→        headers: { 'Content-Type': 'application/json' },
+   296→        body: JSON.stringify(addQForm),
+   297→      })
+   298→      if (res.ok) {
+   299→        setAddQuestionnaire(false)
+   300→        setAddQForm({ name: '', description: '', version: '1.0', status: 'draft' })
+   301→        fetchData()
+   302→      }
+   303→    } catch (e) {
+   304→      console.error(e)
+   305→    } finally {
+   306→      setActionLoading(false)
+   307→    }
+   308→  }
+   309→
+   310→  const handleAddAgreement = async () => {
+   311→    if (!addAForm.name.trim()) return
+   312→    setActionLoading(true)
+   313→    try {
+   314→      const res = await fetch('/api/agreement-templates', {
+   315→        method: 'POST',
+   316→        headers: { 'Content-Type': 'application/json' },
+   317→        body: JSON.stringify(addAForm),
+   318→      })
+   319→      if (res.ok) {
+   320→        setAddAgreement(false)
+   321→        setAddAForm({ name: '', content: '', version: '1.0', status: 'draft' })
+   322→        fetchData()
+   323→      }
+   324→    } catch (e) {
+   325→      console.error(e)
+   326→    } finally {
+   327→      setActionLoading(false)
+   328→    }
+   329→  }
+   330→
+   331→  const handlePrintAgreement = () => {
+   332→    if (!previewAgreement) return
+   333→    const printWindow = window.open('', '_blank')
+   334→    if (!printWindow) return
+   335→    printWindow.document.write(`
+   336→      <!DOCTYPE html>
+   337→      <html>
+   338→      <head>
+   339→        <title>${previewAgreement.name}</title>
+   340→        <style>
+   341→          * { margin: 0; padding: 0; box-sizing: border-box; }
+   342→          body { font-family: 'Georgia', 'Times New Roman', serif; color: #1a1a1a; line-height: 1.7; padding: 60px 80px; }
+   343→          .header { text-align: center; margin-bottom: 40px; border-bottom: 3px solid #D4AF37; padding-bottom: 20px; }
+   344→          .header h1 { font-size: 24px; color: #0A2647; margin-bottom: 4px; }
+   345→          .header p { font-size: 14px; color: #666; }
+   346→          .content { font-size: 13px; }
+   347→          .content h1, .content h2, .content h3 { color: #0A2647; margin-top: 24px; margin-bottom: 12px; }
+   348→          .content p { margin-bottom: 12px; }
+   349→          .content ul, .content ol { margin-left: 24px; margin-bottom: 12px; }
+   350→          .content li { margin-bottom: 4px; }
+   351→          .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; font-size: 11px; color: #999; }
+   352→          @media print { body { padding: 40px; } }
+   353→        </style>
+   354→      </head>
+   355→      <body>
+   356→        <div class="header">
+   357→          <h1>${previewAgreement.name}</h1>
+   358→          <p>Version ${previewAgreement.version} &middot; Generated on ${new Date().toLocaleDateString('en-ZA')}</p>
+   359→        </div>
+   360→        <div class="content">${previewAgreement.content}</div>
+   361→        <div class="footer">BusinessVance &mdash; Professional Business Consulting</div>
+   362→      </body>
+   363→      </html>
+   364→    `)
+   365→    printWindow.document.close()
+   366→    printWindow.print()
+   367→  }
+   368→
+   369→  // ─── Loading ────────────────────────────────────────────────────────────
+   370→
+   371→  if (loading) {
+   372→    return (
+   373→      <div className="flex items-center justify-center py-16">
+   374→        <div className="animate-spin h-8 w-8 border-2 border-[#D4AF37] border-t-transparent rounded-full" />
+   375→      </div>
+   376→    )
+   377→  }
+   378→
+   379→  // ─── Render ─────────────────────────────────────────────────────────────
+   380→
+   381→  return (
+   382→    <div className="space-y-6">
+   383→      {/* Page Header */}
+   384→      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+   385→        <div>
+   386→          <h2 className="text-2xl font-bold text-[#0A2647]">Templates</h2>
+   387→          <p className="text-sm text-gray-500 mt-1">Manage questionnaire and agreement templates</p>
+   388→        </div>
+   389→      </div>
+   390→
+   391→      {/* Main Tabs */}
+   392→      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+   393→        <TabsList className="bg-gray-100">
+   394→          <TabsTrigger value="questionnaires" className="gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+   395→            <FileText className="w-4 h-4" />
+   396→            Questionnaire Templates
+   397→            <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+   398→              {questionnaireTemplates.length}
+   399→            </Badge>
+   400→          </TabsTrigger>
+   401→          <TabsTrigger value="agreements" className="gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+   402→            <FileCheck className="w-4 h-4" />
+   403→            Agreement Templates
+   404→            <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+   405→              {agreementTemplates.length}
+   406→            </Badge>
+   407→          </TabsTrigger>
+   408→        </TabsList>
+   409→
+   410→        {/* ─── Questionnaire Templates Tab ─────────────────────────────────── */}
+   411→        <TabsContent value="questionnaires">
+   412→          <Card className="border-gray-200 mt-2">
+   413→            <CardHeader className="pb-4">
+   414→              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+   415→                <CardTitle className="flex items-center gap-2 text-[#0A2647]">
+   416→                  <ClipboardCheck className="w-5 h-5 text-[#D4AF37]" />
+   417→                  Questionnaire Templates
+   418→                </CardTitle>
+   419→                <Button
+   420→                  onClick={() => {
+   421→                    setAddQForm({ name: '', description: '', version: '1.0', status: 'draft' })
+   422→                    setAddQuestionnaire(true)
+   423→                  }}
+   424→                  className="bg-[#0A2647] hover:bg-[#0A2647]/90 gap-2"
+   425→                >
+   426→                  <Plus className="w-4 h-4" />
+   427→                  Add Template
+   428→                </Button>
+   429→              </div>
+   430→            </CardHeader>
+   431→            <CardContent>
+   432→              {questionnaireTemplates.length === 0 ? (
+   433→                <div className="text-center py-12">
+   434→                  <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+   435→                  <p className="text-gray-500 font-medium">No questionnaire templates yet</p>
+   436→                  <p className="text-sm text-gray-400 mt-1">Create your first questionnaire template to get started</p>
+   437→                </div>
+   438→              ) : (
+   439→                <div className="overflow-x-auto">
+   440→                  <Table>
+   441→                    <TableHeader>
+   442→                      <TableRow className="hover:bg-transparent border-gray-200">
+   443→                        <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Name</TableHead>
+   444→                        <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Description</TableHead>
+   445→                        <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500 text-center">Sections</TableHead>
+   446→                        <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500 text-center">Questions</TableHead>
+   447→                        <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Status</TableHead>
+   448→                        <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Version</TableHead>
+   449→                        <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500 text-center">Linked Services</TableHead>
+   450→                        <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500 text-right">Actions</TableHead>
+   451→                      </TableRow>
+   452→                    </TableHeader>
+   453→                    <TableBody>
+   454→                      {questionnaireTemplates.map((t) => {
+   455→                        const totalQuestions = t.sections?.reduce((sum, s) => sum + (s.questions?.length || 0), 0) || 0
+   456→                        const sectionCount = t.sections?.length || 0
+   457→                        return (
+   458→                          <TableRow key={t.id} className="group">
+   459→                            <TableCell>
+   460→                              <div className="font-semibold text-gray-900">{t.name}</div>
+   461→                              <div className="text-xs text-gray-400 mt-0.5">/{t.slug}</div>
+   462→                            </TableCell>
+   463→                            <TableCell>
+   464→                              <div className="text-sm text-gray-600 max-w-[200px] truncate">{t.description || '—'}</div>
+   465→                            </TableCell>
+   466→                            <TableCell className="text-center">
+   467→                              <div className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-700">
+   468→                                <Layers className="w-3.5 h-3.5 text-gray-400" />
+   469→                                {sectionCount}
+   470→                              </div>
+   471→                            </TableCell>
+   472→                            <TableCell className="text-center">
+   473→                              <div className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-700">
+   474→                                <HelpCircle className="w-3.5 h-3.5 text-gray-400" />
+   475→                                {totalQuestions}
+   476→                              </div>
+   477→                            </TableCell>
+   478→                            <TableCell>
+   479→                              <StatusBadge status={t.status} />
+   480→                            </TableCell>
+   481→                            <TableCell>
+   482→                              <span className="text-sm font-mono text-gray-600 bg-gray-100 px-2 py-0.5 rounded">v{t.version}</span>
+   483→                            </TableCell>
+   484→                            <TableCell className="text-center">
+   485→                              <div className="inline-flex items-center gap-1.5 text-sm text-gray-600">
+   486→                                <Link2 className="w-3.5 h-3.5 text-gray-400" />
+   487→                                {t._count?.services || 0}
+   488→                              </div>
+   489→                            </TableCell>
+   490→                            <TableCell className="text-right">
+   491→                              <div className="flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+   492→                                <Button
+   493→                                  variant="ghost"
+   494→                                  size="sm"
+   495→                                  onClick={() => handleViewQuestionnaire(t.id)}
+   496→                                  className="h-8 w-8 p-0 text-gray-500 hover:text-[#0A2647]"
+   497→                                  title="View template"
+   498→                                >
+   499→                                  <Eye className="w-4 h-4" />
+   500→                                </Button>
+   501→                                <Button
+   502→                                  variant="ghost"
+   503→                                  size="sm"
+   504→                                  onClick={() => setDeleteTarget({ type: 'questionnaire', id: t.id, name: t.name })}
+   505→                                  className="h-8 w-8 p-0 text-gray-500 hover:text-red-600"
+   506→                                  title="Delete template"
+   507→                                >
+   508→                                  <Trash2 className="w-4 h-4" />
+   509→                                </Button>
+   510→                              </div>
+   511→                            </TableCell>
+   512→                          </TableRow>
+   513→                        )
+   514→                      })}
+   515→                    </TableBody>
+   516→                  </Table>
+   517→                </div>
+   518→              )}
+   519→            </CardContent>
+   520→          </Card>
+   521→        </TabsContent>
+   522→
+   523→        {/* ─── Agreement Templates Tab ─────────────────────────────────────── */}
+   524→        <TabsContent value="agreements">
+   525→          <Card className="border-gray-200 mt-2">
+   526→            <CardHeader className="pb-4">
+   527→              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+   528→                <CardTitle className="flex items-center gap-2 text-[#0A2647]">
+   529→                  <FileCheck className="w-5 h-5 text-[#D4AF37]" />
+   530→                  Agreement Templates
+   531→                </CardTitle>
+   532→                <Button
+   533→                  onClick={() => {
+   534→                    setAddAForm({ name: '', content: '', version: '1.0', status: 'draft' })
+   535→                    setAddAgreement(true)
+   536→                  }}
+   537→                  className="bg-[#0A2647] hover:bg-[#0A2647]/90 gap-2"
+   538→                >
+   539→                  <Plus className="w-4 h-4" />
+   540→                  Add Agreement
+   541→                </Button>
+   542→              </div>
+   543→            </CardHeader>
+   544→            <CardContent>
+   545→              {agreementTemplates.length === 0 ? (
+   546→                <div className="text-center py-12">
+   547→                  <FileCheck className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+   548→                  <p className="text-gray-500 font-medium">No agreement templates yet</p>
+   549→                  <p className="text-sm text-gray-400 mt-1">Create your first agreement template for client signing</p>
+   550→                </div>
+   551→              ) : (
+   552→                <div className="overflow-x-auto">
+   553→                  <Table>
+   554→                    <TableHeader>
+   555→                      <TableRow className="hover:bg-transparent border-gray-200">
+   556→                        <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Name</TableHead>
+   557→                        <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Status</TableHead>
+   558→                        <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Version</TableHead>
+   559→                        <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500 text-center">Linked Services</TableHead>
+   560→                        <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500 text-center">Projects Signed</TableHead>
+   561→                        <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500 text-right">Actions</TableHead>
+   562→                      </TableRow>
+   563→                    </TableHeader>
+   564→                    <TableBody>
+   565→                      {agreementTemplates.map((t) => (
+   566→                        <TableRow key={t.id} className="group">
+   567→                          <TableCell>
+   568→                            <div className="font-semibold text-gray-900">{t.name}</div>
+   569→                            <div className="text-xs text-gray-400 mt-0.5">/{t.slug}</div>
+   570→                          </TableCell>
+   571→                          <TableCell>
+   572→                            <StatusBadge status={t.status} />
+   573→                          </TableCell>
+   574→                          <TableCell>
+   575→                            <span className="text-sm font-mono text-gray-600 bg-gray-100 px-2 py-0.5 rounded">v{t.version}</span>
+   576→                          </TableCell>
+   577→                          <TableCell className="text-center">
+   578→                            <div className="inline-flex items-center gap-1.5 text-sm text-gray-600">
+   579→                              <Link2 className="w-3.5 h-3.5 text-gray-400" />
+   580→                              {t._count?.services || 0}
+   581→                            </div>
+   582→                          </TableCell>
+   583→                          <TableCell className="text-center">
+   584→                            <div className="inline-flex items-center gap-1.5 text-sm text-gray-600">
+   585→                              <ClipboardCheck className="w-3.5 h-3.5 text-gray-400" />
+   586→                              {t._count?.projects || 0}
+   587→                            </div>
+   588→                          </TableCell>
+   589→                          <TableCell className="text-right">
+   590→                            <div className="flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+   591→                              <Button
+   592→                                variant="ghost"
+   593→                                size="sm"
+   594→                                onClick={() => setPreviewAgreement(t)}
+   595→                                className="h-8 w-8 p-0 text-gray-500 hover:text-[#0A2647]"
+   596→                                title="Preview agreement"
+   597→                              >
+   598→                                <Eye className="w-4 h-4" />
+   599→                              </Button>
+   600→                              <Button
+   601→                                variant="ghost"
+   602→                                size="sm"
+   603→                                onClick={() => handleOpenEditAgreement(t)}
+   604→                                className="h-8 w-8 p-0 text-gray-500 hover:text-[#D4AF37]"
+   605→                                title="Edit agreement"
+   606→                              >
+   607→                                <Pencil className="w-4 h-4" />
+   608→                              </Button>
+   609→                              <Button
+   610→                                variant="ghost"
+   611→                                size="sm"
+   612→                                onClick={() => setDeleteTarget({ type: 'agreement', id: t.id, name: t.name })}
+   613→                                className="h-8 w-8 p-0 text-gray-500 hover:text-red-600"
+   614→                                title="Delete agreement"
+   615→                              >
+   616→                                <Trash2 className="w-4 h-4" />
+   617→                              </Button>
+   618→                            </div>
+   619→                          </TableCell>
+   620→                        </TableRow>
+   621→                      ))}
+   622→                    </TableBody>
+   623→                  </Table>
+   624→                </div>
+   625→              )}
+   626→            </CardContent>
+   627→          </Card>
+   628→        </TabsContent>
+   629→      </Tabs>
+   630→
+   631→      {/* ─── View Questionnaire Dialog ────────────────────────────────────── */}
+   632→      <Dialog open={!!viewQuestionnaire} onOpenChange={() => setViewQuestionnaire(null)}>
+   633→        <DialogContent className="sm:max-w-3xl max-h-[85vh] p-0 overflow-hidden flex flex-col">
+   634→          <DialogHeader className="p-6 pb-4 border-b border-gray-100 shrink-0">
+   635→            <div className="flex items-start justify-between gap-4">
+   636→              <div className="space-y-1">
+   637→                <DialogTitle className="text-xl text-[#0A2647]">{viewQuestionnaire?.name}</DialogTitle>
+   638→                <DialogDescription className="text-sm">{viewQuestionnaire?.description || 'No description'}</DialogDescription>
+   639→              </div>
+   640→              <div className="flex items-center gap-2 shrink-0">
+   641→                <StatusBadge status={viewQuestionnaire?.status || 'draft'} />
+   642→                <span className="text-sm font-mono text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+   643→                  v{viewQuestionnaire?.version}
+   644→                </span>
+   645→              </div>
+   646→            </div>
+   647→            <div className="flex items-center gap-4 mt-3 text-xs text-gray-400">
+   648→              <span className="flex items-center gap-1">
+   649→                <Hash className="w-3 h-3" />
+   650→                {viewQuestionnaire?.slug}
+   651→              </span>
+   652→              <span>·</span>
+   653→              <span>{viewQuestionnaire?.sections?.length || 0} sections</span>
+   654→              <span>·</span>
+   655→              <span>{viewQuestionnaire?.sections?.reduce((s, sec) => s + (sec.questions?.length || 0), 0) || 0} questions</span>
+   656→              <span>·</span>
+   657→              <span>{viewQuestionnaire?._count?.services || 0} linked services</span>
+   658→            </div>
+   659→          </DialogHeader>
+   660→          <ScrollArea className="flex-1 max-h-[60vh]">
+   661→            <div className="p-6 space-y-6">
+   662→              {viewQuestionnaire?.sections?.map((section, sIdx) => (
+   663→                <div key={section.id} className="space-y-3">
+   664→                  <div className="flex items-center gap-2">
+   665→                    <div className="flex items-center justify-center w-6 h-6 rounded-full bg-[#0A2647] text-white text-xs font-bold shrink-0">
+   666→                      {sIdx + 1}
+   667→                    </div>
+   668→                    <h3 className="font-semibold text-gray-900">{section.title}</h3>
+   669→                    {section.isShared && (
+   670→                      <Badge variant="outline" className="bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/30 text-xs">
+   671→                        Shared
+   672→                      </Badge>
+   673→                    )}
+   674→                    <Badge variant="secondary" className="text-xs">
+   675→                      {section.questions?.length || 0} questions
+   676→                    </Badge>
+   677→                  </div>
+   678→                  {section.description && (
+   679→                    <p className="text-sm text-gray-500 ml-8">{section.description}</p>
+   680→                  )}
+   681→                  {section.questions && section.questions.length > 0 && (
+   682→                    <div className="ml-8 space-y-2">
+   683→                      {section.questions.map((q) => {
+   684→                        const opts = parseOptions(q.options)
+   685→                        return (
+   686→                          <div
+   687→                            key={q.id}
+   688→                            className="rounded-lg border border-gray-200 bg-gray-50/50 p-3 space-y-1.5"
+   689→                          >
+   690→                            <div className="flex items-start justify-between gap-2">
+   691→                              <div className="flex items-center gap-2 flex-wrap">
+   692→                                <span className="font-medium text-sm text-gray-800">{q.label}</span>
+   693→                                <QuestionTypeBadge type={q.type} />
+   694→                                {q.required && (
+   695→                                  <Badge className="bg-red-50 text-red-600 border-red-200 text-xs">
+   696→                                    Required
+   697→                                  </Badge>
+   698→                                )}
+   699→                              </div>
+   700→                              <span className="text-xs text-gray-400 shrink-0">
+   701→                                #{q.displayOrder + 1}
+   702→                              </span>
+   703→                            </div>
+   704→                            {q.placeholder && (
+   705→                              <p className="text-xs text-gray-400 italic">
+   706→                                Placeholder: &ldquo;{q.placeholder}&rdquo;
+   707→                              </p>
+   708→                            )}
+   709→                            {q.helpText && (
+   710→                              <p className="text-xs text-blue-600 flex items-center gap-1">
+   711→                                <HelpCircle className="w-3 h-3" />
+   712→                                {q.helpText}
+   713→                              </p>
+   714→                            )}
+   715→                            {opts.length > 0 && (
+   716→                              <div className="flex flex-wrap gap-1.5 pt-1">
+   717→                                {opts.map((opt, i) => (
+   718→                                  <Badge
+   719→                                    key={i}
+   720→                                    variant="outline"
+   721→                                    className="bg-white text-gray-600 border-gray-200 text-xs"
+   722→                                  >
+   723→                                    {opt}
+   724→                                  </Badge>
+   725→                                ))}
+   726→                              </div>
+   727→                            )}
+   728→                          </div>
+   729→                        )
+   730→                      })}
+   731→                    </div>
+   732→                  )}
+   733→                  {sIdx < (viewQuestionnaire?.sections?.length || 0) - 1 && (
+   734→                    <Separator className="ml-8" />
+   735→                  )}
+   736→                </div>
+   737→              ))}
+   738→              {(!viewQuestionnaire?.sections || viewQuestionnaire.sections.length === 0) && (
+   739→                <div className="text-center py-8 text-gray-400">
+   740→                  <Layers className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+   741→                  <p>No sections in this template</p>
+   742→                </div>
+   743→              )}
+   744→            </div>
+   745→          </ScrollArea>
+   746→        </DialogContent>
+   747→      </Dialog>
+   748→
+   749→      {/* ─── Delete Confirmation Dialog ───────────────────────────────────── */}
+   750→      <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
+   751→        <AlertDialogContent>
+   752→          <AlertDialogHeader>
+   753→            <AlertDialogTitle>Delete Template</AlertDialogTitle>
+   754→            <AlertDialogDescription>
+   755→              Are you sure you want to delete &ldquo;{deleteTarget?.name}&rdquo;? This action cannot be undone.
+   756→              {deleteTarget?.type === 'questionnaire' && (
+   757→                <span className="block mt-2 text-amber-600">
+   758→                  Warning: All sections and questions within this questionnaire template will be permanently removed.
+   759→                </span>
+   760→              )}
+   761→              {deleteTarget?.type === 'agreement' && (
+   762→                <span className="block mt-2 text-amber-600">
+   763→                  Warning: This may affect services linked to this agreement template.
+   764→                </span>
+   765→              )}
+   766→            </AlertDialogDescription>
+   767→          </AlertDialogHeader>
+   768→          <AlertDialogFooter>
+   769→            <AlertDialogCancel disabled={actionLoading}>Cancel</AlertDialogCancel>
+   770→            <AlertDialogAction
+   771→              onClick={handleDelete}
+   772→              disabled={actionLoading}
+   773→              className="bg-red-600 hover:bg-red-700"
+   774→            >
+   775→              {actionLoading ? (
+   776→                <div className="flex items-center gap-2">
+   777→                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+   778→                  Deleting...
+   779→                </div>
+   780→              ) : (
+   781→                'Delete Template'
+   782→              )}
+   783→            </AlertDialogAction>
+   784→          </AlertDialogFooter>
+   785→        </AlertDialogContent>
+   786→      </AlertDialog>
+   787→
+   788→      {/* ─── Agreement Preview Modal (Full Screen) ────────────────────────── */}
+   789→      {previewAgreement && (
+   790→        <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-0 sm:p-6">
+   791→          <div
+   792→            className="bg-white w-full h-full sm:h-[90vh] sm:max-w-4xl sm:rounded-xl shadow-2xl flex flex-col overflow-hidden"
+   793→          >
+   794→            {/* Preview Header */}
+   795→            <div className="bg-[#0A2647] px-6 py-4 flex items-center justify-between shrink-0">
+   796→              <div className="flex items-center gap-3">
+   797→                <FileCheck className="w-5 h-5 text-[#D4AF37]" />
+   798→                <div>
+   799→                  <h2 className="text-white font-semibold text-lg">{previewAgreement.name}</h2>
+   800→                  <p className="text-gray-300 text-xs">Version {previewAgreement.version}</p>
+   801→                </div>
+   802→              </div>
+   803→              <div className="flex items-center gap-2">
+   804→                <Button
+   805→                  variant="ghost"
+   806→                  size="sm"
+   807→                  onClick={handlePrintAgreement}
+   808→                  className="text-gray-300 hover:text-white hover:bg-white/10 gap-2"
+   809→                >
+   810→                  <Printer className="w-4 h-4" />
+   811→                  <span className="hidden sm:inline">Print</span>
+   812→                </Button>
+   813→                <Button
+   814→                  variant="ghost"
+   815→                  size="sm"
+   816→                  onClick={() => setPreviewAgreement(null)}
+   817→                  className="text-gray-300 hover:text-white hover:bg-white/10"
+   818→                >
+   819→                  <X className="w-5 h-5" />
+   820→                </Button>
+   821→              </div>
+   822→            </div>
+   823→
+   824→            {/* Agreement Document Content */}
+   825→            <ScrollArea className="flex-1">
+   826→              <div className="max-w-3xl mx-auto py-10 px-6 sm:px-12 print:p-0">
+   827→                {/* Document Header */}
+   828→                <div className="text-center mb-10 border-b-2 border-[#D4AF37] pb-6">
+   829→                  <div className="flex items-center justify-center gap-2 mb-2">
+   830→                    <div className="w-8 h-1 bg-[#D4AF37] rounded" />
+   831→                    <span className="text-xs font-semibold tracking-[0.2em] text-[#D4AF37] uppercase">BusinessVance</span>
+   832→                    <div className="w-8 h-1 bg-[#D4AF37] rounded" />
+   833→                  </div>
+   834→                  <h1 className="text-2xl font-bold text-[#0A2647]">{previewAgreement.name}</h1>
+   835→                  <p className="text-sm text-gray-500 mt-2">
+   836→                    Version {previewAgreement.version} &middot;{' '}
+   837→                    {new Date(previewAgreement.updatedAt).toLocaleDateString('en-ZA', {
+   838→                      year: 'numeric', month: 'long', day: 'numeric',
+   839→                    })}
+   840→                  </p>
+   841→                </div>
+   842→
+   843→                {/* HTML Content */}
+   844→                <div
+   845→                  className="prose prose-sm max-w-none
+   846→                    [&_h1]:text-xl [&_h1]:font-bold [&_h1]:text-[#0A2647] [&_h1]:mt-8 [&_h1]:mb-4
+   847→                    [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-[#0A2647] [&_h2]:mt-6 [&_h2]:mb-3
+   848→                    [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-gray-800 [&_h3]:mt-5 [&_h3]:mb-2
+   849→                    [&_p]:text-gray-700 [&_p]:leading-relaxed [&_p]:mb-3
+   850→                    [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-3 [&_ul]:space-y-1
+   851→                    [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-3 [&_ol]:space-y-1
+   852→                    [&_li]:text-gray-700
+   853→                    [&_strong]:font-semibold [&_strong]:text-gray-900
+   854→                    [&_em]:italic
+   855→                    [&_a]:text-[#0A2647] [&_a]:underline [&_a]:hover:text-[#D4AF37]
+   856→                    [&_table]:w-full [&_table]:border-collapse [&_table]:mb-4
+   857→                    [&_th]:bg-gray-50 [&_th]:border [&_th]:border-gray-200 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:text-sm [&_th]:font-semibold [&_th]:text-gray-700
+   858→                    [&_td]:border [&_td]:border-gray-200 [&_td]:px-3 [&_td]:py-2 [&_td]:text-sm [&_td]:text-gray-600
+   859→                    [&_blockquote]:border-l-4 [&_blockquote]:border-[#D4AF37] [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-gray-600 [&_blockquote]:my-4
+   860→                  "
+   861→                  dangerouslySetInnerHTML={{ __html: previewAgreement.content }}
+   862→                />
+   863→
+   864→                {/* Document Footer */}
+   865→                <div className="mt-12 pt-6 border-t border-gray-200 text-center">
+   866→                  <p className="text-xs text-gray-400">
+   867→                    This document was generated by BusinessVance &mdash; Professional Business Consulting
+   868→                  </p>
+   869→                  <p className="text-xs text-gray-300 mt-1">
+   870→                    Confidential &middot; For authorized use only
+   871→                  </p>
+   872→                </div>
+   873→              </div>
+   874→            </ScrollArea>
+   875→          </div>
+   876→        </div>
+   877→      )}
+   878→
+   879→      {/* ─── Edit Agreement Dialog ────────────────────────────────────────── */}
+   880→      <Dialog open={!!editAgreement} onOpenChange={() => setEditAgreement(null)}>
+   881→        <DialogContent className="sm:max-w-lg">
+   882→          <DialogHeader>
+   883→            <DialogTitle className="text-[#0A2647]">Edit Agreement Template</DialogTitle>
+   884→            <DialogDescription>Update the agreement template details</DialogDescription>
+   885→          </DialogHeader>
+   886→          <div className="space-y-4 py-2">
+   887→            <div className="space-y-2">
+   888→              <Label htmlFor="edit-agreement-name">Name</Label>
+   889→              <Input
+   890→                id="edit-agreement-name"
+   891→                value={editForm.name}
+   892→                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+   893→                placeholder="Agreement name"
+   894→              />
+   895→            </div>
+   896→            <div className="space-y-2">
+   897→              <Label htmlFor="edit-agreement-status">Status</Label>
+   898→              <Select
+   899→                value={editForm.status}
+   900→                onValueChange={(val) => setEditForm({ ...editForm, status: val })}
+   901→              >
+   902→                <SelectTrigger className="w-full">
+   903→                  <SelectValue placeholder="Select status" />
+   904→                </SelectTrigger>
+   905→                <SelectContent>
+   906→                  <SelectItem value="draft">Draft</SelectItem>
+   907→                  <SelectItem value="published">Published</SelectItem>
+   908→                  <SelectItem value="archived">Archived</SelectItem>
+   909→                </SelectContent>
+   910→              </Select>
+   911→            </div>
+   912→            <div className="space-y-2">
+   913→              <Label htmlFor="edit-agreement-version">Version</Label>
+   914→              <Input
+   915→                id="edit-agreement-version"
+   916→                value={editForm.version}
+   917→                onChange={(e) => setEditForm({ ...editForm, version: e.target.value })}
+   918→                placeholder="1.0"
+   919→              />
+   920→            </div>
+   921→          </div>
+   922→          <DialogFooter>
+   923→            <Button variant="outline" onClick={() => setEditAgreement(null)} disabled={actionLoading}>
+   924→              Cancel
+   925→            </Button>
+   926→            <Button
+   927→              onClick={handleSaveEditAgreement}
+   928→              disabled={actionLoading || !editForm.name.trim()}
+   929→              className="bg-[#0A2647] hover:bg-[#0A2647]/90"
+   930→            >
+   931→              {actionLoading ? (
+   932→                <div className="flex items-center gap-2">
+   933→                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+   934→                  Saving...
+   935→                </div>
+   936→              ) : (
+   937→                'Save Changes'
+   938→              )}
+   939→            </Button>
+   940→          </DialogFooter>
+   941→        </DialogContent>
+   942→      </Dialog>
+   943→
+   944→      {/* ─── Add Questionnaire Dialog ─────────────────────────────────────── */}
+   945→      <Dialog open={addQuestionnaire} onOpenChange={() => setAddQuestionnaire(false)}>
+   946→        <DialogContent className="sm:max-w-lg">
+   947→          <DialogHeader>
+   948→            <DialogTitle className="text-[#0A2647]">New Questionnaire Template</DialogTitle>
+   949→            <DialogDescription>Create a new questionnaire template for client onboarding</DialogDescription>
+   950→          </DialogHeader>
+   951→          <div className="space-y-4 py-2">
+   952→            <div className="space-y-2">
+   953→              <Label htmlFor="add-q-name">Template Name</Label>
+   954→              <Input
+   955→                id="add-q-name"
+   956→                value={addQForm.name}
+   957→                onChange={(e) => setAddQForm({ ...addQForm, name: e.target.value })}
+   958→                placeholder="e.g., Company Registration Questionnaire"
+   959→              />
+   960→            </div>
+   961→            <div className="space-y-2">
+   962→              <Label htmlFor="add-q-desc">Description</Label>
+   963→              <Textarea
+   964→                id="add-q-desc"
+   965→                value={addQForm.description}
+   966→                onChange={(e) => setAddQForm({ ...addQForm, description: e.target.value })}
+   967→                placeholder="Brief description of what this questionnaire covers"
+   968→                rows={3}
+   969→              />
+   970→            </div>
+   971→            <div className="grid grid-cols-2 gap-4">
+   972→              <div className="space-y-2">
+   973→                <Label htmlFor="add-q-version">Version</Label>
+   974→                <Input
+   975→                  id="add-q-version"
+   976→                  value={addQForm.version}
+   977→                  onChange={(e) => setAddQForm({ ...addQForm, version: e.target.value })}
+   978→                  placeholder="1.0"
+   979→                />
+   980→              </div>
+   981→              <div className="space-y-2">
+   982→                <Label htmlFor="add-q-status">Status</Label>
+   983→                <Select
+   984→                  value={addQForm.status}
+   985→                  onValueChange={(val) => setAddQForm({ ...addQForm, status: val })}
+   986→                >
+   987→                  <SelectTrigger className="w-full">
+   988→                    <SelectValue placeholder="Select status" />
+   989→                  </SelectTrigger>
+   990→                  <SelectContent>
+   991→                    <SelectItem value="draft">Draft</SelectItem>
+   992→                    <SelectItem value="published">Published</SelectItem>
+   993→                    <SelectItem value="archived">Archived</SelectItem>
+   994→                  </SelectContent>
+   995→                </Select>
+   996→              </div>
+   997→            </div>
+   998→          </div>
+   999→          <DialogFooter>
+  1000→            <Button variant="outline" onClick={() => setAddQuestionnaire(false)} disabled={actionLoading}>
+  1001→              Cancel
+  1002→            </Button>
+  1003→            <Button
+  1004→              onClick={handleAddQuestionnaire}
+  1005→              disabled={actionLoading || !addQForm.name.trim()}
+  1006→              className="bg-[#0A2647] hover:bg-[#0A2647]/90"
+  1007→            >
+  1008→              {actionLoading ? (
+  1009→                <div className="flex items-center gap-2">
+  1010→                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+  1011→                  Creating...
+  1012→                </div>
+  1013→              ) : (
+  1014→                <>
+  1015→                  <Plus className="w-4 h-4 mr-1" />
+  1016→                  Create Template
+  1017→                </>
+  1018→              )}
+  1019→            </Button>
+  1020→          </DialogFooter>
+  1021→        </DialogContent>
+  1022→      </Dialog>
+  1023→
+  1024→      {/* ─── Add Agreement Dialog ─────────────────────────────────────────── */}
+  1025→      <Dialog open={addAgreement} onOpenChange={() => setAddAgreement(false)}>
+  1026→        <DialogContent className="sm:max-w-lg">
+  1027→          <DialogHeader>
+  1028→            <DialogTitle className="text-[#0A2647]">New Agreement Template</DialogTitle>
+  1029→            <DialogDescription>Create a new agreement template for client signing</DialogDescription>
+  1030→          </DialogHeader>
+  1031→          <div className="space-y-4 py-2">
+  1032→            <div className="space-y-2">
+  1033→              <Label htmlFor="add-a-name">Agreement Name</Label>
+  1034→              <Input
+  1035→                id="add-a-name"
+  1036→                value={addAForm.name}
+  1037→                onChange={(e) => setAddAForm({ ...addAForm, name: e.target.value })}
+  1038→                placeholder="e.g., Confidentiality Undertaking"
+  1039→              />
+  1040→            </div>
+  1041→            <div className="space-y-2">
+  1042→              <Label htmlFor="add-a-content">Content (HTML)</Label>
+  1043→              <Textarea
+  1044→                id="add-a-content"
+  1045→                value={addAForm.content}
+  1046→                onChange={(e) => setAddAForm({ ...addAForm, content: e.target.value })}
+  1047→                placeholder="<h1>Agreement Title</h1><p>Agreement content...</p>"
+  1048→                rows={6}
+  1049→                className="font-mono text-xs"
+  1050→              />
+  1051→            </div>
+  1052→            <div className="grid grid-cols-2 gap-4">
+  1053→              <div className="space-y-2">
+  1054→                <Label htmlFor="add-a-version">Version</Label>
+  1055→                <Input
+  1056→                  id="add-a-version"
+  1057→                  value={addAForm.version}
+  1058→                  onChange={(e) => setAddAForm({ ...addAForm, version: e.target.value })}
+  1059→                  placeholder="1.0"
+  1060→                />
+  1061→              </div>
+  1062→              <div className="space-y-2">
+  1063→                <Label htmlFor="add-a-status">Status</Label>
+  1064→                <Select
+  1065→                  value={addAForm.status}
+  1066→                  onValueChange={(val) => setAddAForm({ ...addAForm, status: val })}
+  1067→                >
+  1068→                  <SelectTrigger className="w-full">
+  1069→                    <SelectValue placeholder="Select status" />
+  1070→                  </SelectTrigger>
+  1071→                  <SelectContent>
+  1072→                    <SelectItem value="draft">Draft</SelectItem>
+  1073→                    <SelectItem value="published">Published</SelectItem>
+  1074→                    <SelectItem value="archived">Archived</SelectItem>
+  1075→                  </SelectContent>
+  1076→                </Select>
+  1077→              </div>
+  1078→            </div>
+  1079→          </div>
+  1080→          <DialogFooter>
+  1081→            <Button variant="outline" onClick={() => setAddAgreement(false)} disabled={actionLoading}>
+  1082→              Cancel
+  1083→            </Button>
+  1084→            <Button
+  1085→              onClick={handleAddAgreement}
+  1086→              disabled={actionLoading || !addAForm.name.trim()}
+  1087→              className="bg-[#0A2647] hover:bg-[#0A2647]/90"
+  1088→            >
+  1089→              {actionLoading ? (
+  1090→                <div className="flex items-center gap-2">
+  1091→                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+  1092→                  Creating...
+  1093→                </div>
+  1094→              ) : (
+  1095→                <>
+  1096→                  <Plus className="w-4 h-4 mr-1" />
+  1097→                  Create Agreement
+  1098→                </>
+  1099→              )}
+  1100→            </Button>
+  1101→          </DialogFooter>
+  1102→        </DialogContent>
+  1103→      </Dialog>
+  1104→    </div>
+  1105→  )
+  1106→}
+  1107→

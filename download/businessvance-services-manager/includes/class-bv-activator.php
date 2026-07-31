@@ -978,64 +978,124 @@ class BV_Activator {
          * @return string
          */
         private static function get_default_agreement_template() {
-                return '<h2 style="text-align:center;">CONFIDENTIALITY AND ENGAGEMENT AGREEMENT</h2>
+                return '<div style="font-family: Georgia, serif; line-height: 1.8; color: #333; max-width: 800px; margin: 0 auto;">
 
-<p style="text-align:center;"><strong>BusinessVance Services Manager</strong></p>
+<div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 3px double #D4AF37;">
+<h1 style="color: #0A2647; font-size: 28px; margin: 0 0 5px 0; letter-spacing: 2px;">BUSINESSVANCE</h1>
+<p style="color: #666; font-size: 13px; margin: 0; letter-spacing: 3px;">RESEARCH. ANALYZE. PLAN. SUCCEED.</p>
+<p style="color: #999; font-size: 11px; margin: 5px 0 0 0;">082 377 7490</p>
+</div>
 
-<hr />
+<h2 style="text-align: center; color: #0A2647; font-size: 20px; margin-bottom: 25px;">CLIENT CONFIDENTIALITY AND INFORMATION PROTECTION UNDERTAKING</h2>
 
-<p>This Confidentiality and Engagement Agreement (the <strong>"Agreement"</strong>) is entered into between <strong>BusinessVance (Pty) Ltd</strong> (hereinafter referred to as the <strong>"Service Provider"</strong>) and the client identified below (hereinafter referred to as the <strong>"Client"</strong>), collectively referred to as the <strong>"Parties"</strong>).</p>
+<div style="background: #f8f9fa; padding: 15px 20px; border-left: 4px solid #D4AF37; margin-bottom: 25px; border-radius: 0 6px 6px 0;">
+<p style="margin: 0; font-style: italic; color: #555;"><strong>Our commitment</strong> &mdash; BusinessVance recognises that clients may share valuable business ideas, financial information, operating methods and personal details. We commit to treating this information responsibly, confidentially and only for the purpose of delivering the service purchased.</p>
+</div>
 
-<h3>1. DEFINITIONS</h3>
-<p><strong>1.1</strong> "Confidential Information" means any and all non-public information, whether written, oral, electronic, or in any other form, disclosed by either Party to the other in connection with the services to be rendered under this Agreement, including but not limited to business plans, financial data, customer lists, trade secrets, proprietary processes, and any other information that is designated as confidential or that reasonably should be understood to be confidential given the nature of the information and circumstances of disclosure.</p>
+<h3 style="color: #0A2647; font-size: 16px; margin-top: 25px; padding-bottom: 6px; border-bottom: 1px solid #e0e0e0;">1. Information Covered by This Undertaking</h3>
+<ul style="padding-left: 20px;">
+<li style="margin-bottom: 8px;">This undertaking applies to information supplied through questionnaires, emails, WhatsApp messages, telephone discussions, documents, meetings or any other communication with BusinessVance.</li>
+<li style="margin-bottom: 8px;">Protected information may include business ideas, products, services, processes, pricing, supplier details, customer information, financial information, marketing plans, research, intellectual property and any other information that is not publicly available.</li>
+</ul>
 
-<h3>2. SCOPE OF SERVICES</h3>
-<p><strong>2.1</strong> The Service Provider agrees to render the professional services as described in the service order or proposal accepted by the Client (the <strong>"Services"</strong>).</p>
-<p><strong>2.2</strong> The specific deliverables, timelines, and fees for the Services shall be outlined in the relevant service proposal or order form, which forms an integral part of this Agreement.</p>
+<h3 style="color: #0A2647; font-size: 16px; margin-top: 25px; padding-bottom: 6px; border-bottom: 1px solid #e0e0e0;">2. BusinessVance Confidentiality Commitment</h3>
+<ul style="padding-left: 20px;">
+<li style="margin-bottom: 8px;">BusinessVance will treat information supplied by the client as confidential.</li>
+<li style="margin-bottom: 8px;">Information will be used only to prepare and deliver the product, report or consulting service purchased by the client.</li>
+<li style="margin-bottom: 8px;">BusinessVance will not sell, publish, disclose or share the client&rsquo;s information or business idea with unauthorised third parties.</li>
+<li style="margin-bottom: 8px;">Access will be limited to authorised persons who reasonably require the information to complete or administer the client&rsquo;s service.</li>
+<li style="margin-bottom: 8px;">Reasonable safeguards will be used to protect information against loss, misuse, unauthorised access, alteration or disclosure.</li>
+</ul>
 
-<h3>3. CLIENT OBLIGATIONS</h3>
-<p><strong>3.1</strong> The Client agrees to provide all necessary information, documentation, and access required by the Service Provider to perform the Services in a timely manner.</p>
-<p><strong>3.2</strong> The Client undertakes to respond to queries and requests from the Service Provider within a reasonable timeframe to avoid delays in the delivery of the Services.</p>
-<p><strong>3.3</strong> The Client acknowledges that delays in providing required information may impact the agreed-upon timelines and deliverables.</p>
+<h3 style="color: #0A2647; font-size: 16px; margin-top: 25px; padding-bottom: 6px; border-bottom: 1px solid #e0e0e0;">3. Protection and Ownership of Business Ideas</h3>
+<ul style="padding-left: 20px;">
+<li style="margin-bottom: 8px;">Any business idea, concept, strategy, business model, product name, process or original material submitted by the client remains the property of the client.</li>
+<li style="margin-bottom: 8px;">Submitting information to BusinessVance does not transfer ownership of the client&rsquo;s idea or intellectual property to BusinessVance.</li>
+<li style="margin-bottom: 8px;">BusinessVance will not knowingly use, reproduce, market or provide the client&rsquo;s confidential business idea to another person for BusinessVance&rsquo;s own benefit.</li>
+</ul>
 
-<h3>4. CONFIDENTIALITY OBLIGATIONS</h3>
-<p><strong>4.1</strong> Each Party agrees to hold all Confidential Information of the other Party in strict confidence and not to disclose such information to any third party without the prior written consent of the disclosing Party.</p>
-<p><strong>4.2</strong> Each Party agrees to use the Confidential Information solely for the purpose of performing its obligations under this Agreement and for no other purpose.</p>
-<p><strong>4.3</strong> Each Party shall take all reasonable precautions to protect the Confidential Information of the other Party, using at least the same degree of care it uses to protect its own confidential information, but in no event less than reasonable care.</p>
+<h3 style="color: #0A2647; font-size: 16px; margin-top: 25px; padding-bottom: 6px; border-bottom: 1px solid #e0e0e0;">4. Personal Information and POPIA</h3>
+<ul style="padding-left: 20px;">
+<li style="margin-bottom: 8px;">BusinessVance will process personal information only for legitimate purposes connected to the purchased service, administration, communication, recordkeeping and legal compliance.</li>
+<li style="margin-bottom: 8px;">Personal information will be handled in line with the Protection of Personal Information Act 4 of 2013 (POPIA), where applicable.</li>
+<li style="margin-bottom: 8px;">The client may request access to or correction of personal information held by BusinessVance, subject to reasonable verification and legal recordkeeping requirements.</li>
+</ul>
 
-<h3>5. INTELLECTUAL PROPERTY</h3>
-<p><strong>5.1</strong> All intellectual property, including but not limited to reports, analyses, strategies, and other deliverables created by the Service Provider in the course of rendering the Services, shall remain the property of the Service Provider until full payment has been received.</p>
-<p><strong>5.2</strong> Upon full payment, the Client shall be granted a non-exclusive, perpetual licence to use the deliverables for their intended business purpose.</p>
+<h3 style="color: #0A2647; font-size: 16px; margin-top: 25px; padding-bottom: 6px; border-bottom: 1px solid #e0e0e0;">5. When Information May Be Disclosed</h3>
+<ul style="padding-left: 20px;">
+<li style="margin-bottom: 8px;">BusinessVance will not share confidential information unless: the client has provided written permission; disclosure is required by law, court order or lawful regulatory process; or limited disclosure is reasonably necessary to an authorised service provider assisting with the client&rsquo;s project and that provider is required to maintain confidentiality.</li>
+<li style="margin-bottom: 8px;">This undertaking does not apply to information that is already publicly available through no breach by BusinessVance, was lawfully known before disclosure, or was independently developed without using the client&rsquo;s confidential information.</li>
+</ul>
 
-<h3>6. PAYMENT TERMS</h3>
-<p><strong>6.1</strong> Fees for the Services shall be as set out in the accepted service proposal or order form.</p>
-<p><strong>6.2</strong> Payment is due within 14 (fourteen) days of invoice date unless otherwise agreed in writing.</p>
-<p><strong>6.3</strong> Late payments may incur interest at the rate of 2% per month on the outstanding balance.</p>
+<h3 style="color: #0A2647; font-size: 16px; margin-top: 25px; padding-bottom: 6px; border-bottom: 1px solid #e0e0e0;">6. Client Responsibilities</h3>
+<ul style="padding-left: 20px;">
+<li style="margin-bottom: 8px;">The client is responsible for providing accurate and complete information and for ensuring that the client is authorised to provide any personal, financial or third-party information included in the questionnaire.</li>
+<li style="margin-bottom: 8px;">The quality and accuracy of the final report or service depend on the completeness and accuracy of the information supplied.</li>
+<li style="margin-bottom: 8px;">Clients should not provide passwords, banking PINs, full payment-card details or other information that is not required for the purchased service.</li>
+</ul>
 
-<h3>7. LIMITATION OF LIABILITY</h3>
-<p><strong>7.1</strong> The Service Provider\'s total liability arising out of or in connection with this Agreement shall not exceed the total fees paid by the Client for the specific Services giving rise to the claim.</p>
-<p><strong>7.2</strong> The Service Provider shall not be liable for any indirect, incidental, consequential, or punitive damages, including but not limited to loss of profits, revenue, or data.</p>
+<h3 style="color: #0A2647; font-size: 16px; margin-top: 25px; padding-bottom: 6px; border-bottom: 1px solid #e0e0e0;">7. Reports and Completed Work</h3>
+<ul style="padding-left: 20px;">
+<li style="margin-bottom: 8px;">Reports and documents prepared specifically for the client are intended for the client&rsquo;s use and will not be published or distributed by BusinessVance without prior permission.</li>
+<li style="margin-bottom: 8px;">BusinessVance may use anonymous and general information for internal service improvement, provided that the client, business and confidential idea cannot reasonably be identified.</li>
+</ul>
 
-<h3>8. TERM AND TERMINATION</h3>
-<p><strong>8.1</strong> This Agreement shall commence on the date of acceptance and shall remain in effect until the Services have been completed and all obligations have been fulfilled.</p>
-<p><strong>8.2</strong> Either Party may terminate this Agreement by providing 14 (fourteen) days\' written notice to the other Party.</p>
+<h3 style="color: #0A2647; font-size: 16px; margin-top: 25px; padding-bottom: 6px; border-bottom: 1px solid #e0e0e0;">8. Information Retention and Security Limitation</h3>
+<ul style="padding-left: 20px;">
+<li style="margin-bottom: 8px;">Information may be kept for a reasonable period for service delivery, administration, legal compliance and recordkeeping, after which it will be deleted, destroyed or anonymised where reasonably practical.</li>
+<li style="margin-bottom: 8px;">BusinessVance will take reasonable precautions to protect information. However, no electronic communication, online form or data-storage system can be guaranteed to be completely secure.</li>
+</ul>
 
-<h3>9. DISPUTE RESOLUTION</h3>
-<p><strong>9.1</strong> Any dispute arising out of or in connection with this Agreement shall be resolved through good-faith negotiation between the Parties.</p>
-<p><strong>9.2</strong> If the dispute cannot be resolved through negotiation, the Parties agree to submit the matter to mediation before resorting to legal proceedings.</p>
+<h3 style="color: #0A2647; font-size: 16px; margin-top: 25px; padding-bottom: 6px; border-bottom: 1px solid #e0e0e0;">9. Duration</h3>
+<ul style="padding-left: 20px;">
+<li style="margin-bottom: 8px;">This confidentiality commitment starts when the client provides information to BusinessVance and continues after the report or service has been completed, except where the information lawfully enters the public domain or disclosure is legally required.</li>
+</ul>
 
-<h3>10. GENERAL PROVISIONS</h3>
-<p><strong>10.1</strong> This Agreement shall be governed by and construed in accordance with the laws of the Republic of South Africa.</p>
-<p><strong>10.2</strong> This Agreement constitutes the entire agreement between the Parties with respect to the subject matter hereof and supersedes all prior agreements and understandings.</p>
+<div style="background: #fff8e1; padding: 12px 18px; border-radius: 6px; margin-top: 25px; font-size: 13px; color: #795548;">
+<strong>Important:</strong> This document records BusinessVance&rsquo;s confidentiality commitment to the client. It does not replace specialised legal advice or a customised non-disclosure agreement where a transaction involves investors, partners, patented technology, trade secrets or unusually high-value intellectual property.
+</div>
 
-<hr />
+<h3 style="color: #0A2647; font-size: 16px; margin-top: 30px; padding-bottom: 6px; border-bottom: 2px solid #D4AF37;">10. Client Acknowledgement and Consent</h3>
+<p style="margin-bottom: 15px;">By signing below, or by completing and submitting a BusinessVance questionnaire after receiving this undertaking, the client confirms that:</p>
+<ul style="padding-left: 20px; margin-bottom: 25px;">
+<li style="margin-bottom: 8px;">The client has read and understood this undertaking.</li>
+<li style="margin-bottom: 8px;">The client consents to BusinessVance collecting and using submitted information to provide the purchased service.</li>
+<li style="margin-bottom: 8px;">The client understands how the information may be stored, protected and disclosed in the limited circumstances described above.</li>
+<li style="margin-bottom: 8px;">The client confirms that the information supplied is accurate to the best of the client&rsquo;s knowledge.</li>
+</ul>
 
-<p style="text-align:center;"><strong>ACCEPTANCE</strong></p>
+<h3 style="color: #0A2647; font-size: 16px; margin-top: 30px; margin-bottom: 15px;">CLIENT DETAILS</h3>
+<table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
+<tr><td style="padding: 10px 12px; border: 1px solid #ddd; width: 40%; font-weight: 600; background: #f8f9fa;">Client full name</td><td style="padding: 10px 12px; border: 1px solid #ddd; width: 60%;">{{CLIENT_NAME}}</td></tr>
+<tr><td style="padding: 10px 12px; border: 1px solid #ddd; font-weight: 600; background: #f8f9fa;">Business name</td><td style="padding: 10px 12px; border: 1px solid #ddd;">{{BUSINESS_NAME}}</td></tr>
+<tr><td style="padding: 10px 12px; border: 1px solid #ddd; font-weight: 600; background: #f8f9fa;">Product / service purchased</td><td style="padding: 10px 12px; border: 1px solid #ddd;">{{SERVICE_PURCHASED}}</td></tr>
+<tr><td style="padding: 10px 12px; border: 1px solid #ddd; font-weight: 600; background: #f8f9fa;">Email address</td><td style="padding: 10px 12px; border: 1px solid #ddd;">{{CLIENT_EMAIL}}</td></tr>
+<tr><td style="padding: 10px 12px; border: 1px solid #ddd; font-weight: 600; background: #f8f9fa;">Contact number</td><td style="padding: 10px 12px; border: 1px solid #ddd;">{{CLIENT_PHONE}}</td></tr>
+<tr><td style="padding: 10px 12px; border: 1px solid #ddd; font-weight: 600; background: #f8f9fa;">Client signature</td><td style="padding: 10px 12px; border: 1px solid #ddd;">{{CLIENT_SIGNATURE}}</td></tr>
+<tr><td style="padding: 10px 12px; border: 1px solid #ddd; font-weight: 600; background: #f8f9fa;">Date</td><td style="padding: 10px 12px; border: 1px solid #ddd;">{{DATE}}</td></tr>
+</table>
 
-<p>By clicking "I Agree" below, the Client acknowledges that they have read, understood, and agree to be bound by the terms and conditions set out in this Agreement.</p>
+<div style="background: #e8f4f8; padding: 15px 20px; border-radius: 6px; margin-bottom: 25px;">
+<p style="margin: 0; color: #0A2647;"><strong>BUSINESSVANCE DECLARATION</strong></p>
+<p style="margin: 8px 0 0 0; color: #555;">BusinessVance confirms that the client&rsquo;s information and business idea will be treated as confidential and used only for legitimate purposes connected to the service purchased by the client, subject to the terms of this undertaking.</p>
+</div>
 
-<p><strong>Client Name:</strong> {{CLIENT_NAME}}<br />
-<strong>Date:</strong> {{DATE}}<br />
-<strong>IP Address:</strong> {{IP_ADDRESS}}</p>';
+<h3 style="color: #0A2647; font-size: 16px; margin-bottom: 15px;">BUSINESSVANCE DETAILS</h3>
+<table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
+<tr><td style="padding: 10px 12px; border: 1px solid #ddd; width: 40%; font-weight: 600; background: #f8f9fa;">Representative name</td><td style="padding: 10px 12px; border: 1px solid #ddd;">Nico du Plessis</td></tr>
+<tr><td style="padding: 10px 12px; border: 1px solid #ddd; font-weight: 600; background: #f8f9fa;">Signature</td><td style="padding: 10px 12px; border: 1px solid #ddd;">&nbsp;</td></tr>
+<tr><td style="padding: 10px 12px; border: 1px solid #ddd; font-weight: 600; background: #f8f9fa;">Date</td><td style="padding: 10px 12px; border: 1px solid #ddd;">{{DATE}}</td></tr>
+</table>
+
+<div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 3px double #D4AF37;">
+<p style="margin: 0; font-weight: 700; color: #0A2647; letter-spacing: 2px;">BUSINESSVANCE</p>
+<p style="margin: 4px 0 0 0; font-size: 12px; color: #666; letter-spacing: 2px;">Research. Analyze. Plan. Succeed.</p>
+<p style="margin: 4px 0 0 0; font-size: 12px; color: #666;">Contact: 082 377 7490</p>
+</div>
+
+<p style="text-align: center; margin-top: 20px; font-size: 11px; color: #999;">This document was generated by BusinessVance &mdash; Professional Business Consulting<br />Confidential &middot; For authorised use only</p>
+
+<p><strong>IP Address:</strong> {{IP_ADDRESS}}</p>
+</div>';
         }
 }
