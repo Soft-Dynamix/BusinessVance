@@ -168,6 +168,7 @@ final class BusinessVance_Services_Manager {
     public $client_portal;
     public $consultant_dashboard;
     public $woocommerce;
+    public $questionnaire_admin;
 
     public static function instance() {
         if ( null === self::$instance ) {
@@ -188,6 +189,7 @@ final class BusinessVance_Services_Manager {
         require_once BV_PLUGIN_DIR . 'includes/class-bv-shortcodes.php';
         require_once BV_PLUGIN_DIR . 'includes/class-bv-client-portal.php';
         require_once BV_PLUGIN_DIR . 'includes/class-bv-consultant-dashboard.php';
+        require_once BV_PLUGIN_DIR . 'includes/class-bv-questionnaire-admin.php';
         require_once BV_PLUGIN_DIR . 'includes/class-bv-woocommerce.php';
     }
 
@@ -197,6 +199,7 @@ final class BusinessVance_Services_Manager {
         $this->client_portal        = new BV_Client_Portal();
         $this->consultant_dashboard = new BV_Consultant_Dashboard();
         $this->settings             = new BV_Settings();
+        $this->questionnaire_admin   = new BV_Questionnaire_Admin();
         BV_WooCommerce::init();
     }
 

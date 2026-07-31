@@ -72,6 +72,7 @@ class BV_Activator {
                         button_label varchar(200) NOT NULL DEFAULT 'Get Started',
                         service_type varchar(50) NOT NULL DEFAULT 'onceoff',
                         woo_product_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+                        questionnaire_template_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
                         category_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
                         is_visible tinyint(1) NOT NULL DEFAULT 1,
                         is_featured tinyint(1) NOT NULL DEFAULT 0,

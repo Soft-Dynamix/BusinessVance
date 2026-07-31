@@ -330,14 +330,51 @@ class BV_Client_Portal {
 
     private function get_questionnaire_data( $project_id ) {
         global $wpdb;
-        $sections = $wpdb->get_results(
-            "SELECT qs.* FROM {$wpdb->prefix}bv_questionnaire_sections qs
+
+        // Get all services linked to this project
+        $project_services = $wpdb->get_results( $wpdb->prepare(
+            "SELECT service_id FROM {$wpdb->prefix}bv_project_services WHERE project_id = %d",
+            $project_id
+        ) );
+        $service_ids = array();
+        foreach ( $project_services as $ps ) {
+            $service_ids[] = absint( $ps->service_id );
+        }
+
+        // If no services linked, return empty
+        if ( empty( $service_ids ) ) {
+            return array();
+        }
+
+        // Get unique questionnaire template IDs from the linked services
+        $placeholders = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
+        $template_ids = $wpdb->get_col( $wpdb->prepare(
+            "SELECT DISTINCT questionnaire_template_id FROM {$wpdb->prefix}bv_services
+             WHERE id IN ($placeholders) AND questionnaire_template_id > 0",
+            ...$service_ids
+        ) );
+
+        if ( empty( $template_ids ) ) {
+            return array();
+        }
+
+        // Get all published sections from these templates
+        $tpl_placeholders = implode( ',', array_fill( 0, count( $template_ids ), '%d' ) );
+        $sections = $wpdb->get_results( $wpdb->prepare(
+            "SELECT qs.*, qt.name as template_name
+             FROM {$wpdb->prefix}bv_questionnaire_sections qs
              JOIN {$wpdb->prefix}bv_questionnaire_templates qt ON qs.template_id = qt.id
-             WHERE qt.status = 'published'
-             ORDER BY qs.display_order ASC"
-        );
-        foreach ( $sections as &$section ) {
-            $section->questions = $wpdb->get_results( $wpdb->prepare(
+             WHERE qs.template_id IN ($tpl_placeholders) AND qt.status = 'published'
+             ORDER BY qs.template_id, qs.display_order ASC",
+            ...$template_ids
+        ) );
+
+        // Collect unique question IDs across all sections (for deduplication)
+        $seen_question_keys = array(); // keyed by "label|type" to deduplicate
+        $all_sections = array();
+
+        foreach ( $sections as $section ) {
+            $questions = $wpdb->get_results( $wpdb->prepare(
                 "SELECT q.*, r.response_value
                  FROM {$wpdb->prefix}bv_questionnaire_questions q
                  LEFT JOIN {$wpdb->prefix}bv_questionnaire_responses r
@@ -346,8 +383,26 @@ class BV_Client_Portal {
                  ORDER BY q.display_order ASC",
                 $project_id, $section->id
             ) );
+
+            // Deduplicate questions by label+type — skip if already seen
+            $unique_questions = array();
+            foreach ( $questions as $q ) {
+                $key = $q->label . '|' . $q->type;
+                if ( isset( $seen_question_keys[ $key ] ) ) {
+                    continue; // Skip duplicate question
+                }
+                $seen_question_keys[ $key ] = true;
+                $unique_questions[] = $q;
+            }
+
+            // Only include section if it has unique questions
+            if ( ! empty( $unique_questions ) ) {
+                $section->questions = $unique_questions;
+                $all_sections[] = $section;
+            }
         }
-        return $sections;
+
+        return $all_sections;
     }
 
     private function render_questionnaire_tab( $project, $sections ) {

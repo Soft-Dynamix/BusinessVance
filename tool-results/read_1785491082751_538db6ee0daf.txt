@@ -1,0 +1,773 @@
+     1→<?php
+     2→/**
+     3→ * BusinessVance Questionnaire Admin
+     4→ *
+     5→ * Admin page for managing questionnaire templates, sections, and questions.
+     6→ *
+     7→ * @package BusinessVance_Services_Manager
+     8→ * @since   2.0.0
+     9→ */
+    10→
+    11→if ( ! defined( 'ABSPATH' ) ) {
+    12→    exit;
+    13→}
+    14→
+    15→class BV_Questionnaire_Admin {
+    16→
+    17→    /**
+    18→     * Constructor — register hooks
+    19→     */
+    20→    public function __construct() {
+    21→        add_action( 'admin_menu', array( $this, 'register_menu' ) );
+    22→        add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+    23→
+    24→        add_action( 'wp_ajax_bv_qt_get_templates', array( $this, 'ajax_get_templates' ) );
+    25→        add_action( 'wp_ajax_bv_qt_get_template', array( $this, 'ajax_get_template' ) );
+    26→        add_action( 'wp_ajax_bv_qt_save_template', array( $this, 'ajax_save_template' ) );
+    27→        add_action( 'wp_ajax_bv_qt_delete_template', array( $this, 'ajax_delete_template' ) );
+    28→        add_action( 'wp_ajax_bv_qt_save_section', array( $this, 'ajax_save_section' ) );
+    29→        add_action( 'wp_ajax_bv_qt_delete_section', array( $this, 'ajax_delete_section' ) );
+    30→        add_action( 'wp_ajax_bv_qt_save_question', array( $this, 'ajax_save_question' ) );
+    31→        add_action( 'wp_ajax_bv_qt_delete_question', array( $this, 'ajax_delete_question' ) );
+    32→        add_action( 'wp_ajax_bv_qt_reorder', array( $this, 'ajax_reorder' ) );
+    33→    }
+    34→
+    35→    /**
+    36→     * Register the admin submenu page
+    37→     */
+    38→    public function register_menu() {
+    39→        add_submenu_page(
+    40→            'businessvance',
+    41→            'Questionnaires',
+    42→            'Questionnaires',
+    43→            'manage_options',
+    44→            'businessvance-questionnaires',
+    45→            array( $this, 'render_page' )
+    46→        );
+    47→    }
+    48→
+    49→    /**
+    50→     * Enqueue scripts and styles for the questionnaire admin page
+    51→     *
+    52→     * @param string $hook
+    53→     */
+    54→    public function enqueue_assets( $hook ) {
+    55→        if ( $hook !== 'businessvance_page_businessvance-questionnaires' ) {
+    56→            return;
+    57→        }
+    58→
+    59→        wp_enqueue_style(
+    60→            'bv-questionnaire-admin-css',
+    61→            BV_PLUGIN_URL . 'assets/css/questionnaire-admin.css',
+    62→            array(),
+    63→            BV_VERSION
+    64→        );
+    65→
+    66→        wp_enqueue_script(
+    67→            'bv-questionnaire-admin-js',
+    68→            BV_PLUGIN_URL . 'assets/js/questionnaire-admin.js',
+    69→            array( 'jquery' ),
+    70→            BV_VERSION,
+    71→            true
+    72→        );
+    73→
+    74→        wp_localize_script( 'bv-questionnaire-admin-js', 'bvQT', array(
+    75→            'ajax_url' => admin_url( 'admin-ajax.php' ),
+    76→            'nonce'    => wp_create_nonce( 'bv_admin_nonce' ),
+    77→            'strings'  => array(
+    78→                'confirm_delete_template' => 'Are you sure you want to delete this template? All sections and questions will be permanently removed.',
+    79→                'confirm_delete_section'  => 'Are you sure you want to delete this section? All questions in it will be permanently removed.',
+    80→                'confirm_delete_question' => 'Are you sure you want to delete this question?',
+    81→                'saving'                  => 'Saving...',
+    82→                'saved'                   => 'Saved successfully.',
+    83→                'error'                   => 'An error occurred. Please try again.',
+    84→                'loading'                 => 'Loading...',
+    85→            ),
+    86→        ) );
+    87→    }
+    88→
+    89→    /**
+    90→     * Verify nonce and capability
+    91→     */
+    92→    private function verify_nonce() {
+    93→        if ( ! check_ajax_referer( 'bv_admin_nonce', 'nonce', false ) ) {
+    94→            wp_send_json_error( array( 'message' => 'Security check failed.' ), 403 );
+    95→        }
+    96→        if ( ! current_user_can( 'manage_options' ) ) {
+    97→            wp_send_json_error( array( 'message' => 'Permission denied.' ), 403 );
+    98→        }
+    99→    }
+   100→
+   101→    /**
+   102→     * Get database table names
+   103→     *
+   104→     * @return array
+   105→     */
+   106→    private function get_tables() {
+   107→        global $wpdb;
+   108→        return array(
+   109→            'templates' => $wpdb->prefix . 'bv_questionnaire_templates',
+   110→            'sections'  => $wpdb->prefix . 'bv_questionnaire_sections',
+   111→            'questions' => $wpdb->prefix . 'bv_questionnaire_questions',
+   112→        );
+   113→    }
+   114→
+   115→    /* ==========================================================================
+   116→     * AJAX: Get all templates
+   117→     * ========================================================================== */
+   118→
+   119→    public function ajax_get_templates() {
+   120→        $this->verify_nonce();
+   121→
+   122→        global $wpdb;
+   123→        $t = $this->get_tables();
+   124→
+   125→        $results = $wpdb->get_results(
+   126→            "SELECT t.*, 
+   127→                (SELECT COUNT(*) FROM {$t['sections']} WHERE template_id = t.id) AS section_count,
+   128→                (SELECT COUNT(*) FROM {$t['questions']} qq 
+   129→                    JOIN {$t['sections']} s ON qq.section_id = s.id 
+   130→                    WHERE s.template_id = t.id) AS question_count 
+   131→            FROM {$t['templates']} t 
+   132→            ORDER BY t.created_at DESC"
+   133→        );
+   134→
+   135→        wp_send_json_success( array( 'templates' => $results ) );
+   136→    }
+   137→
+   138→    /* ==========================================================================
+   139→     * AJAX: Get single template with all sections and questions
+   140→     * ========================================================================== */
+   141→
+   142→    public function ajax_get_template() {
+   143→        $this->verify_nonce();
+   144→
+   145→        global $wpdb;
+   146→        $t = $this->get_tables();
+   147→
+   148→        $template_id = absint( $_POST['template_id'] );
+   149→        if ( ! $template_id ) {
+   150→            wp_send_json_error( array( 'message' => 'Invalid template ID.' ) );
+   151→        }
+   152→
+   153→        $template = $wpdb->get_row( $wpdb->prepare(
+   154→            "SELECT * FROM {$t['templates']} WHERE id = %d",
+   155→            $template_id
+   156→        ) );
+   157→
+   158→        if ( ! $template ) {
+   159→            wp_send_json_error( array( 'message' => 'Template not found.' ) );
+   160→        }
+   161→
+   162→        $sections = $wpdb->get_results( $wpdb->prepare(
+   163→            "SELECT * FROM {$t['sections']} WHERE template_id = %d ORDER BY display_order ASC, id ASC",
+   164→            $template_id
+   165→        ) );
+   166→
+   167→        if ( $sections ) {
+   168→            foreach ( $sections as $section ) {
+   169→                $questions = $wpdb->get_results( $wpdb->prepare(
+   170→                    "SELECT * FROM {$t['questions']} WHERE section_id = %d ORDER BY display_order ASC, id ASC",
+   171→                    $section->id
+   172→                ) );
+   173→
+   174→                if ( $questions ) {
+   175→                    foreach ( $questions as $question ) {
+   176→                        $question->options = json_decode( $question->options, true );
+   177→                        if ( ! is_array( $question->options ) ) {
+   178→                            $question->options = array();
+   179→                        }
+   180→                    }
+   181→                } else {
+   182→                    $questions = array();
+   183→                }
+   184→
+   185→                $section->questions = $questions;
+   186→            }
+   187→        } else {
+   188→            $sections = array();
+   189→        }
+   190→
+   191→        $template->sections = $sections;
+   192→
+   193→        wp_send_json_success( array( 'template' => $template ) );
+   194→    }
+   195→
+   196→    /* ==========================================================================
+   197→     * AJAX: Save (create or update) template
+   198→     * ========================================================================== */
+   199→
+   200→    public function ajax_save_template() {
+   201→        $this->verify_nonce();
+   202→
+   203→        global $wpdb;
+   204→        $t = $this->get_tables();
+   205→
+   206→        $id          = isset( $_POST['id'] ) ? absint( $_POST['id'] ) : 0;
+   207→        $name        = isset( $_POST['name'] ) ? sanitize_text_field( wp_unslash( $_POST['name'] ) ) : '';
+   208→        $slug        = isset( $_POST['slug'] ) ? sanitize_title( wp_unslash( $_POST['slug'] ) ) : sanitize_title( $name );
+   209→        $description = isset( $_POST['description'] ) ? sanitize_textarea_field( wp_unslash( $_POST['description'] ) ) : '';
+   210→        $status      = isset( $_POST['status'] ) ? sanitize_text_field( $_POST['status'] ) : 'draft';
+   211→
+   212→        if ( empty( $name ) ) {
+   213→            wp_send_json_error( array( 'message' => 'Template name is required.' ) );
+   214→        }
+   215→
+   216→        if ( ! in_array( $status, array( 'draft', 'published' ), true ) ) {
+   217→            $status = 'draft';
+   218→        }
+   219→
+   220→        // Check for duplicate slug
+   221→        if ( $id ) {
+   222→            $existing = $wpdb->get_var( $wpdb->prepare(
+   223→                "SELECT COUNT(*) FROM {$t['templates']} WHERE slug = %s AND id != %d",
+   224→                $slug,
+   225→                $id
+   226→            ) );
+   227→        } else {
+   228→            $existing = $wpdb->get_var( $wpdb->prepare(
+   229→                "SELECT COUNT(*) FROM {$t['templates']} WHERE slug = %s",
+   230→                $slug
+   231→            ) );
+   232→        }
+   233→
+   234→        if ( (int) $existing > 0 ) {
+   235→            wp_send_json_error( array( 'message' => 'A template with this slug already exists. Please use a different name.' ) );
+   236→        }
+   237→
+   238→        $data = array(
+   239→            'name'        => $name,
+   240→            'slug'        => $slug,
+   241→            'description' => $description,
+   242→            'status'      => $status,
+   243→            'updated_at'  => current_time( 'mysql' ),
+   244→        );
+   245→        $format = array( '%s', '%s', '%s', '%s', '%s' );
+   246→
+   247→        if ( $id ) {
+   248→            $wpdb->update( $t['templates'], $data, array( 'id' => $id ), $format, array( '%d' ) );
+   249→        } else {
+   250→            $data['created_at'] = current_time( 'mysql' );
+   251→            $format[] = '%s';
+   252→            $wpdb->insert( $t['templates'], $data, $format );
+   253→            $id = $wpdb->insert_id;
+   254→        }
+   255→
+   256→        if ( $wpdb->last_error ) {
+   257→            wp_send_json_error( array( 'message' => 'Database error: ' . $wpdb->last_error ) );
+   258→        }
+   259→
+   260→        wp_send_json_success( array(
+   261→            'template_id' => $id,
+   262→            'message'     => 'Template saved successfully.',
+   263→        ) );
+   264→    }
+   265→
+   266→    /* ==========================================================================
+   267→     * AJAX: Delete template (cascade to sections and questions)
+   268→     * ========================================================================== */
+   269→
+   270→    public function ajax_delete_template() {
+   271→        $this->verify_nonce();
+   272→
+   273→        global $wpdb;
+   274→        $t = $this->get_tables();
+   275→
+   276→        $id = isset( $_POST['id'] ) ? absint( $_POST['id'] ) : 0;
+   277→        if ( ! $id ) {
+   278→            wp_send_json_error( array( 'message' => 'Invalid template ID.' ) );
+   279→        }
+   280→
+   281→        // Get section IDs for this template
+   282→        $section_ids = $wpdb->get_col( $wpdb->prepare(
+   283→            "SELECT id FROM {$t['sections']} WHERE template_id = %d",
+   284→            $id
+   285→        ) );
+   286→
+   287→        // Delete all questions in those sections
+   288→        if ( ! empty( $section_ids ) ) {
+   289→            $section_id_list = implode( ',', array_map( 'absint', $section_ids ) );
+   290→            $wpdb->query( "DELETE FROM {$t['questions']} WHERE section_id IN ({$section_id_list})" );
+   291→        }
+   292→
+   293→        // Delete all sections
+   294→        $wpdb->delete( $t['sections'], array( 'template_id' => $id ), array( '%d' ) );
+   295→
+   296→        // Delete template
+   297→        $wpdb->delete( $t['templates'], array( 'id' => $id ), array( '%d' ) );
+   298→
+   299→        wp_send_json_success( array( 'message' => 'Template deleted successfully.' ) );
+   300→    }
+   301→
+   302→    /* ==========================================================================
+   303→     * AJAX: Save (create or update) section
+   304→     * ========================================================================== */
+   305→
+   306→    public function ajax_save_section() {
+   307→        $this->verify_nonce();
+   308→
+   309→        global $wpdb;
+   310→        $t = $this->get_tables();
+   311→
+   312→        $id          = isset( $_POST['id'] ) ? absint( $_POST['id'] ) : 0;
+   313→        $template_id = isset( $_POST['template_id'] ) ? absint( $_POST['template_id'] ) : 0;
+   314→        $title       = isset( $_POST['title'] ) ? sanitize_text_field( wp_unslash( $_POST['title'] ) ) : '';
+   315→        $description = isset( $_POST['description'] ) ? sanitize_textarea_field( wp_unslash( $_POST['description'] ) ) : '';
+   316→
+   317→        if ( ! $template_id ) {
+   318→            wp_send_json_error( array( 'message' => 'Template ID is required.' ) );
+   319→        }
+   320→
+   321→        if ( empty( $title ) ) {
+   322→            wp_send_json_error( array( 'message' => 'Section title is required.' ) );
+   323→        }
+   324→
+   325→        $data = array(
+   326→            'template_id' => $template_id,
+   327→            'title'       => $title,
+   328→            'description' => $description,
+   329→        );
+   330→        $format = array( '%d', '%s', '%s' );
+   331→
+   332→        if ( $id ) {
+   333→            $wpdb->update( $t['sections'], $data, array( 'id' => $id ), $format, array( '%d' ) );
+   334→        } else {
+   335→            // Get the next display_order
+   336→            $max_order = (int) $wpdb->get_var( $wpdb->prepare(
+   337→                "SELECT COALESCE(MAX(display_order), -1) FROM {$t['sections']} WHERE template_id = %d",
+   338→                $template_id
+   339→            ) );
+   340→            $data['display_order'] = $max_order + 1;
+   341→            $format[] = '%d';
+   342→            $data['created_at'] = current_time( 'mysql' );
+   343→            $format[] = '%s';
+   344→            $wpdb->insert( $t['sections'], $data, $format );
+   345→            $id = $wpdb->insert_id;
+   346→        }
+   347→
+   348→        if ( $wpdb->last_error ) {
+   349→            wp_send_json_error( array( 'message' => 'Database error: ' . $wpdb->last_error ) );
+   350→        }
+   351→
+   352→        $section = $wpdb->get_row( $wpdb->prepare(
+   353→            "SELECT * FROM {$t['sections']} WHERE id = %d",
+   354→            $id
+   355→        ) );
+   356→
+   357→        wp_send_json_success( array(
+   358→            'section' => $section,
+   359→            'message' => 'Section saved successfully.',
+   360→        ) );
+   361→    }
+   362→
+   363→    /* ==========================================================================
+   364→     * AJAX: Delete section (cascade to questions)
+   365→     * ========================================================================== */
+   366→
+   367→    public function ajax_delete_section() {
+   368→        $this->verify_nonce();
+   369→
+   370→        global $wpdb;
+   371→        $t = $this->get_tables();
+   372→
+   373→        $id = isset( $_POST['id'] ) ? absint( $_POST['id'] ) : 0;
+   374→        if ( ! $id ) {
+   375→            wp_send_json_error( array( 'message' => 'Invalid section ID.' ) );
+   376→        }
+   377→
+   378→        // Delete all questions in this section
+   379→        $wpdb->delete( $t['questions'], array( 'section_id' => $id ), array( '%d' ) );
+   380→
+   381→        // Delete section
+   382→        $wpdb->delete( $t['sections'], array( 'id' => $id ), array( '%d' ) );
+   383→
+   384→        wp_send_json_success( array( 'message' => 'Section deleted successfully.' ) );
+   385→    }
+   386→
+   387→    /* ==========================================================================
+   388→     * AJAX: Save (create or update) question
+   389→     * ========================================================================== */
+   390→
+   391→    public function ajax_save_question() {
+   392→        $this->verify_nonce();
+   393→
+   394→        global $wpdb;
+   395→        $t = $this->get_tables();
+   396→
+   397→        $id           = isset( $_POST['id'] ) ? absint( $_POST['id'] ) : 0;
+   398→        $section_id   = isset( $_POST['section_id'] ) ? absint( $_POST['section_id'] ) : 0;
+   399→        $type         = isset( $_POST['type'] ) ? sanitize_text_field( $_POST['type'] ) : 'text';
+   400→        $label        = isset( $_POST['label'] ) ? sanitize_text_field( wp_unslash( $_POST['label'] ) ) : '';
+   401→        $placeholder  = isset( $_POST['placeholder'] ) ? sanitize_text_field( wp_unslash( $_POST['placeholder'] ) ) : '';
+   402→        $is_required  = isset( $_POST['is_required'] ) ? (int) $_POST['is_required'] : 0;
+   403→        $help_text    = isset( $_POST['help_text'] ) ? sanitize_text_field( wp_unslash( $_POST['help_text'] ) ) : '';
+   404→        $options_text = isset( $_POST['options_text'] ) ? wp_unslash( $_POST['options_text'] ) : '';
+   405→
+   406→        $allowed_types = array(
+   407→            'text', 'textarea', 'number', 'email', 'phone', 'date',
+   408→            'select', 'radio', 'checkbox', 'heading', 'paragraph', 'file',
+   409→        );
+   410→
+   411→        if ( ! in_array( $type, $allowed_types, true ) ) {
+   412→            $type = 'text';
+   413→        }
+   414→
+   415→        if ( ! $section_id ) {
+   416→            wp_send_json_error( array( 'message' => 'Section ID is required.' ) );
+   417→        }
+   418→
+   419→        if ( empty( $label ) ) {
+   420→            wp_send_json_error( array( 'message' => 'Question label is required.' ) );
+   421→        }
+   422→
+   423→        // Convert options_text to JSON array
+   424→        $options = array();
+   425→        if ( in_array( $type, array( 'select', 'radio', 'checkbox' ), true ) && ! empty( $options_text ) ) {
+   426→            $lines = explode( "\n", $options_text );
+   427→            foreach ( $lines as $line ) {
+   428→                $line = trim( $line );
+   429→                if ( '' === $line ) {
+   430→                    continue;
+   431→                }
+   432→                if ( strpos( $line, '|' ) !== false ) {
+   433→                    $parts = explode( '|', $line, 2 );
+   434→                    $options[] = array(
+   435→                        'value' => sanitize_text_field( trim( $parts[0] ) ),
+   436→                        'label' => sanitize_text_field( trim( $parts[1] ) ),
+   437→                    );
+   438→                } else {
+   439→                    $options[] = array(
+   440→                        'value' => sanitize_title( $line ),
+   441→                        'label' => sanitize_text_field( $line ),
+   442→                    );
+   443→                }
+   444→            }
+   445→        }
+   446→
+   447→        $options_json = wp_json_encode( $options );
+   448→
+   449→        $data = array(
+   450→            'section_id'  => $section_id,
+   451→            'type'        => $type,
+   452→            'label'       => $label,
+   453→            'placeholder' => $placeholder,
+   454→            'is_required' => $is_required,
+   455→            'options'     => $options_json,
+   456→            'help_text'   => $help_text,
+   457→        );
+   458→        $format = array( '%d', '%s', '%s', '%s', '%d', '%s', '%s' );
+   459→
+   460→        if ( $id ) {
+   461→            $wpdb->update( $t['questions'], $data, array( 'id' => $id ), $format, array( '%d' ) );
+   462→        } else {
+   463→            // Get the next display_order
+   464→            $max_order = (int) $wpdb->get_var( $wpdb->prepare(
+   465→                "SELECT COALESCE(MAX(display_order), -1) FROM {$t['questions']} WHERE section_id = %d",
+   466→                $section_id
+   467→            ) );
+   468→            $data['display_order'] = $max_order + 1;
+   469→            $format[] = '%d';
+   470→            $data['created_at'] = current_time( 'mysql' );
+   471→            $format[] = '%s';
+   472→            $wpdb->insert( $t['questions'], $data, $format );
+   473→            $id = $wpdb->insert_id;
+   474→        }
+   475→
+   476→        if ( $wpdb->last_error ) {
+   477→            wp_send_json_error( array( 'message' => 'Database error: ' . $wpdb->last_error ) );
+   478→        }
+   479→
+   480→        $question = $wpdb->get_row( $wpdb->prepare(
+   481→            "SELECT * FROM {$t['questions']} WHERE id = %d",
+   482→            $id
+   483→        ) );
+   484→
+   485→        if ( $question ) {
+   486→            $question->options = json_decode( $question->options, true );
+   487→            if ( ! is_array( $question->options ) ) {
+   488→                $question->options = array();
+   489→            }
+   490→        }
+   491→
+   492→        wp_send_json_success( array(
+   493→            'question' => $question,
+   494→            'message'  => 'Question saved successfully.',
+   495→        ) );
+   496→    }
+   497→
+   498→    /* ==========================================================================
+   499→     * AJAX: Delete question
+   500→     * ========================================================================== */
+   501→
+   502→    public function ajax_delete_question() {
+   503→        $this->verify_nonce();
+   504→
+   505→        global $wpdb;
+   506→        $t = $this->get_tables();
+   507→
+   508→        $id = isset( $_POST['id'] ) ? absint( $_POST['id'] ) : 0;
+   509→        if ( ! $id ) {
+   510→            wp_send_json_error( array( 'message' => 'Invalid question ID.' ) );
+   511→        }
+   512→
+   513→        $wpdb->delete( $t['questions'], array( 'id' => $id ), array( '%d' ) );
+   514→
+   515→        wp_send_json_success( array( 'message' => 'Question deleted successfully.' ) );
+   516→    }
+   517→
+   518→    /* ==========================================================================
+   519→     * AJAX: Reorder sections or questions
+   520→     * ========================================================================== */
+   521→
+   522→    public function ajax_reorder() {
+   523→        $this->verify_nonce();
+   524→
+   525→        global $wpdb;
+   526→        $t = $this->get_tables();
+   527→
+   528→        $type = isset( $_POST['type'] ) ? sanitize_text_field( $_POST['type'] ) : '';
+   529→        $ids  = isset( $_POST['ids'] ) ? sanitize_text_field( $_POST['ids'] ) : '';
+   530→
+   531→        if ( ! in_array( $type, array( 'section', 'question' ), true ) ) {
+   532→            wp_send_json_error( array( 'message' => 'Invalid reorder type.' ) );
+   533→        }
+   534→
+   535→        $id_array = array_map( 'absint', explode( ',', $ids ) );
+   536→        $id_array = array_filter( $id_array );
+   537→
+   538→        if ( empty( $id_array ) ) {
+   539→            wp_send_json_error( array( 'message' => 'No IDs provided.' ) );
+   540→        }
+   541→
+   542→        if ( 'section' === $type ) {
+   543→            $table = $t['sections'];
+   544→        } else {
+   545→            $table = $t['questions'];
+   546→        }
+   547→
+   548→        foreach ( $id_array as $order => $item_id ) {
+   549→            $wpdb->update(
+   550→                $table,
+   551→                array( 'display_order' => $order ),
+   552→                array( 'id' => $item_id ),
+   553→                array( '%d' ),
+   554→                array( '%d' )
+   555→            );
+   556→        }
+   557→
+   558→        wp_send_json_success( array( 'message' => 'Order updated successfully.' ) );
+   559→    }
+   560→
+   561→    /* ==========================================================================
+   562→     * Render the admin page
+   563→     * ========================================================================== */
+   564→
+   565→    public function render_page() {
+   566→        ?>
+   567→        <div class="wrap bv-qt-wrap">
+   568→            <h1 class="bv-qt-page-title">
+   569→                <span class="dashicons dashicons-clipboard" style="font-size:28px;margin-right:8px;vertical-align:middle;"></span>
+   570→                Questionnaire Manager
+   571→            </h1>
+   572→            <p class="description" style="margin-bottom:20px;">
+   573→                Create and manage questionnaire templates. Each template can have multiple sections, and each section can contain various question types.
+   574→            </p>
+   575→
+   576→            <div id="bv-qt-notices"></div>
+   577→
+   578→            <!-- ==================== TEMPLATES LIST VIEW ==================== -->
+   579→            <div id="bv-qt-list-view">
+   580→                <div style="margin-bottom:15px;">
+   581→                    <button type="button" id="bv-qt-add-template-btn" class="button button-primary">
+   582→                        <span class="dashicons dashicons-plus-alt2" style="margin-top:4px;margin-right:3px;"></span>
+   583→                        Add New Template
+   584→                    </button>
+   585→                </div>
+   586→
+   587→                <table class="wp-list-table widefat fixed striped" id="bv-qt-templates-table">
+   588→                    <thead>
+   589→                        <tr>
+   590→                            <th style="width:25%;">Name</th>
+   591→                            <th style="width:15%;">Slug</th>
+   592→                            <th style="width:10%;">Status</th>
+   593→                            <th style="width:8%;">Sections</th>
+   594→                            <th style="width:8%;">Questions</th>
+   595→                            <th style="width:12%;">Created</th>
+   596→                            <th style="width:22%;">Actions</th>
+   597→                        </tr>
+   598→                    </thead>
+   599→                    <tbody id="bv-qt-templates-body">
+   600→                        <tr>
+   601→                            <td colspan="7" style="text-align:center;padding:40px 0;">
+   602→                                <span class="spinner is-active" style="float:none;"></span>
+   603→                                <?php esc_html_e( 'Loading templates...', 'businessvance-services-manager' ); ?>
+   604→                            </td>
+   605→                        </tr>
+   606→                    </tbody>
+   607→                </table>
+   608→            </div>
+   609→
+   610→            <!-- ==================== EDIT/CREATE TEMPLATE VIEW ==================== -->
+   611→            <div id="bv-qt-edit-view" style="display:none;">
+   612→                <div style="margin-bottom:20px;">
+   613→                    <button type="button" id="bv-qt-back-to-list" class="button">
+   614→                        <span class="dashicons dashicons-arrow-left-alt2" style="margin-top:4px;margin-right:3px;"></span>
+   615→                        Back to Templates
+   616→                    </button>
+   617→                </div>
+   618→
+   619→                <!-- Template Info Card -->
+   620→                <div class="bv-qt-card" style="margin-bottom:20px;">
+   621→                    <h2 class="bv-qt-card-title">Template Details</h2>
+   622→                    <table class="form-table">
+   623→                        <tr>
+   624→                            <th scope="row"><label for="bv-qt-tpl-name">Name <span class="description">(required)</span></label></th>
+   625→                            <td>
+   626→                                <input type="text" id="bv-qt-tpl-name" class="regular-text" placeholder="e.g. Client Onboarding Questionnaire" />
+   627→                            </td>
+   628→                        </tr>
+   629→                        <tr>
+   630→                            <th scope="row"><label for="bv-qt-tpl-slug">Slug</label></th>
+   631→                            <td>
+   632→                                <input type="text" id="bv-qt-tpl-slug" class="regular-text" />
+   633→                                <p class="description">Auto-generated from name. Used for shortcode/reference.</p>
+   634→                            </td>
+   635→                        </tr>
+   636→                        <tr>
+   637→                            <th scope="row"><label for="bv-qt-tpl-description">Description</label></th>
+   638→                            <td>
+   639→                                <textarea id="bv-qt-tpl-description" rows="3" class="large-text" placeholder="Optional description of this questionnaire template..."></textarea>
+   640→                            </td>
+   641→                        </tr>
+   642→                        <tr>
+   643→                            <th scope="row"><label for="bv-qt-tpl-status">Status</label></th>
+   644→                            <td>
+   645→                                <select id="bv-qt-tpl-status">
+   646→                                    <option value="draft">Draft</option>
+   647→                                    <option value="published">Published</option>
+   648→                                </select>
+   649→                            </td>
+   650→                        </tr>
+   651→                    </table>
+   652→                    <p style="margin-top:15px;">
+   653→                        <button type="button" id="bv-qt-save-tpl-btn" class="button button-primary">
+   654→                            <span class="dashicons dashicons-saved" style="margin-top:4px;margin-right:3px;"></span>
+   655→                            Save Template
+   656→                        </button>
+   657→                    </p>
+   658→                </div>
+   659→
+   660→                <!-- Sections Panel -->
+   661→                <div id="bv-qt-sections-panel" style="display:none;">
+   662→                    <div style="margin-bottom:15px; display:flex; align-items:center; justify-content:space-between;">
+   663→                        <h2 style="margin:0;"><span class="dashicons dashicons-editor-ol" style="margin-right:5px;vertical-align:middle;"></span> Sections</h2>
+   664→                        <button type="button" id="bv-qt-add-section-btn" class="button">
+   665→                            <span class="dashicons dashicons-plus-alt2" style="margin-top:4px;margin-right:3px;"></span>
+   666→                            Add Section
+   667→                        </button>
+   668→                    </div>
+   669→
+   670→                    <!-- Add Section Inline Form -->
+   671→                    <div id="bv-qt-section-form-wrap" class="bv-qt-card bv-qt-inline-form" style="display:none;margin-bottom:20px;">
+   672→                        <h3 class="bv-qt-card-title" id="bv-qt-section-form-title">New Section</h3>
+   673→                        <table class="form-table">
+   674→                            <tr>
+   675→                                <th scope="row"><label for="bv-qt-sec-title">Title <span class="description">(required)</span></label></th>
+   676→                                <td>
+   677→                                    <input type="text" id="bv-qt-sec-title" class="regular-text" placeholder="e.g. Personal Information" />
+   678→                                </td>
+   679→                            </tr>
+   680→                            <tr>
+   681→                                <th scope="row"><label for="bv-qt-sec-description">Description</label></th>
+   682→                                <td>
+   683→                                    <textarea id="bv-qt-sec-description" rows="2" class="large-text" placeholder="Optional section description..."></textarea>
+   684→                                </td>
+   685→                            </tr>
+   686→                        </table>
+   687→                        <p style="margin-top:10px;">
+   688→                            <button type="button" id="bv-qt-save-sec-btn" class="button button-primary">Save Section</button>
+   689→                            <button type="button" id="bv-qt-cancel-sec-btn" class="button button-secondary">Cancel</button>
+   690→                        </p>
+   691→                        <input type="hidden" id="bv-qt-sec-edit-id" value="0" />
+   692→                    </div>
+   693→
+   694→                    <!-- Sections List -->
+   695→                    <div id="bv-qt-sections-list"></div>
+   696→                </div>
+   697→            </div>
+   698→
+   699→            <!-- ==================== QUESTION INLINE FORM (reused via JS) ==================== -->
+   700→            <div id="bv-qt-question-form-template" style="display:none;">
+   701→                <div class="bv-qt-card bv-qt-inline-form bv-qt-question-form">
+   702→                    <h3 class="bv-qt-card-title" id="bv-qt-question-form-title">New Question</h3>
+   703→                    <table class="form-table">
+   704→                        <tr>
+   705→                            <th scope="row"><label for="bv-qt-q-type">Type</label></th>
+   706→                            <td>
+   707→                                <select id="bv-qt-q-type" class="bv-qt-q-type-select">
+   708→                                    <option value="text">Text</option>
+   709→                                    <option value="textarea">Textarea</option>
+   710→                                    <option value="number">Number</option>
+   711→                                    <option value="email">Email</option>
+   712→                                    <option value="phone">Phone</option>
+   713→                                    <option value="date">Date</option>
+   714→                                    <option value="select">Select (Dropdown)</option>
+   715→                                    <option value="radio">Radio Buttons</option>
+   716→                                    <option value="checkbox">Checkboxes</option>
+   717→                                    <option value="heading">Heading (display only)</option>
+   718→                                    <option value="paragraph">Paragraph (display only)</option>
+   719→                                    <option value="file">File Upload</option>
+   720→                                </select>
+   721→                            </td>
+   722→                        </tr>
+   723→                        <tr>
+   724→                            <th scope="row"><label for="bv-qt-q-label">Label <span class="description">(required)</span></label></th>
+   725→                            <td>
+   726→                                <input type="text" id="bv-qt-q-label" class="large-text" placeholder="Question label" />
+   727→                            </td>
+   728→                        </tr>
+   729→                        <tr id="bv-qt-q-placeholder-row">
+   730→                            <th scope="row"><label for="bv-qt-q-placeholder">Placeholder</label></th>
+   731→                            <td>
+   732→                                <input type="text" id="bv-qt-q-placeholder" class="large-text" placeholder="Placeholder text (optional)" />
+   733→                            </td>
+   734→                        </tr>
+   735→                        <tr>
+   736→                            <th scope="row"><label for="bv-qt-q-required">Required</label></th>
+   737→                            <td>
+   738→                                <label>
+   739→                                    <input type="checkbox" id="bv-qt-q-required" value="1" />
+   740→                                    This question is required
+   741→                                </label>
+   742→                            </td>
+   743→                        </tr>
+   744→                        <tr>
+   745→                            <th scope="row"><label for="bv-qt-q-help-text">Help Text</label></th>
+   746→                            <td>
+   747→                                <input type="text" id="bv-qt-q-help-text" class="large-text" placeholder="Optional help text shown below the field" />
+   748→                            </td>
+   749→                        </tr>
+   750→                        <tr id="bv-qt-q-options-row" style="display:none;">
+   751→                            <th scope="row">
+   752→                                <label for="bv-qt-q-options">Options</label>
+   753→                                <p class="description">One per line. Format: <code>value|Label</code></p>
+   754→                            </th>
+   755→                            <td>
+   756→                                <textarea id="bv-qt-q-options" rows="5" class="large-text" placeholder="option_value|Option Label&#10;another_value|Another Label"></textarea>
+   757→                            </td>
+   758→                        </tr>
+   759→                    </table>
+   760→                    <p style="margin-top:10px;">
+   761→                        <button type="button" class="bv-qt-save-q-btn button button-primary">Save Question</button>
+   762→                        <button type="button" class="bv-qt-cancel-q-btn button button-secondary">Cancel</button>
+   763→                    </p>
+   764→                    <input type="hidden" class="bv-qt-q-edit-id" value="0" />
+   765→                    <input type="hidden" class="bv-qt-q-section-id" value="0" />
+   766→                </div>
+   767→            </div>
+   768→
+   769→        </div>
+   770→        <?php
+   771→    }
+   772→}
+   773→

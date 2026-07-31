@@ -1,0 +1,1136 @@
+     1→<?php
+     2→/**
+     3→ * Admin panel for BusinessVance Services Manager
+     4→ */
+     5→
+     6→if ( ! defined( 'ABSPATH' ) ) {
+     7→    exit;
+     8→}
+     9→
+    10→class BV_Admin {
+    11→
+    12→    /** @var array Available Lucide icon names */
+    13→    private $icons = array();
+    14→
+    15→    public function __construct() {
+    16→        $this->load_icons();
+    17→        add_action( 'admin_menu', array( $this, 'add_menu_pages' ) );
+    18→        add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+    19→        add_action( 'wp_ajax_bv_get_service', array( $this, 'ajax_get_service' ) );
+    20→        add_action( 'wp_ajax_bv_save_service', array( $this, 'ajax_save_service' ) );
+    21→        add_action( 'wp_ajax_bv_delete_service', array( $this, 'ajax_delete_service' ) );
+    22→        add_action( 'wp_ajax_bv_toggle_visibility', array( $this, 'ajax_toggle_visibility' ) );
+    23→        add_action( 'wp_ajax_bv_reorder_services', array( $this, 'ajax_reorder_services' ) );
+    24→        add_action( 'wp_ajax_bv_get_plan', array( $this, 'ajax_get_plan' ) );
+    25→        add_action( 'wp_ajax_bv_save_plan', array( $this, 'ajax_save_plan' ) );
+    26→        add_action( 'wp_ajax_bv_delete_plan', array( $this, 'ajax_delete_plan' ) );
+    27→        add_action( 'wp_ajax_bv_reorder_plans', array( $this, 'ajax_reorder_plans' ) );
+    28→        add_action( 'wp_ajax_bv_save_category', array( $this, 'ajax_save_category' ) );
+    29→        add_action( 'wp_ajax_bv_delete_category', array( $this, 'ajax_delete_category' ) );
+    30→        add_action( 'admin_init', array( $this, 'handle_admin_post' ) );
+    31→    }
+    32→
+    33→    /**
+    34→     * Load available icon list
+    35→     */
+    36→    private function load_icons() {
+    37→        $this->icons = array(
+    38→            'briefcase', 'building', 'building-2', 'landmark', 'chart-bar', 'chart-line',
+    39→            'trending-up', 'trending-down', 'bar-chart-3', 'pie-chart', 'calculator',
+    40→            'file-text', 'file-check', 'file-plus', 'file-search', 'folder',
+    41→            'award', 'star', 'shield', 'shield-check', 'check-circle',
+    42→            'users', 'user-plus', 'user-check', 'handshake', 'globe',
+    43→            'palette', 'pen-tool', 'layers', 'layout', 'code',
+    44→            'mail', 'phone', 'message-circle', 'share-2', 'megaphone',
+    45→            'search', 'settings', 'sliders', 'target', 'zap',
+    46→            'heart', 'book-open', 'graduation-cap', 'lightbulb', 'rocket',
+    47→            'receipt', 'credit-card', 'banknote', 'wallet', 'piggy-bank',
+    48→            'clock', 'calendar', 'map-pin', 'truck', 'package',
+    49→        );
+    50→    }
+    51→
+    52→    /**
+    53→     * Add admin menu pages
+    54→     */
+    55→    public function add_menu_pages() {
+    56→        add_menu_page(
+    57→            __( 'BusinessVance', 'businessvance-services-manager' ),
+    58→            __( 'BusinessVance', 'businessvance-services-manager' ),
+    59→            'manage_options',
+    60→            'businessvance',
+    61→            array( $this, 'render_dashboard' ),
+    62→            'dashicons-shield-alt',
+    63→            30
+    64→        );
+    65→
+    66→        add_submenu_page(
+    67→            'businessvance',
+    68→            __( 'Dashboard', 'businessvance-services-manager' ),
+    69→            __( 'Dashboard', 'businessvance-services-manager' ),
+    70→            'manage_options',
+    71→            'businessvance',
+    72→            array( $this, 'render_dashboard' )
+    73→        );
+    74→
+    75→        add_submenu_page(
+    76→            'businessvance',
+    77→            __( 'Services', 'businessvance-services-manager' ),
+    78→            __( 'Services', 'businessvance-services-manager' ),
+    79→            'manage_options',
+    80→            'businessvance-services',
+    81→            array( $this, 'render_services' )
+    82→        );
+    83→
+    84→        add_submenu_page(
+    85→            'businessvance',
+    86→            __( 'Subscription Plans', 'businessvance-services-manager' ),
+    87→            __( 'Plans', 'businessvance-services-manager' ),
+    88→            'manage_options',
+    89→            'businessvance-plans',
+    90→            array( $this, 'render_plans' )
+    91→        );
+    92→
+    93→        add_submenu_page(
+    94→            'businessvance',
+    95→            __( 'Categories', 'businessvance-services-manager' ),
+    96→            __( 'Categories', 'businessvance-services-manager' ),
+    97→            'manage_options',
+    98→            'businessvance-categories',
+    99→            array( $this, 'render_categories' )
+   100→        );
+   101→    }
+   102→
+   103→    /**
+   104→     * Enqueue admin assets
+   105→     */
+   106→    public function enqueue_assets( $hook ) {
+   107→        if ( strpos( $hook, 'businessvance' ) === false ) {
+   108→            return;
+   109→        }
+   110→
+   111→        wp_enqueue_style(
+   112→            'bv-admin-css',
+   113→            BV_PLUGIN_URL . 'assets/css/admin.css',
+   114→            array(),
+   115→            BV_VERSION
+   116→        );
+   117→
+   118→        wp_enqueue_script(
+   119→            'bv-admin-js',
+   120→            BV_PLUGIN_URL . 'assets/js/admin.js',
+   121→            array( 'jquery', 'jquery-ui-sortable' ),
+   122→            BV_VERSION,
+   123→            true
+   124→        );
+   125→
+   126→        wp_localize_script( 'bv-admin-js', 'bvAdmin', array(
+   127→            'ajax_url' => admin_url( 'admin-ajax.php' ),
+   128→            'nonce'    => wp_create_nonce( 'bv_admin_nonce' ),
+   129→            'strings'  => array(
+   130→                'confirm_delete'    => __( 'Are you sure you want to delete this item?', 'businessvance-services-manager' ),
+   131→                'saving'            => __( 'Saving...', 'businessvance-services-manager' ),
+   132→                'saved'             => __( 'Saved successfully!', 'businessvance-services-manager' ),
+   133→                'error'             => __( 'An error occurred. Please try again.', 'businessvance-services-manager' ),
+   134→                'reorder_saved'     => __( 'Order saved!', 'businessvance-services-manager' ),
+   135→            ),
+   136→        ) );
+   137→    }
+   138→
+   139→    /**
+   140→     * Get table names
+   141→     */
+   142→    private function get_tables() {
+   143→        global $wpdb;
+   144→        return array(
+   145→            'categories' => $wpdb->prefix . 'bv_categories',
+   146→            'services'   => $wpdb->prefix . 'bv_services',
+   147→            'plans'      => $wpdb->prefix . 'bv_plans',
+   148→            'features'   => $wpdb->prefix . 'bv_plan_features',
+   149→        );
+   150→    }
+   151→
+   152→    /**
+   153→     * Verify admin nonce
+   154→     */
+   155→    private function verify_nonce() {
+   156→        if ( ! check_ajax_referer( 'bv_admin_nonce', 'nonce', false ) ) {
+   157→            wp_send_json_error( array( 'message' => 'Security check failed.' ), 403 );
+   158→        }
+   159→        if ( ! current_user_can( 'manage_options' ) ) {
+   160→            wp_send_json_error( array( 'message' => 'Permission denied.' ), 403 );
+   161→        }
+   162→    }
+   163→
+   164→    /**
+   165→     * Render Dashboard page
+   166→     */
+   167→    public function render_dashboard() {
+   168→        global $wpdb;
+   169→        $tables = $this->get_tables();
+   170→
+   171→        $total_services = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$tables['services']}" );
+   172→        $visible_services = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$tables['services']} WHERE is_visible = 1" );
+   173→        $hidden_services = $total_services - $visible_services;
+   174→        $featured_services = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$tables['services']} WHERE is_featured = 1" );
+   175→
+   176→        $total_plans = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$tables['plans']}" );
+   177→        $featured_plans = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$tables['plans']} WHERE is_featured = 1" );
+   178→
+   179→        $total_categories = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$tables['categories']}" );
+   180→
+   181→        $total_features = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$tables['features']}" );
+   182→        ?>
+   183→        <div class="wrap bv-admin-wrap">
+   184→            <div class="bv-admin-header">
+   185→                <div class="bv-admin-title">
+   186→                    <span class="bv-shield-icon">🛡️</span>
+   187→                    <div>
+   188→                        <h1><?php esc_html_e( 'BusinessVance Services Manager', 'businessvance-services-manager' ); ?></h1>
+   189→                        <p class="bv-subtitle"><?php esc_html_e( 'INSIGHT. STRATEGY. SUCCESS.', 'businessvance-services-manager' ); ?></p>
+   190→                    </div>
+   191→                </div>
+   192→            </div>
+   193→
+   194→            <div class="bv-stats-grid">
+   195→                <div class="bv-stat-card">
+   196→                    <div class="bv-stat-number" style="color: #002B5C;"><?php echo esc_html( $total_services ); ?></div>
+   197→                    <div class="bv-stat-label"><?php esc_html_e( 'Total Services', 'businessvance-services-manager' ); ?></div>
+   198→                </div>
+   199→                <div class="bv-stat-card">
+   200→                    <div class="bv-stat-number" style="color: #008080;"><?php echo esc_html( $total_plans ); ?></div>
+   201→                    <div class="bv-stat-label"><?php esc_html_e( 'Subscription Plans', 'businessvance-services-manager' ); ?></div>
+   202→                </div>
+   203→                <div class="bv-stat-card">
+   204→                    <div class="bv-stat-number" style="color: #16a34a;"><?php echo esc_html( $visible_services ); ?></div>
+   205→                    <div class="bv-stat-label"><?php esc_html_e( 'Visible Services', 'businessvance-services-manager' ); ?></div>
+   206→                </div>
+   207→                <div class="bv-stat-card">
+   208→                    <div class="bv-stat-number" style="color: #dc2626;"><?php echo esc_html( $hidden_services ); ?></div>
+   209→                    <div class="bv-stat-label"><?php esc_html_e( 'Hidden Services', 'businessvance-services-manager' ); ?></div>
+   210→                </div>
+   211→                <div class="bv-stat-card">
+   212→                    <div class="bv-stat-number" style="color: #D4AF37;"><?php echo esc_html( $featured_services + $featured_plans ); ?></div>
+   213→                    <div class="bv-stat-label"><?php esc_html_e( 'Featured Items', 'businessvance-services-manager' ); ?></div>
+   214→                </div>
+   215→                <div class="bv-stat-card">
+   216→                    <div class="bv-stat-number" style="color: #6366f1;"><?php echo esc_html( $total_categories ); ?></div>
+   217→                    <div class="bv-stat-label"><?php esc_html_e( 'Categories', 'businessvance-services-manager' ); ?></div>
+   218→                </div>
+   219→            </div>
+   220→
+   221→            <div class="bv-dashboard-info">
+   222→                <h2><?php esc_html_e( 'Shortcodes', 'businessvance-services-manager' ); ?></h2>
+   223→                <div class="bv-shortcode-grid">
+   224→                    <div class="bv-shortcode-card">
+   225→                        <h3>[businessvance_services]</h3>
+   226→                        <p><?php esc_html_e( 'Renders the complete services page with header, once-off services table, subscription plans, and footer.', 'businessvance-services-manager' ); ?></p>
+   227→                        <code>[businessvance_services]</code>
+   228→                    </div>
+   229→                    <div class="bv-shortcode-card">
+   230→                        <h3>[businessvance_onceoff]</h3>
+   231→                        <p><?php esc_html_e( 'Renders only the once-off services table section.', 'businessvance-services-manager' ); ?></p>
+   232→                        <code>[businessvance_onceoff]</code>
+   233→                    </div>
+   234→                    <div class="bv-shortcode-card">
+   235→                        <h3>[businessvance_subscriptions]</h3>
+   236→                        <p><?php esc_html_e( 'Renders only the subscription plans section.', 'businessvance-services-manager' ); ?></p>
+   237→                        <code>[businessvance_subscriptions]</code>
+   238→                    </div>
+   239→                </div>
+   240→            </div>
+   241→
+   242→            <div class="bv-dashboard-info" style="display:flex;flex-wrap:wrap;gap:12px;">
+   243→                <h2 style="width:100%;"><?php esc_html_e( 'Quick Access', 'businessvance-services-manager' ); ?></h2>
+   244→                <a href="<?php echo esc_url( admin_url( 'admin.php?page=businessvance-settings' ) ); ?>"
+   245→                   class="button button-secondary" style="display:inline-flex;align-items:center;gap:6px;font-size:14px;padding:8px 20px;">
+   246→                    <span class="dashicons dashicons-admin-generic" style="font-size:18px;"></span>
+   247→                    <?php esc_html_e( 'Settings', 'businessvance-services-manager' ); ?>
+   248→                </a>
+   249→                <a href="#" onclick="prompt('<?php esc_attr_e( 'Client Portal Shortcode:', 'businessvance-services-manager' ); ?>', '[businessvance_client_portal]'); return false;"
+   250→                   class="button button-secondary" style="display:inline-flex;align-items:center;gap:6px;font-size:14px;padding:8px 20px;">
+   251→                    <span class="dashicons dashicons-admin-users" style="font-size:18px;"></span>
+   252→                    <?php esc_html_e( 'Client Portal', 'businessvance-services-manager' ); ?>
+   253→                </a>
+   254→            </div>
+   255→
+   256→            <div class="bv-dashboard-info">
+   257→                <h2><?php esc_html_e( 'Quick Start', 'businessvance-services-manager' ); ?></h2>
+   258→                <ol class="bv-steps">
+   259→                    <li><?php esc_html_e( 'Go to <strong>Settings</strong> and configure your company branding, colors, and contact info.', 'businessvance-services-manager' ); ?></li>
+   260→                    <li><?php esc_html_e( 'Add your Categories under the Categories menu.', 'businessvance-services-manager' ); ?></li>
+   261→                    <li><?php esc_html_e( 'Create your WooCommerce products (simple products for once-off, subscription products for plans).', 'businessvance-services-manager' ); ?></li>
+   262→                    <li><?php esc_html_e( 'Add your Services and link each to its WooCommerce Product ID.', 'businessvance-services-manager' ); ?></li>
+   263→                    <li><?php esc_html_e( 'Set up Subscription Plans with features and link to WooCommerce subscription products.', 'businessvance-services-manager' ); ?></li>
+   264→                    <li><?php esc_html_e( 'Create a new WordPress page and add the shortcode [businessvance_services].', 'businessvance-services-manager' ); ?></li>
+   265→                    <li><?php esc_html_e( 'Create another page with [businessvance_client_portal] for the client portal.', 'businessvance-services-manager' ); ?></li>
+   266→                    <li><?php esc_html_e( 'Ensure Yoco payment gateway is configured in WooCommerce settings.', 'businessvance-services-manager' ); ?></li>
+   267→                </ol>
+   268→            </div>
+   269→        </div>
+   270→        <?php
+   271→    }
+   272→
+   273→    /**
+   274→     * Render Services page
+   275→     */
+   276→    public function render_services() {
+   277→        global $wpdb;
+   278→        $tables = $this->get_tables();
+   279→
+   280→        $services = $wpdb->get_results(
+   281→            "SELECT s.*, c.name as category_name, c.color as category_color
+   282→             FROM {$tables['services']} s
+   283→             LEFT JOIN {$tables['categories']} c ON s.category_id = c.id
+   284→             ORDER BY s.display_order ASC, s.id ASC"
+   285→        );
+   286→
+   287→        $categories = $wpdb->get_results( "SELECT * FROM {$tables['categories']} ORDER BY name ASC" );
+   288→        ?>
+   289→        <div class="wrap bv-admin-wrap">
+   290→            <div class="bv-admin-header">
+   291→                <div class="bv-admin-title">
+   292→                    <h1><?php esc_html_e( 'Services', 'businessvance-services-manager' ); ?></h1>
+   293→                    <p class="bv-subtitle"><?php esc_html_e( 'Manage your once-off services displayed on the services page.', 'businessvance-services-manager' ); ?></p>
+   294→                </div>
+   295→                <button type="button" class="button button-primary bv-gold-btn" id="bv-add-service">
+   296→                    <?php esc_html_e( '+ Add Service', 'businessvance-services-manager' ); ?>
+   297→                </button>
+   298→            </div>
+   299→
+   300→            <div class="bv-table-container">
+   301→                <table class="wp-list-table widefat fixed striped bv-sortable-table" id="bv-services-table">
+   302→                    <thead>
+   303→                        <tr>
+   304→                            <th style="width:40px;" class="bv-sort-handle-col"></th>
+   305→                            <th><?php esc_html_e( 'Service', 'businessvance-services-manager' ); ?></th>
+   306→                            <th style="width:100px;"><?php esc_html_e( 'Price', 'businessvance-services-manager' ); ?></th>
+   307→                            <th style="width:120px;"><?php esc_html_e( 'Category', 'businessvance-services-manager' ); ?></th>
+   308→                            <th style="width:100px;"><?php esc_html_e( 'Woo Product', 'businessvance-services-manager' ); ?></th>
+   309→                            <th style="width:60px;"><?php esc_html_e( 'Visible', 'businessvance-services-manager' ); ?></th>
+   310→                            <th style="width:60px;"><?php esc_html_e( 'Featured', 'businessvance-services-manager' ); ?></th>
+   311→                            <th style="width:120px;"><?php esc_html_e( 'Actions', 'businessvance-services-manager' ); ?></th>
+   312→                        </tr>
+   313→                    </thead>
+   314→                    <tbody>
+   315→                        <?php if ( empty( $services ) ) : ?>
+   316→                            <tr>
+   317→                                <td colspan="8" style="text-align:center; padding:40px;">
+   318→                                    <?php esc_html_e( 'No services found. Click "Add Service" to create your first service.', 'businessvance-services-manager' ); ?>
+   319→                                </td>
+   320→                            </tr>
+   321→                        <?php else : ?>
+   322→                            <?php foreach ( $services as $service ) : ?>
+   323→                                <tr data-id="<?php echo esc_attr( $service->id ); ?>">
+   324→                                    <td class="bv-sort-handle-col">
+   325→                                        <span class="bv-sort-handle" title="<?php esc_attr_e( 'Drag to reorder', 'businessvance-services-manager' ); ?>">☰</span>
+   326→                                    </td>
+   327→                                    <td>
+   328→                                        <strong><?php echo esc_html( $service->name ); ?></strong>
+   329→                                        <br>
+   330→                                        <small style="color:#666;">
+   331→                                            <?php echo esc_html( wp_trim_words( $service->description, 10, '...' ) ); ?>
+   332→                                        </small>
+   333→                                        <?php if ( $service->is_featured ) : ?>
+   334→                                            <span class="bv-badge-featured">★ Featured</span>
+   335→                                        <?php endif; ?>
+   336→                                    </td>
+   337→                                    <td><?php echo esc_html( $service->price ); ?></td>
+   338→                                    <td>
+   339→                                        <?php if ( $service->category_name ) : ?>
+   340→                                            <span class="bv-category-dot" style="background-color:<?php echo esc_attr( $service->category_color ); ?>"></span>
+   341→                                            <?php echo esc_html( $service->category_name ); ?>
+   342→                                        <?php else : ?>
+   343→                                            <em style="color:#999;"><?php esc_html_e( 'None', 'businessvance-services-manager' ); ?></em>
+   344→                                        <?php endif; ?>
+   345→                                    </td>
+   346→                                    <td>
+   347→                                        <?php if ( $service->woo_product_id ) : ?>
+   348→                                            <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $service->woo_product_id . '&action=edit' ) ); ?>" target="_blank">
+   349→                                                #<?php echo esc_html( $service->woo_product_id ); ?>
+   350→                                            </a>
+   351→                                        <?php else : ?>
+   352→                                            <em style="color:#999;"><?php esc_html_e( 'Not linked', 'businessvance-services-manager' ); ?></em>
+   353→                                        <?php endif; ?>
+   354→                                    </td>
+   355→                                    <td>
+   356→                                        <button type="button" class="bv-toggle-btn <?php echo $service->is_visible ? 'bv-active' : 'bv-inactive'; ?>"
+   357→                                                data-id="<?php echo esc_attr( $service->id ); ?>"
+   358→                                                data-type="service"
+   359→                                                title="<?php echo $service->is_visible ? esc_attr__( 'Click to hide', 'businessvance-services-manager' ) : esc_attr__( 'Click to show', 'businessvance-services-manager' ); ?>">
+   360→                                            <?php echo $service->is_visible ? '👁️' : '🚫'; ?>
+   361→                                        </button>
+   362→                                    </td>
+   363→                                    <td>
+   364→                                        <span style="font-size:18px;"><?php echo $service->is_featured ? '⭐' : '☆'; ?></span>
+   365→                                    </td>
+   366→                                    <td>
+   367→                                        <button type="button" class="button button-small bv-edit-btn" data-id="<?php echo esc_attr( $service->id ); ?>">
+   368→                                            <?php esc_html_e( 'Edit', 'businessvance-services-manager' ); ?>
+   369→                                        </button>
+   370→                                        <button type="button" class="button button-small bv-delete-btn" data-id="<?php echo esc_attr( $service->id ); ?>" data-type="service" data-name="<?php echo esc_attr( $service->name ); ?>">
+   371→                                            <?php esc_html_e( 'Delete', 'businessvance-services-manager' ); ?>
+   372→                                        </button>
+   373→                                    </td>
+   374→                                </tr>
+   375→                            <?php endforeach; ?>
+   376→                        <?php endif; ?>
+   377→                    </tbody>
+   378→                </table>
+   379→            </div>
+   380→        </div>
+   381→
+   382→        <!-- Service Form Modal -->
+   383→        <div id="bv-service-modal" class="bv-modal" style="display:none;">
+   384→            <div class="bv-modal-overlay"></div>
+   385→            <div class="bv-modal-content">
+   386→                <div class="bv-modal-header">
+   387→                    <h2 id="bv-service-modal-title"><?php esc_html_e( 'Add New Service', 'businessvance-services-manager' ); ?></h2>
+   388→                    <button type="button" class="bv-modal-close">&times;</button>
+   389→                </div>
+   390→                <form id="bv-service-form" class="bv-modal-body">
+   391→                    <input type="hidden" name="id" value="">
+   392→                    <input type="hidden" name="nonce" value="<?php echo esc_attr( wp_create_nonce( 'bv_admin_nonce' ) ); ?>">
+   393→
+   394→                    <div class="bv-form-grid">
+   395→                        <div class="bv-form-group bv-form-full">
+   396→                            <label for="svc-name"><?php esc_html_e( 'Service Name *', 'businessvance-services-manager' ); ?></label>
+   397→                            <input type="text" id="svc-name" name="name" required class="regular-text">
+   398→                        </div>
+   399→
+   400→                        <div class="bv-form-group bv-form-full">
+   401→                            <label for="svc-description"><?php esc_html_e( 'Description', 'businessvance-services-manager' ); ?></label>
+   402→                            <textarea id="svc-description" name="description" rows="3" class="large-text"></textarea>
+   403→                        </div>
+   404→
+   405→                        <div class="bv-form-group">
+   406→                            <label for="svc-price"><?php esc_html_e( 'Price (e.g. R1,500)', 'businessvance-services-manager' ); ?></label>
+   407→                            <input type="text" id="svc-price" name="price" value="R0" class="regular-text">
+   408→                        </div>
+   409→
+   410→                        <div class="bv-form-group">
+   411→                            <label for="svc-price-display"><?php esc_html_e( 'Price Display (override)', 'businessvance-services-manager' ); ?></label>
+   412→                            <input type="text" id="svc-price-display" name="price_display" placeholder="<?php esc_attr_e( 'Leave blank to use Price', 'businessvance-services-manager' ); ?>" class="regular-text">
+   413→                        </div>
+   414→
+   415→                        <div class="bv-form-group">
+   416→                            <label for="svc-icon"><?php esc_html_e( 'Icon', 'businessvance-services-manager' ); ?></label>
+   417→                            <select id="svc-icon" name="icon">
+   418→                                <?php foreach ( $this->icons as $icon ) : ?>
+   419→                                    <option value="<?php echo esc_attr( $icon ); ?>"><?php echo esc_html( $icon ); ?></option>
+   420→                                <?php endforeach; ?>
+   421→                            </select>
+   422→                        </div>
+   423→
+   424→                        <div class="bv-form-group">
+   425→                            <label for="svc-button-label"><?php esc_html_e( 'Button Label', 'businessvance-services-manager' ); ?></label>
+   426→                            <input type="text" id="svc-button-label" name="button_label" value="Get Started" class="regular-text">
+   427→                        </div>
+   428→
+   429→                        <div class="bv-form-group">
+   430→                            <label for="svc-type"><?php esc_html_e( 'Service Type', 'businessvance-services-manager' ); ?></label>
+   431→                            <select id="svc-type" name="service_type">
+   432→                                <option value="onceoff"><?php esc_html_e( 'Once-off', 'businessvance-services-manager' ); ?></option>
+   433→                                <option value="quote"><?php esc_html_e( 'Request Quote', 'businessvance-services-manager' ); ?></option>
+   434→                                <option value="booking"><?php esc_html_e( 'Book Consultation', 'businessvance-services-manager' ); ?></option>
+   435→                                <option value="download"><?php esc_html_e( 'Digital Download', 'businessvance-services-manager' ); ?></option>
+   436→                            </select>
+   437→                        </div>
+   438→
+   439→                        <div class="bv-form-group">
+   440→                            <label for="svc-category"><?php esc_html_e( 'Category', 'businessvance-services-manager' ); ?></label>
+   441→                            <select id="svc-category" name="category_id">
+   442→                                <option value="0"><?php esc_html_e( '-- None --', 'businessvance-services-manager' ); ?></option>
+   443→                                <?php foreach ( $categories as $cat ) : ?>
+   444→                                    <option value="<?php echo esc_attr( $cat->id ); ?>"><?php echo esc_html( $cat->name ); ?></option>
+   445→                                <?php endforeach; ?>
+   446→                            </select>
+   447→                        </div>
+   448→
+   449→                        <div class="bv-form-group">
+   450→                            <label for="svc-woo-product"><?php esc_html_e( 'WooCommerce Product ID', 'businessvance-services-manager' ); ?></label>
+   451→                            <input type="number" id="svc-woo-product" name="woo_product_id" value="0" min="0" class="regular-text">
+   452→                            <p class="description"><?php esc_html_e( 'Enter the WooCommerce product ID to link for Yoco payment. Leave 0 if not linked.', 'businessvance-services-manager' ); ?></p>
+   453→                        </div>
+   454→
+   455→                        <div class="bv-form-group">
+   456→                            <label>
+   457→                                <input type="checkbox" name="is_visible" value="1" checked>
+   458→                                <?php esc_html_e( 'Visible on frontend', 'businessvance-services-manager' ); ?>
+   459→                            </label>
+   460→                        </div>
+   461→
+   462→                        <div class="bv-form-group">
+   463→                            <label>
+   464→                                <input type="checkbox" name="is_featured" value="1">
+   465→                                <?php esc_html_e( 'Featured (shows badge)', 'businessvance-services-manager' ); ?>
+   466→                            </label>
+   467→                        </div>
+   468→                    </div>
+   469→
+   470→                    <div class="bv-modal-footer">
+   471→                        <button type="button" class="button bv-cancel-btn"><?php esc_html_e( 'Cancel', 'businessvance-services-manager' ); ?></button>
+   472→                        <button type="submit" class="button button-primary bv-gold-btn"><?php esc_html_e( 'Save Service', 'businessvance-services-manager' ); ?></button>
+   473→                    </div>
+   474→                </form>
+   475→            </div>
+   476→        </div>
+   477→        <?php
+   478→    }
+   479→
+   480→    /**
+   481→     * Render Plans page
+   482→     */
+   483→    public function render_plans() {
+   484→        global $wpdb;
+   485→        $tables = $this->get_tables();
+   486→
+   487→        $plans = $wpdb->get_results(
+   488→            "SELECT p.*, c.name as category_name, c.color as category_color,
+   489→                    (SELECT COUNT(*) FROM {$tables['features']} f WHERE f.plan_id = p.id) as feature_count
+   490→             FROM {$tables['plans']} p
+   491→             LEFT JOIN {$tables['categories']} c ON p.category_id = c.id
+   492→             ORDER BY p.display_order ASC, p.id ASC"
+   493→        );
+   494→
+   495→        $categories = $wpdb->get_results( "SELECT * FROM {$tables['categories']} ORDER BY name ASC" );
+   496→        ?>
+   497→        <div class="wrap bv-admin-wrap">
+   498→            <div class="bv-admin-header">
+   499→                <div class="bv-admin-title">
+   500→                    <h1><?php esc_html_e( 'Subscription Plans', 'businessvance-services-manager' ); ?></h1>
+   501→                    <p class="bv-subtitle"><?php esc_html_e( 'Manage monthly subscription plans displayed on the services page.', 'businessvance-services-manager' ); ?></p>
+   502→                </div>
+   503→                <button type="button" class="button button-primary bv-gold-btn" id="bv-add-plan">
+   504→                    <?php esc_html_e( '+ Add Plan', 'businessvance-services-manager' ); ?>
+   505→                </button>
+   506→            </div>
+   507→
+   508→            <div class="bv-table-container">
+   509→                <table class="wp-list-table widefat fixed striped bv-sortable-table" id="bv-plans-table">
+   510→                    <thead>
+   511→                        <tr>
+   512→                            <th style="width:40px;" class="bv-sort-handle-col"></th>
+   513→                            <th><?php esc_html_e( 'Plan', 'businessvance-services-manager' ); ?></th>
+   514→                            <th style="width:100px;"><?php esc_html_e( 'Price', 'businessvance-services-manager' ); ?></th>
+   515→                            <th style="width:80px;"><?php esc_html_e( 'Color', 'businessvance-services-manager' ); ?></th>
+   516→                            <th style="width:100px;"><?php esc_html_e( 'Woo Product', 'businessvance-services-manager' ); ?></th>
+   517→                            <th style="width:80px;"><?php esc_html_e( 'Features', 'businessvance-services-manager' ); ?></th>
+   518→                            <th style="width:60px;"><?php esc_html_e( 'Visible', 'businessvance-services-manager' ); ?></th>
+   519→                            <th style="width:60px;"><?php esc_html_e( 'Featured', 'businessvance-services-manager' ); ?></th>
+   520→                            <th style="width:120px;"><?php esc_html_e( 'Actions', 'businessvance-services-manager' ); ?></th>
+   521→                        </tr>
+   522→                    </thead>
+   523→                    <tbody>
+   524→                        <?php if ( empty( $plans ) ) : ?>
+   525→                            <tr>
+   526→                                <td colspan="9" style="text-align:center; padding:40px;">
+   527→                                    <?php esc_html_e( 'No plans found. Click "Add Plan" to create your first subscription plan.', 'businessvance-services-manager' ); ?>
+   528→                                </td>
+   529→                            </tr>
+   530→                        <?php else : ?>
+   531→                            <?php foreach ( $plans as $plan ) : ?>
+   532→                                <tr data-id="<?php echo esc_attr( $plan->id ); ?>">
+   533→                                    <td class="bv-sort-handle-col">
+   534→                                        <span class="bv-sort-handle" title="<?php esc_attr_e( 'Drag to reorder', 'businessvance-services-manager' ); ?>">☰</span>
+   535→                                    </td>
+   536→                                    <td>
+   537→                                        <strong><?php echo esc_html( $plan->name ); ?></strong>
+   538→                                        <?php if ( $plan->subtitle ) : ?>
+   539→                                            <br><small style="color:#666;"><?php echo esc_html( $plan->subtitle ); ?></small>
+   540→                                        <?php endif; ?>
+   541→                                        <?php if ( $plan->is_featured ) : ?>
+   542→                                            <span class="bv-badge-featured">★ Featured</span>
+   543→                                        <?php endif; ?>
+   544→                                    </td>
+   545→                                    <td><?php echo esc_html( $plan->price ); ?></td>
+   546→                                    <td><span class="bv-color-dot" style="background-color:<?php echo esc_attr( $plan->color ); ?>"></span></td>
+   547→                                    <td>
+   548→                                        <?php if ( $plan->woo_product_id ) : ?>
+   549→                                            <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $plan->woo_product_id . '&action=edit' ) ); ?>" target="_blank">
+   550→                                                #<?php echo esc_html( $plan->woo_product_id ); ?>
+   551→                                            </a>
+   552→                                        <?php else : ?>
+   553→                                            <em style="color:#999;"><?php esc_html_e( 'Not linked', 'businessvance-services-manager' ); ?></em>
+   554→                                        <?php endif; ?>
+   555→                                    </td>
+   556→                                    <td><?php echo esc_html( $plan->feature_count ); ?></td>
+   557→                                    <td>
+   558→                                        <button type="button" class="bv-toggle-btn <?php echo $plan->is_visible ? 'bv-active' : 'bv-inactive'; ?>"
+   559→                                                data-id="<?php echo esc_attr( $plan->id ); ?>"
+   560→                                                data-type="plan"
+   561→                                                title="<?php echo $plan->is_visible ? esc_attr__( 'Click to hide', 'businessvance-services-manager' ) : esc_attr__( 'Click to show', 'businessvance-services-manager' ); ?>">
+   562→                                            <?php echo $plan->is_visible ? '👁️' : '🚫'; ?>
+   563→                                        </button>
+   564→                                    </td>
+   565→                                    <td>
+   566→                                        <span style="font-size:18px;"><?php echo $plan->is_featured ? '⭐' : '☆'; ?></span>
+   567→                                    </td>
+   568→                                    <td>
+   569→                                        <button type="button" class="button button-small bv-edit-btn" data-id="<?php echo esc_attr( $plan->id ); ?>" data-type="plan">
+   570→                                            <?php esc_html_e( 'Edit', 'businessvance-services-manager' ); ?>
+   571→                                        </button>
+   572→                                        <button type="button" class="button button-small bv-delete-btn" data-id="<?php echo esc_attr( $plan->id ); ?>" data-type="plan" data-name="<?php echo esc_attr( $plan->name ); ?>">
+   573→                                            <?php esc_html_e( 'Delete', 'businessvance-services-manager' ); ?>
+   574→                                        </button>
+   575→                                    </td>
+   576→                                </tr>
+   577→                            <?php endforeach; ?>
+   578→                        <?php endif; ?>
+   579→                    </tbody>
+   580→                </table>
+   581→            </div>
+   582→        </div>
+   583→
+   584→        <!-- Plan Form Modal -->
+   585→        <div id="bv-plan-modal" class="bv-modal" style="display:none;">
+   586→            <div class="bv-modal-overlay"></div>
+   587→            <div class="bv-modal-content">
+   588→                <div class="bv-modal-header">
+   589→                    <h2 id="bv-plan-modal-title"><?php esc_html_e( 'Add New Plan', 'businessvance-services-manager' ); ?></h2>
+   590→                    <button type="button" class="bv-modal-close">&times;</button>
+   591→                </div>
+   592→                <form id="bv-plan-form" class="bv-modal-body">
+   593→                    <input type="hidden" name="id" value="">
+   594→                    <input type="hidden" name="nonce" value="<?php echo esc_attr( wp_create_nonce( 'bv_admin_nonce' ) ); ?>">
+   595→
+   596→                    <div class="bv-form-grid">
+   597→                        <div class="bv-form-group">
+   598→                            <label for="plan-name"><?php esc_html_e( 'Plan Name *', 'businessvance-services-manager' ); ?></label>
+   599→                            <input type="text" id="plan-name" name="name" required class="regular-text">
+   600→                        </div>
+   601→
+   602→                        <div class="bv-form-group">
+   603→                            <label for="plan-subtitle"><?php esc_html_e( 'Subtitle', 'businessvance-services-manager' ); ?></label>
+   604→                            <input type="text" id="plan-subtitle" name="subtitle" class="regular-text" placeholder="<?php esc_attr_e( 'e.g. For growing businesses', 'businessvance-services-manager' ); ?>">
+   605→                        </div>
+   606→
+   607→                        <div class="bv-form-group">
+   608→                            <label for="plan-price"><?php esc_html_e( 'Price (e.g. R599/mo)', 'businessvance-services-manager' ); ?></label>
+   609→                            <input type="text" id="plan-price" name="price" value="R0/mo" class="regular-text">
+   610→                        </div>
+   611→
+   612→                        <div class="bv-form-group">
+   613→                            <label for="plan-color"><?php esc_html_e( 'Theme Color', 'businessvance-services-manager' ); ?></label>
+   614→                            <input type="color" id="plan-color" name="color" value="#008080">
+   615→                        </div>
+   616→
+   617→                        <div class="bv-form-group">
+   618→                            <label for="plan-button-label"><?php esc_html_e( 'Button Label', 'businessvance-services-manager' ); ?></label>
+   619→                            <input type="text" id="plan-button-label" name="button_label" value="Subscribe Now" class="regular-text">
+   620→                        </div>
+   621→
+   622→                        <div class="bv-form-group">
+   623→                            <label for="plan-category"><?php esc_html_e( 'Category', 'businessvance-services-manager' ); ?></label>
+   624→                            <select id="plan-category" name="category_id">
+   625→                                <option value="0"><?php esc_html_e( '-- None --', 'businessvance-services-manager' ); ?></option>
+   626→                                <?php foreach ( $categories as $cat ) : ?>
+   627→                                    <option value="<?php echo esc_attr( $cat->id ); ?>"><?php echo esc_html( $cat->name ); ?></option>
+   628→                                <?php endforeach; ?>
+   629→                            </select>
+   630→                        </div>
+   631→
+   632→                        <div class="bv-form-group">
+   633→                            <label for="plan-woo-product"><?php esc_html_e( 'WooCommerce Product ID', 'businessvance-services-manager' ); ?></label>
+   634→                            <input type="number" id="plan-woo-product" name="woo_product_id" value="0" min="0" class="regular-text">
+   635→                            <p class="description"><?php esc_html_e( 'Enter the WooCommerce subscription product ID for Yoco payment.', 'businessvance-services-manager' ); ?></p>
+   636→                        </div>
+   637→
+   638→                        <div class="bv-form-group">
+   639→                            <label>
+   640→                                <input type="checkbox" name="is_visible" value="1" checked>
+   641→                                <?php esc_html_e( 'Visible on frontend', 'businessvance-services-manager' ); ?>
+   642→                            </label>
+   643→                        </div>
+   644→
+   645→                        <div class="bv-form-group">
+   646→                            <label>
+   647→                                <input type="checkbox" name="is_featured" value="1">
+   648→                                <?php esc_html_e( 'Featured (highlighted card)', 'businessvance-services-manager' ); ?>
+   649→                            </label>
+   650→                        </div>
+   651→                    </div>
+   652→
+   653→                    <div class="bv-form-group bv-form-full">
+   654→                        <label><?php esc_html_e( 'Features', 'businessvance-services-manager' ); ?></label>
+   655→                        <div id="bv-features-list">
+   656→                            <!-- Features will be added dynamically -->
+   657→                        </div>
+   658→                        <button type="button" id="bv-add-feature" class="button button-small">+ <?php esc_html_e( 'Add Feature', 'businessvance-services-manager' ); ?></button>
+   659→                    </div>
+   660→
+   661→                    <div class="bv-modal-footer">
+   662→                        <button type="button" class="button bv-cancel-btn"><?php esc_html_e( 'Cancel', 'businessvance-services-manager' ); ?></button>
+   663→                        <button type="submit" class="button button-primary bv-gold-btn"><?php esc_html_e( 'Save Plan', 'businessvance-services-manager' ); ?></button>
+   664→                    </div>
+   665→                </form>
+   666→            </div>
+   667→        </div>
+   668→        <?php
+   669→    }
+   670→
+   671→    /**
+   672→     * Render Categories page
+   673→     */
+   674→    public function render_categories() {
+   675→        global $wpdb;
+   676→        $tables = $this->get_tables();
+   677→
+   678→        $categories = $wpdb->get_results(
+   679→            "SELECT c.*,
+   680→                    (SELECT COUNT(*) FROM {$tables['services']} s WHERE s.category_id = c.id) as service_count,
+   681→                    (SELECT COUNT(*) FROM {$tables['plans']} p WHERE p.category_id = c.id) as plan_count
+   682→             FROM {$tables['categories']} c
+   683→             ORDER BY c.name ASC"
+   684→        );
+   685→        ?>
+   686→        <div class="wrap bv-admin-wrap">
+   687→            <div class="bv-admin-header">
+   688→                <div class="bv-admin-title">
+   689→                    <h1><?php esc_html_e( 'Categories', 'businessvance-services-manager' ); ?></h1>
+   690→                    <p class="bv-subtitle"><?php esc_html_e( 'Organize your services and plans into categories.', 'businessvance-services-manager' ); ?></p>
+   691→                </div>
+   692→                <button type="button" class="button button-primary bv-gold-btn" id="bv-add-category">
+   693→                    <?php esc_html_e( '+ Add Category', 'businessvance-services-manager' ); ?>
+   694→                </button>
+   695→            </div>
+   696→
+   697→            <div class="bv-table-container">
+   698→                <table class="wp-list-table widefat fixed striped">
+   699→                    <thead>
+   700→                        <tr>
+   701→                            <th><?php esc_html_e( 'Category', 'businessvance-services-manager' ); ?></th>
+   702→                            <th style="width:100px;"><?php esc_html_e( 'Slug', 'businessvance-services-manager' ); ?></th>
+   703→                            <th style="width:80px;"><?php esc_html_e( 'Color', 'businessvance-services-manager' ); ?></th>
+   704→                            <th style="width:80px;"><?php esc_html_e( 'Services', 'businessvance-services-manager' ); ?></th>
+   705→                            <th style="width:80px;"><?php esc_html_e( 'Plans', 'businessvance-services-manager' ); ?></th>
+   706→                            <th style="width:120px;"><?php esc_html_e( 'Actions', 'businessvance-services-manager' ); ?></th>
+   707→                        </tr>
+   708→                    </thead>
+   709→                    <tbody>
+   710→                        <?php if ( empty( $categories ) ) : ?>
+   711→                            <tr>
+   712→                                <td colspan="6" style="text-align:center; padding:40px;">
+   713→                                    <?php esc_html_e( 'No categories found. Click "Add Category" to create one.', 'businessvance-services-manager' ); ?>
+   714→                                </td>
+   715→                            </tr>
+   716→                        <?php else : ?>
+   717→                            <?php foreach ( $categories as $cat ) : ?>
+   718→                                <tr data-id="<?php echo esc_attr( $cat->id ); ?>">
+   719→                                    <td>
+   720→                                        <span class="bv-category-dot" style="background-color:<?php echo esc_attr( $cat->color ); ?>"></span>
+   721→                                        <strong><?php echo esc_html( $cat->name ); ?></strong>
+   722→                                    </td>
+   723→                                    <td><code><?php echo esc_html( $cat->slug ); ?></code></td>
+   724→                                    <td><span class="bv-color-dot" style="background-color:<?php echo esc_attr( $cat->color ); ?>"></span></td>
+   725→                                    <td><?php echo esc_html( $cat->service_count ); ?></td>
+   726→                                    <td><?php echo esc_html( $cat->plan_count ); ?></td>
+   727→                                    <td>
+   728→                                        <button type="button" class="button button-small bv-edit-btn" data-id="<?php echo esc_attr( $cat->id ); ?>" data-type="category">
+   729→                                            <?php esc_html_e( 'Edit', 'businessvance-services-manager' ); ?>
+   730→                                        </button>
+   731→                                        <button type="button" class="button button-small bv-delete-btn" data-id="<?php echo esc_attr( $cat->id ); ?>" data-type="category" data-name="<?php echo esc_attr( $cat->name ); ?>">
+   732→                                            <?php esc_html_e( 'Delete', 'businessvance-services-manager' ); ?>
+   733→                                        </button>
+   734→                                    </td>
+   735→                                </tr>
+   736→                            <?php endforeach; ?>
+   737→                        <?php endif; ?>
+   738→                    </tbody>
+   739→                </table>
+   740→            </div>
+   741→        </div>
+   742→
+   743→        <!-- Category Form Modal -->
+   744→        <div id="bv-category-modal" class="bv-modal" style="display:none;">
+   745→            <div class="bv-modal-overlay"></div>
+   746→            <div class="bv-modal-content bv-modal-small">
+   747→                <div class="bv-modal-header">
+   748→                    <h2 id="bv-category-modal-title"><?php esc_html_e( 'Add New Category', 'businessvance-services-manager' ); ?></h2>
+   749→                    <button type="button" class="bv-modal-close">&times;</button>
+   750→                </div>
+   751→                <form id="bv-category-form" class="bv-modal-body">
+   752→                    <input type="hidden" name="id" value="">
+   753→                    <input type="hidden" name="nonce" value="<?php echo esc_attr( wp_create_nonce( 'bv_admin_nonce' ) ); ?>">
+   754→
+   755→                    <div class="bv-form-grid">
+   756→                        <div class="bv-form-group bv-form-full">
+   757→                            <label for="cat-name"><?php esc_html_e( 'Category Name *', 'businessvance-services-manager' ); ?></label>
+   758→                            <input type="text" id="cat-name" name="name" required class="regular-text" placeholder="<?php esc_attr_e( 'e.g. Financial Services', 'businessvance-services-manager' ); ?>">
+   759→                        </div>
+   760→
+   761→                        <div class="bv-form-group bv-form-full">
+   762→                            <label for="cat-slug"><?php esc_html_e( 'Slug', 'businessvance-services-manager' ); ?></label>
+   763→                            <input type="text" id="cat-slug" name="slug" class="regular-text" placeholder="<?php esc_attr_e( 'auto-generated-from-name', 'businessvance-services-manager' ); ?>">
+   764→                            <p class="description"><?php esc_html_e( 'Auto-generated from name if left blank.', 'businessvance-services-manager' ); ?></p>
+   765→                        </div>
+   766→
+   767→                        <div class="bv-form-group bv-form-full">
+   768→                            <label for="cat-color"><?php esc_html_e( 'Color', 'businessvance-services-manager' ); ?></label>
+   769→                            <input type="color" id="cat-color" name="color" value="#008080">
+   770→                        </div>
+   771→                    </div>
+   772→
+   773→                    <div class="bv-modal-footer">
+   774→                        <button type="button" class="button bv-cancel-btn"><?php esc_html_e( 'Cancel', 'businessvance-services-manager' ); ?></button>
+   775→                        <button type="submit" class="button button-primary bv-gold-btn"><?php esc_html_e( 'Save Category', 'businessvance-services-manager' ); ?></button>
+   776→                    </div>
+   777→                </form>
+   778→            </div>
+   779→        </div>
+   780→        <?php
+   781→    }
+   782→
+   783→    /**
+   784→     * Handle admin POST requests (fallback for non-AJAX)
+   785→     */
+   786→    public function handle_admin_post() {
+   787→        // All CRUD is handled via AJAX
+   788→    }
+   789→
+   790→    /* ========== AJAX HANDLERS ========== */
+   791→
+   792→    /**
+   793→     * Get service data for editing
+   794→     */
+   795→    public function ajax_get_service() {
+   796→        $this->verify_nonce();
+   797→        global $wpdb;
+   798→        $tables = $this->get_tables();
+   799→
+   800→        $id = intval( $_POST['id'] ?? 0 );
+   801→        if ( $id <= 0 ) {
+   802→            wp_send_json_error( array( 'message' => 'Invalid ID.' ) );
+   803→        }
+   804→
+   805→        $service = $wpdb->get_row( $wpdb->prepare(
+   806→            "SELECT * FROM {$tables['services']} WHERE id = %d",
+   807→            $id
+   808→        ), ARRAY_A );
+   809→
+   810→        if ( ! $service ) {
+   811→            wp_send_json_error( array( 'message' => 'Service not found.' ) );
+   812→        }
+   813→
+   814→        wp_send_json_success( $service );
+   815→    }
+   816→
+   817→    /**
+   818→     * Save (create/update) service
+   819→     */
+   820→    public function ajax_save_service() {
+   821→        $this->verify_nonce();
+   822→        global $wpdb;
+   823→        $tables = $this->get_tables();
+   824→
+   825→        $id = intval( $_POST['id'] ?? 0 );
+   826→        $data = array(
+   827→            'name'          => sanitize_text_field( $_POST['name'] ?? '' ),
+   828→            'description'   => sanitize_textarea_field( $_POST['description'] ?? '' ),
+   829→            'price'         => sanitize_text_field( $_POST['price'] ?? 'R0' ),
+   830→            'price_display' => sanitize_text_field( $_POST['price_display'] ?? '' ),
+   831→            'icon'          => sanitize_text_field( $_POST['icon'] ?? 'briefcase' ),
+   832→            'button_label'  => sanitize_text_field( $_POST['button_label'] ?? 'Get Started' ),
+   833→            'service_type'  => sanitize_text_field( $_POST['service_type'] ?? 'onceoff' ),
+   834→            'woo_product_id' => intval( $_POST['woo_product_id'] ?? 0 ),
+   835→            'category_id'   => intval( $_POST['category_id'] ?? 0 ),
+   836→            'is_visible'    => intval( $_POST['is_visible'] ?? 0 ),
+   837→            'is_featured'   => intval( $_POST['is_featured'] ?? 0 ),
+   838→        );
+   839→        $format = array( '%s','%s','%s','%s','%s','%s','%s','%d','%d','%d','%d' );
+   840→
+   841→        if ( empty( $data['name'] ) ) {
+   842→            wp_send_json_error( array( 'message' => __( 'Service name is required.', 'businessvance-services-manager' ) ) );
+   843→        }
+   844→
+   845→        if ( $id > 0 ) {
+   846→            // Update
+   847→            $wpdb->update( $tables['services'], $data, array( 'id' => $id ), $format, array( '%d' ) );
+   848→            wp_send_json_success( array( 'message' => __( 'Service updated.', 'businessvance-services-manager' ), 'id' => $id ) );
+   849→        } else {
+   850→            // Get max display_order
+   851→            $max_order = (int) $wpdb->get_var( "SELECT COALESCE(MAX(display_order), 0) FROM {$tables['services']}" );
+   852→            $data['display_order'] = $max_order + 1;
+   853→            $format[] = '%d';
+   854→
+   855→            $wpdb->insert( $tables['services'], $data, $format );
+   856→            $new_id = $wpdb->insert_id;
+   857→            wp_send_json_success( array( 'message' => __( 'Service created.', 'businessvance-services-manager' ), 'id' => $new_id ) );
+   858→        }
+   859→    }
+   860→
+   861→    /**
+   862→     * Delete service
+   863→     */
+   864→    public function ajax_delete_service() {
+   865→        $this->verify_nonce();
+   866→        global $wpdb;
+   867→        $tables = $this->get_tables();
+   868→
+   869→        $id = intval( $_POST['id'] ?? 0 );
+   870→        if ( $id <= 0 ) {
+   871→            wp_send_json_error( array( 'message' => 'Invalid ID.' ) );
+   872→        }
+   873→
+   874→        $wpdb->delete( $tables['services'], array( 'id' => $id ), array( '%d' ) );
+   875→        wp_send_json_success( array( 'message' => __( 'Service deleted.', 'businessvance-services-manager' ) ) );
+   876→    }
+   877→
+   878→    /**
+   879→     * Toggle visibility
+   880→     */
+   881→    public function ajax_toggle_visibility() {
+   882→        $this->verify_nonce();
+   883→        global $wpdb;
+   884→        $tables = $this->get_tables();
+   885→
+   886→        $id   = intval( $_POST['id'] ?? 0 );
+   887→        $type = sanitize_text_field( $_POST['type'] ?? '' );
+   888→
+   889→        if ( ! in_array( $type, array( 'service', 'plan' ), true ) || $id <= 0 ) {
+   890→            wp_send_json_error( array( 'message' => 'Invalid parameters.' ) );
+   891→        }
+   892→
+   893→        $table = ( $type === 'service' ) ? $tables['services'] : $tables['plans'];
+   894→        $current = (int) $wpdb->get_var( $wpdb->prepare( "SELECT is_visible FROM {$table} WHERE id = %d", $id ) );
+   895→        $new_value = $current ? 0 : 1;
+   896→
+   897→        $wpdb->update( $table, array( 'is_visible' => $new_value ), array( 'id' => $id ), array( '%d' ), array( '%d' ) );
+   898→        wp_send_json_success( array( 'is_visible' => $new_value ) );
+   899→    }
+   900→
+   901→    /**
+   902→     * Reorder services
+   903→     */
+   904→    public function ajax_reorder_services() {
+   905→        $this->verify_nonce();
+   906→        global $wpdb;
+   907→        $tables = $this->get_tables();
+   908→
+   909→        $order = $_POST['order'] ?? array();
+   910→        if ( ! is_array( $order ) ) {
+   911→            wp_send_json_error();
+   912→        }
+   913→
+   914→        foreach ( $order as $position => $id ) {
+   915→            $wpdb->update(
+   916→                $tables['services'],
+   917→                array( 'display_order' => intval( $position ) ),
+   918→                array( 'id' => intval( $id ) ),
+   919→                array( '%d' ),
+   920→                array( '%d' )
+   921→            );
+   922→        }
+   923→
+   924→        wp_send_json_success( array( 'message' => __( 'Order saved.', 'businessvance-services-manager' ) ) );
+   925→    }
+   926→
+   927→    /**
+   928→     * Get plan data for editing
+   929→     */
+   930→    public function ajax_get_plan() {
+   931→        $this->verify_nonce();
+   932→        global $wpdb;
+   933→        $tables = $this->get_tables();
+   934→
+   935→        $id = intval( $_POST['id'] ?? $_GET['id'] ?? 0 );
+   936→        if ( $id <= 0 ) {
+   937→            wp_send_json_error( array( 'message' => 'Invalid ID.' ) );
+   938→        }
+   939→
+   940→        $plan = $wpdb->get_row( $wpdb->prepare(
+   941→            "SELECT * FROM {$tables['plans']} WHERE id = %d",
+   942→            $id
+   943→        ), ARRAY_A );
+   944→
+   945→        if ( ! $plan ) {
+   946→            wp_send_json_error( array( 'message' => 'Plan not found.' ) );
+   947→        }
+   948→
+   949→        $plan['features'] = $wpdb->get_results(
+   950→            $wpdb->prepare(
+   951→                "SELECT * FROM {$tables['features']} WHERE plan_id = %d ORDER BY display_order ASC",
+   952→                $id
+   953→            ),
+   954→            ARRAY_A
+   955→        );
+   956→
+   957→        wp_send_json_success( $plan );
+   958→    }
+   959→
+   960→    /**
+   961→     * Save (create/update) plan
+   962→     */
+   963→    public function ajax_save_plan() {
+   964→        $this->verify_nonce();
+   965→        global $wpdb;
+   966→        $tables = $this->get_tables();
+   967→
+   968→        $id = intval( $_POST['id'] ?? 0 );
+   969→        $data = array(
+   970→            'name'          => sanitize_text_field( $_POST['name'] ?? '' ),
+   971→            'subtitle'      => sanitize_text_field( $_POST['subtitle'] ?? '' ),
+   972→            'price'         => sanitize_text_field( $_POST['price'] ?? 'R0/mo' ),
+   973→            'color'         => sanitize_text_field( $_POST['color'] ?? '#008080' ),
+   974→            'button_label'  => sanitize_text_field( $_POST['button_label'] ?? 'Subscribe Now' ),
+   975→            'woo_product_id' => intval( $_POST['woo_product_id'] ?? 0 ),
+   976→            'category_id'   => intval( $_POST['category_id'] ?? 0 ),
+   977→            'is_visible'    => intval( $_POST['is_visible'] ?? 0 ),
+   978→            'is_featured'   => intval( $_POST['is_featured'] ?? 0 ),
+   979→        );
+   980→        $format = array( '%s','%s','%s','%s','%s','%d','%d','%d','%d' );
+   981→
+   982→        $features = $_POST['features'] ?? array();
+   983→        if ( ! is_array( $features ) ) {
+   984→            $features = array();
+   985→        }
+   986→        $features = array_map( 'sanitize_text_field', $features );
+   987→
+   988→        if ( empty( $data['name'] ) ) {
+   989→            wp_send_json_error( array( 'message' => __( 'Plan name is required.', 'businessvance-services-manager' ) ) );
+   990→        }
+   991→
+   992→        if ( $id > 0 ) {
+   993→            // Update plan
+   994→            $wpdb->update( $tables['plans'], $data, array( 'id' => $id ), $format, array( '%d' ) );
+   995→
+   996→            // Update features - delete existing and re-insert
+   997→            $wpdb->delete( $tables['features'], array( 'plan_id' => $id ), array( '%d' ) );
+   998→            foreach ( $features as $i => $feature_text ) {
+   999→                if ( ! empty( $feature_text ) ) {
+  1000→                    $wpdb->insert( $tables['features'], array(
+  1001→                        'plan_id'       => $id,
+  1002→                        'feature_text'  => $feature_text,
+  1003→                        'display_order' => $i,
+  1004→                    ), array( '%d', '%s', '%d' ) );
+  1005→                }
+  1006→            }
+  1007→
+  1008→            wp_send_json_success( array( 'message' => __( 'Plan updated.', 'businessvance-services-manager' ), 'id' => $id ) );
+  1009→        } else {
+  1010→            // Get max display_order
+  1011→            $max_order = (int) $wpdb->get_var( "SELECT COALESCE(MAX(display_order), 0) FROM {$tables['plans']}" );
+  1012→            $data['display_order'] = $max_order + 1;
+  1013→            $format[] = '%d';
+  1014→
+  1015→            $wpdb->insert( $tables['plans'], $data, $format );
+  1016→            $new_id = $wpdb->insert_id;
+  1017→
+  1018→            // Insert features
+  1019→            foreach ( $features as $i => $feature_text ) {
+  1020→                if ( ! empty( $feature_text ) ) {
+  1021→                    $wpdb->insert( $tables['features'], array(
+  1022→                        'plan_id'       => $new_id,
+  1023→                        'feature_text'  => $feature_text,
+  1024→                        'display_order' => $i,
+  1025→                    ), array( '%d', '%s', '%d' ) );
+  1026→                }
+  1027→            }
+  1028→
+  1029→            wp_send_json_success( array( 'message' => __( 'Plan created.', 'businessvance-services-manager' ), 'id' => $new_id ) );
+  1030→        }
+  1031→    }
+  1032→
+  1033→    /**
+  1034→     * Delete plan
+  1035→     */
+  1036→    public function ajax_delete_plan() {
+  1037→        $this->verify_nonce();
+  1038→        global $wpdb;
+  1039→        $tables = $this->get_tables();
+  1040→
+  1041→        $id = intval( $_POST['id'] ?? 0 );
+  1042→        if ( $id <= 0 ) {
+  1043→            wp_send_json_error( array( 'message' => 'Invalid ID.' ) );
+  1044→        }
+  1045→
+  1046→        // Delete features first (cascade)
+  1047→        $wpdb->delete( $tables['features'], array( 'plan_id' => $id ), array( '%d' ) );
+  1048→        $wpdb->delete( $tables['plans'], array( 'id' => $id ), array( '%d' ) );
+  1049→        wp_send_json_success( array( 'message' => __( 'Plan deleted.', 'businessvance-services-manager' ) ) );
+  1050→    }
+  1051→
+  1052→    /**
+  1053→     * Reorder plans
+  1054→     */
+  1055→    public function ajax_reorder_plans() {
+  1056→        $this->verify_nonce();
+  1057→        global $wpdb;
+  1058→        $tables = $this->get_tables();
+  1059→
+  1060→        $order = $_POST['order'] ?? array();
+  1061→        if ( ! is_array( $order ) ) {
+  1062→            wp_send_json_error();
+  1063→        }
+  1064→
+  1065→        foreach ( $order as $position => $id ) {
+  1066→            $wpdb->update(
+  1067→                $tables['plans'],
+  1068→                array( 'display_order' => intval( $position ) ),
+  1069→                array( 'id' => intval( $id ) ),
+  1070→                array( '%d' ),
+  1071→                array( '%d' )
+  1072→            );
+  1073→        }
+  1074→
+  1075→        wp_send_json_success( array( 'message' => __( 'Order saved.', 'businessvance-services-manager' ) ) );
+  1076→    }
+  1077→
+  1078→    /**
+  1079→     * Save (create/update) category
+  1080→     */
+  1081→    public function ajax_save_category() {
+  1082→        $this->verify_nonce();
+  1083→        global $wpdb;
+  1084→        $tables = $this->get_tables();
+  1085→
+  1086→        $id = intval( $_POST['id'] ?? 0 );
+  1087→        $name = sanitize_text_field( $_POST['name'] ?? '' );
+  1088→        $slug = sanitize_text_field( $_POST['slug'] ?? '' );
+  1089→        $color = sanitize_text_field( $_POST['color'] ?? '#008080' );
+  1090→
+  1091→        if ( empty( $name ) ) {
+  1092→            wp_send_json_error( array( 'message' => __( 'Category name is required.', 'businessvance-services-manager' ) ) );
+  1093→        }
+  1094→
+  1095→        if ( empty( $slug ) ) {
+  1096→            $slug = sanitize_title( $name );
+  1097→        }
+  1098→
+  1099→        $data = array(
+  1100→            'name'  => $name,
+  1101→            'slug'  => $slug,
+  1102→            'color' => $color,
+  1103→        );
+  1104→        $format = array( '%s', '%s', '%s' );
+  1105→
+  1106→        if ( $id > 0 ) {
+  1107→            $wpdb->update( $tables['categories'], $data, array( 'id' => $id ), $format, array( '%d' ) );
+  1108→            wp_send_json_success( array( 'message' => __( 'Category updated.', 'businessvance-services-manager' ), 'id' => $id ) );
+  1109→        } else {
+  1110→            $wpdb->insert( $tables['categories'], $data, $format );
+  1111→            $new_id = $wpdb->insert_id;
+  1112→            wp_send_json_success( array( 'message' => __( 'Category created.', 'businessvance-services-manager' ), 'id' => $new_id ) );
+  1113→        }
+  1114→    }
+  1115→
+  1116→    /**
+  1117→     * Delete category
+  1118→     */
+  1119→    public function ajax_delete_category() {
+  1120→        $this->verify_nonce();
+  1121→        global $wpdb;
+  1122→        $tables = $this->get_tables();
+  1123→
+  1124→        $id = intval( $_POST['id'] ?? 0 );
+  1125→        if ( $id <= 0 ) {
+  1126→            wp_send_json_error( array( 'message' => 'Invalid ID.' ) );
+  1127→        }
+  1128→
+  1129→        // Remove category reference from services and plans
+  1130→        $wpdb->update( $tables['services'], array( 'category_id' => 0 ), array( 'category_id' => $id ), array( '%d' ), array( '%d' ) );
+  1131→        $wpdb->update( $tables['plans'], array( 'category_id' => 0 ), array( 'category_id' => $id ), array( '%d' ), array( '%d' ) );
+  1132→        $wpdb->delete( $tables['categories'], array( 'id' => $id ), array( '%d' ) );
+  1133→
+  1134→        wp_send_json_success( array( 'message' => __( 'Category deleted.', 'businessvance-services-manager' ) ) );
+  1135→    }
+  1136→}
