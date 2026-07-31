@@ -170,3 +170,32 @@ Stage Summary:
 - Templates tab now supports CRUD for both questionnaire and agreement templates
 - WordPress plugin seed data updated with matching agreement template
 - Screenshot saved: /home/z/my-project/upload/templates-agreement-preview.png
+---
+Task ID: 1
+Agent: Main Agent
+Task: Import 2 questionnaire PDFs (Market Research + Business Plan) into WordPress plugin
+
+Work Log:
+- Read existing plugin codebase: activator (DB schema), questionnaire admin (CRUD), client portal (rendering + deduplication)
+- Extracted text from both PDF questionnaires using PDF skill extract.text
+- Parsed Market Research Report Questionnaire (14 pages, 20 sections, 100+ questions)
+- Parsed Business Plan Questionnaire (19 pages, 24 sections, 130+ questions)
+- Created `includes/class-bv-questionnaire-import.php` with BV_Questionnaire_Import class
+- Data-driven structure: each questionnaire defined as nested PHP arrays (template → sections → questions)
+- Duplicate-safe import: checks by slug, skips existing templates
+- Registered import class in main plugin file (businessvance-services-manager.php)
+- Added AJAX handler `bv_qt_import_questionnaires` to questionnaire admin
+- Added "Import Pre-built Questionnaires" button on questionnaire admin page
+- Added JS import function with confirmation dialog and result summary
+- Updated CHANGELOG.md with v2.0.3 changes
+- Bumped plugin version to 2.0.3
+- Built release ZIP: businessvance-services-manager-v2.0.3.zip (256K, 34 files)
+- Git tagged v2.0.3
+
+Stage Summary:
+- Created: `includes/class-bv-questionnaire-import.php` (complete questionnaire data for both templates)
+- Modified: `businessvance-services-manager.php` (version bump, include registration)
+- Modified: `includes/class-bv-questionnaire-admin.php` (AJAX handler, import button)
+- Modified: `assets/js/questionnaire-admin.js` (import function)
+- Modified: `CHANGELOG.md` (v2.0.3 entry)
+- Release: `/home/z/my-project/public/businessvance-services-manager-v2.0.3.zip`
