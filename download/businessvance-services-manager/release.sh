@@ -14,7 +14,7 @@ DESC="${2:-}"
 PLUGIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_FILE="$PLUGIN_DIR/businessvance-services-manager.php"
 CHANGELOG="$PLUGIN_DIR/CHANGELOG.md"
-ZIP_OUTPUT="/home/z/my-project/public/businessvance-services-manager.zip"
+ZIP_OUTPUT="/home/z/my-project/public/businessvance-services-manager-v${VERSION}.zip"
 DATE=$(date +%Y-%m-%d)
 
 # ── Validate version format (x.y.z)
