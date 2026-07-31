@@ -10,16 +10,18 @@
     function loadTemplates() {
         $.post(ajaxurl, { action: 'bv_qt_get_templates', nonce: BVQT.nonce }, function(res) {
             if (!res.success) return;
+            var templates = res.data.templates || [];
             var rows = '';
-            if (res.data.length === 0) {
+            if (templates.length === 0) {
                 rows = '<tr><td colspan="7" style="text-align:center;padding:40px;color:#666;">No questionnaire templates yet. Click "Add New Template" to create one.</td></tr>';
             } else {
-                $.each(res.data, function(i, t) {
+                $.each(templates, function(i, t) {
                     var statusBadge = t.status === 'published'
                         ? '<span style="background:#d4edda;color:#155724;padding:2px 10px;border-radius:12px;font-size:12px;">Published</span>'
                         : '<span style="background:#e2e3e5;color:#383d41;padding:2px 10px;border-radius:12px;font-size:12px;">Draft</span>';
                     rows += '<tr>'
-                        + '<td><strong>' + escHtml(t.name) + '</strong><br><small style="color:#888;">' + escHtml(t.slug) + '</small></td>'
+                        + '<td><strong>' + escHtml(t.name) + '</strong></td>'
+                        + '<td><small style="color:#888;">' + escHtml(t.slug) + '</small></td>'
                         + '<td>' + statusBadge + '</td>'
                         + '<td>' + parseInt(t.section_count, 10) + '</td>'
                         + '<td>' + parseInt(t.question_count, 10) + '</td>'
@@ -31,19 +33,22 @@
                         + '</td></tr>';
                 });
             }
-            $('#bv-qt-tbody').html(rows);
+            $('#bv-qt-templates-body').html(rows);
         });
     }
 
     // ── Edit Template ──
     function editTemplate(id) {
+        // Show edit view, hide list
+        $('#bv-qt-list-view').hide();
+        $('#bv-qt-edit-view').show();
+
         if (id === 0) {
             $('#bv-qt-edit-id').val(0);
-            $('#bv-qt-edit-name').val('');
-            $('#bv-qt-edit-slug').val('');
-            $('#bv-qt-edit-desc').val('');
-            $('#bv-qt-edit-status').val('draft');
-            $('#bv-qt-editor').show();
+            $('#bv-qt-tpl-name').val('');
+            $('#bv-qt-tpl-slug').val('');
+            $('#bv-qt-tpl-description').val('');
+            $('#bv-qt-tpl-status').val('draft');
             $('#bv-qt-sections-panel').hide();
             $('#bv-qt-edit-title').text('Add New Template');
             return;
@@ -52,19 +57,22 @@
             if (!res.success) return;
             var t = res.data.template;
             $('#bv-qt-edit-id').val(t.id);
-            $('#bv-qt-edit-name').val(t.name);
-            $('#bv-qt-edit-slug').val(t.slug);
-            $('#bv-qt-edit-desc').val(t.description);
-            $('#bv-qt-edit-status').val(t.status);
+            $('#bv-qt-tpl-name').val(t.name);
+            $('#bv-qt-tpl-slug').val(t.slug);
+            $('#bv-qt-tpl-description').val(t.description);
+            $('#bv-qt-tpl-status').val(t.status);
             $('#bv-qt-edit-title').text('Edit Template: ' + t.name);
-            $('#bv-qt-editor').show();
             renderSections(res.data.sections || []);
         });
     }
 
+    function getTemplateId() {
+        return parseInt($('#bv-qt-edit-id').val() || 0, 10);
+    }
+
     // ── Sections ──
     function renderSections(sections) {
-        var panel = $('#bv-qt-sections-panel').show();
+        $('#bv-qt-sections-panel').show();
         var list = $('#bv-qt-sections-list').empty();
         if (sections.length === 0) {
             list.html('<li style="text-align:center;padding:20px;color:#666;border:1px dashed #ccc;border-radius:4px;">No sections yet. Add one below.</li>');
@@ -119,19 +127,19 @@
         // Load templates on page load
         loadTemplates();
 
-        // Add New button
-        $('#bv-qt-add-new').on('click', function() { editTemplate(0); });
+        // Add New Template button
+        $('#bv-qt-add-template-btn').on('click', function() { editTemplate(0); });
 
         // Back to list
-        $('#bv-qt-back').on('click', function() {
-            $('#bv-qt-editor').hide();
+        $('#bv-qt-back-to-list').on('click', function() {
+            $('#bv-qt-edit-view').hide();
             $('#bv-qt-sections-panel').hide();
-            $('#bv-qt-list').show();
+            $('#bv-qt-list-view').show();
+            loadTemplates();
         });
 
-        // Edit template (list)
+        // Edit template (from list)
         $(document).on('click', '.bv-qt-edit', function() {
-            $('#bv-qt-list').hide();
             editTemplate(parseInt($(this).data('id'), 10));
         });
 
@@ -148,9 +156,7 @@
                 }, function(res2) {
                     if (!res2.success) { alert('Duplicate failed'); return; }
                     var newId = res2.data.id;
-                    // Copy sections + questions
                     var sections = res.data.sections || [];
-                    var sectionMap = {};
                     var pending = sections.length;
                     if (pending === 0) { loadTemplates(); return; }
                     $.each(sections, function(i, s) {
@@ -158,7 +164,6 @@
                             action: 'bv_qt_save_section', nonce: BVQT.nonce,
                             id: 0, template_id: newId, title: s.title, description: s.description, display_order: s.display_order
                         }, function(res3) {
-                            sectionMap[s.id] = res3.data.id;
                             var questions = s.questions || [];
                             var qPending = questions.length;
                             if (qPending === 0) { pending--; if(pending===0) loadTemplates(); return; }
@@ -176,7 +181,7 @@
             });
         });
 
-        // Delete template (list)
+        // Delete template
         $(document).on('click', '.bv-qt-delete', function() {
             if (!confirm('Delete this template and ALL its sections and questions?')) return;
             $.post(ajaxurl, { action: 'bv_qt_delete_template', nonce: BVQT.nonce, id: $(this).data('id') }, function(res) {
@@ -186,27 +191,29 @@
         });
 
         // Auto slug from name
-        $('#bv-qt-edit-name').on('input', function() {
-            $('#bv-qt-edit-slug').val(slugify($(this).val()));
+        $('#bv-qt-tpl-name').on('input', function() {
+            $('#bv-qt-tpl-slug').val(slugify($(this).val()));
         });
 
         // Save template
-        $('#bv-qt-save-template').on('click', function() {
+        $('#bv-qt-save-tpl-btn').on('click', function() {
+            var name = $('#bv-qt-tpl-name').val().trim();
+            if (!name) { alert('Template name is required.'); return; }
             $.post(ajaxurl, {
                 action: 'bv_qt_save_template', nonce: BVQT.nonce,
-                id: $('#bv-qt-edit-id').val(),
-                name: $('#bv-qt-edit-name').val(),
-                slug: $('#bv-qt-edit-slug').val(),
-                description: $('#bv-qt-edit-desc').val(),
-                status: $('#bv-qt-edit-status').val()
+                id: getTemplateId(),
+                name: name,
+                slug: $('#bv-qt-tpl-slug').val(),
+                description: $('#bv-qt-tpl-description').val(),
+                status: $('#bv-qt-tpl-status').val()
             }, function(res) {
                 if (!res.success) { alert(res.data.message); return; }
-                var id = res.data.id;
-                if ($('#bv-qt-edit-id').val() == 0) {
-                    $('#bv-qt-edit-id').val(id);
-                    $('#bv-qt-edit-title').text('Edit Template: ' + $('#bv-qt-edit-name').val());
+                var newId = res.data.id;
+                if (getTemplateId() === 0) {
+                    $('#bv-qt-edit-view').data('template-id', newId);
+                    $('#bv-qt-edit-title').text('Edit Template: ' + $('#bv-qt-tpl-name').val());
                 }
-                editTemplate(id);
+                editTemplate(newId);
             });
         });
 
@@ -219,18 +226,36 @@
             $(this).text(qList.is(':visible') ? '▲' : '▼');
         });
 
-        // Add section
-        $('#bv-qt-add-section').on('click', function() {
-            var title = prompt('Section title:');
-            if (!title) return;
+        // Add section button
+        $('#bv-qt-add-section-btn').on('click', function() {
+            $('#bv-qt-section-form-wrap').show();
+            $('#bv-qt-section-form-title').text('New Section');
+            $('#bv-qt-sec-title').val('');
+            $('#bv-qt-sec-description').val('');
+            $('#bv-qt-sec-edit-id').val(0);
+        });
+
+        // Save section
+        $('#bv-qt-save-sec-btn').on('click', function() {
+            var title = $('#bv-qt-sec-title').val().trim();
+            if (!title) { alert('Section title is required.'); return; }
             $.post(ajaxurl, {
                 action: 'bv_qt_save_section', nonce: BVQT.nonce,
-                id: 0, template_id: $('#bv-qt-edit-id').val(),
-                title: title, description: ''
+                id: $('#bv-qt-sec-edit-id').val(),
+                template_id: getTemplateId(),
+                title: title,
+                description: $('#bv-qt-sec-description').val(),
+                display_order: 0
             }, function(res) {
                 if (!res.success) { alert(res.data.message); return; }
-                editTemplate(parseInt($('#bv-qt-edit-id').val(), 10));
+                $('#bv-qt-section-form-wrap').hide();
+                editTemplate(getTemplateId());
             });
+        });
+
+        // Cancel section
+        $('#bv-qt-cancel-sec-btn').on('click', function() {
+            $('#bv-qt-section-form-wrap').hide();
         });
 
         // Edit section
@@ -242,10 +267,10 @@
             if (!newTitle || newTitle === title) return;
             $.post(ajaxurl, {
                 action: 'bv_qt_save_section', nonce: BVQT.nonce,
-                id: sid, template_id: $('#bv-qt-edit-id').val(),
+                id: sid, template_id: getTemplateId(),
                 title: newTitle, description: '', display_order: item.index()
             }, function(res) {
-                if (res.success) editTemplate(parseInt($('#bv-qt-edit-id').val(), 10));
+                if (res.success) editTemplate(getTemplateId());
             });
         });
 
@@ -256,7 +281,7 @@
                 action: 'bv_qt_delete_section', nonce: BVQT.nonce,
                 id: $(this).data('sid')
             }, function(res) {
-                if (res.success) editTemplate(parseInt($('#bv-qt-edit-id').val(), 10));
+                if (res.success) editTemplate(getTemplateId());
             });
         });
 
@@ -269,7 +294,6 @@
             if (dir === 'down' && item.index() === list.children().length - 1) return;
             if (dir === 'up') item.prev().before(item);
             else item.next().after(item);
-            // Save new order
             var ids = [];
             list.children('.bv-qt-section-item').each(function() { ids.push($(this).data('section-id')); });
             $.post(ajaxurl, { action: 'bv_qt_reorder', nonce: BVQT.nonce, type: 'section', ids: ids.join(',') });
@@ -288,7 +312,7 @@
                 placeholder: '', is_required: 0, help_text: '', options_text: ''
             }, function(res) {
                 if (!res.success) { alert(res.data.message); return; }
-                editTemplate(parseInt($('#bv-qt-edit-id').val(), 10));
+                editTemplate(getTemplateId());
             });
         });
 
@@ -296,8 +320,7 @@
         $(document).on('click', '.bv-qt-edit-q', function() {
             var qid = $(this).data('qid');
             var sid = $(this).data('sid');
-            // Load question details
-            $.post(ajaxurl, { action: 'bv_qt_get_template', nonce: BVQT.nonce, template_id: parseInt($('#bv-qt-edit-id').val(), 10) }, function(res) {
+            $.post(ajaxurl, { action: 'bv_qt_get_template', nonce: BVQT.nonce, template_id: getTemplateId() }, function(res) {
                 if (!res.success) return;
                 var q = null;
                 $.each(res.data.sections, function(i, s) {
@@ -307,7 +330,6 @@
                 });
                 if (!q) return;
 
-                // Build options text from JSON
                 var optsText = '';
                 if (q.options && Array.isArray(q.options)) {
                     $.each(q.options, function(i, o) {
@@ -331,7 +353,7 @@
                     +   '<option value="checkbox"' + (q.type==='checkbox'?' selected':'') + '>Checkbox</option>'
                     +   '<option value="heading"' + (q.type==='heading'?' selected':'') + '>Heading</option>'
                     +   '<option value="paragraph"' + (q.type==='paragraph'?' selected':'') + '>Paragraph</option>'
-                    +   '</select></p>'
+                    + '</select></p>'
                     + '<p><label>Label:</label><br><input type="text" id="bvq-label" class="regular-text" value="' + escAttr(q.label) + '"></p>'
                     + '<p class="bvq-placeholder-row"><label>Placeholder:</label><br><input type="text" id="bvq-placeholder" class="regular-text" value="' + escAttr(q.placeholder || '') + '"></p>'
                     + '<p><label><input type="checkbox" id="bvq-required"' + (q.is_required==1?' checked':'') + '> Required</label></p>'
@@ -369,7 +391,7 @@
                 options_text: $('#bvq-options').val()
             }, function(res) {
                 if (res.success) {
-                    editTemplate(parseInt($('#bv-qt-edit-id').val(), 10));
+                    editTemplate(getTemplateId());
                 } else {
                     alert(res.data.message);
                 }
@@ -388,7 +410,7 @@
                 action: 'bv_qt_delete_question', nonce: BVQT.nonce,
                 id: $(this).data('qid')
             }, function(res) {
-                if (res.success) editTemplate(parseInt($('#bv-qt-edit-id').val(), 10));
+                if (res.success) editTemplate(getTemplateId());
             });
         });
 

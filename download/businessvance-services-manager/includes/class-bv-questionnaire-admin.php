@@ -614,11 +614,13 @@ class BV_Questionnaire_Admin {
 
             <!-- ==================== EDIT/CREATE TEMPLATE VIEW ==================== -->
             <div id="bv-qt-edit-view" style="display:none;">
+                <input type="hidden" id="bv-qt-edit-id" value="0" />
                 <div style="margin-bottom:20px;">
                     <button type="button" id="bv-qt-back-to-list" class="button">
                         <span class="dashicons dashicons-arrow-left-alt2" style="margin-top:4px;margin-right:3px;"></span>
                         Back to Templates
                     </button>
+                    <span id="bv-qt-edit-title" style="margin-left:15px;font-size:16px;font-weight:600;"></span>
                 </div>
 
                 <!-- Template Info Card -->
