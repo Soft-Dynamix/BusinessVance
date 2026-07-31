@@ -239,14 +239,30 @@ class BV_Admin {
                 </div>
             </div>
 
+            <div class="bv-dashboard-info" style="display:flex;flex-wrap:wrap;gap:12px;">
+                <h2 style="width:100%;"><?php esc_html_e( 'Quick Access', 'businessvance-services-manager' ); ?></h2>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=businessvance-settings' ) ); ?>"
+                   class="button button-secondary" style="display:inline-flex;align-items:center;gap:6px;font-size:14px;padding:8px 20px;">
+                    <span class="dashicons dashicons-admin-generic" style="font-size:18px;"></span>
+                    <?php esc_html_e( 'Settings', 'businessvance-services-manager' ); ?>
+                </a>
+                <a href="#" onclick="prompt('<?php esc_attr_e( 'Client Portal Shortcode:', 'businessvance-services-manager' ); ?>', '[businessvance_client_portal]'); return false;"
+                   class="button button-secondary" style="display:inline-flex;align-items:center;gap:6px;font-size:14px;padding:8px 20px;">
+                    <span class="dashicons dashicons-admin-users" style="font-size:18px;"></span>
+                    <?php esc_html_e( 'Client Portal', 'businessvance-services-manager' ); ?>
+                </a>
+            </div>
+
             <div class="bv-dashboard-info">
                 <h2><?php esc_html_e( 'Quick Start', 'businessvance-services-manager' ); ?></h2>
                 <ol class="bv-steps">
+                    <li><?php esc_html_e( 'Go to <strong>Settings</strong> and configure your company branding, colors, and contact info.', 'businessvance-services-manager' ); ?></li>
                     <li><?php esc_html_e( 'Add your Categories under the Categories menu.', 'businessvance-services-manager' ); ?></li>
                     <li><?php esc_html_e( 'Create your WooCommerce products (simple products for once-off, subscription products for plans).', 'businessvance-services-manager' ); ?></li>
                     <li><?php esc_html_e( 'Add your Services and link each to its WooCommerce Product ID.', 'businessvance-services-manager' ); ?></li>
                     <li><?php esc_html_e( 'Set up Subscription Plans with features and link to WooCommerce subscription products.', 'businessvance-services-manager' ); ?></li>
                     <li><?php esc_html_e( 'Create a new WordPress page and add the shortcode [businessvance_services].', 'businessvance-services-manager' ); ?></li>
+                    <li><?php esc_html_e( 'Create another page with [businessvance_client_portal] for the client portal.', 'businessvance-services-manager' ); ?></li>
                     <li><?php esc_html_e( 'Ensure Yoco payment gateway is configured in WooCommerce settings.', 'businessvance-services-manager' ); ?></li>
                 </ol>
             </div>

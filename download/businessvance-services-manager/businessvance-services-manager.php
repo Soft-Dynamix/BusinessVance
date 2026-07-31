@@ -152,6 +152,7 @@ function bv_handle_wc_order_completion( $order_id, $order ) {
 final class BusinessVance_Services_Manager {
 
     private static $instance = null;
+    public $settings;
     public $admin;
     public $shortcodes;
     public $client_portal;
@@ -172,6 +173,7 @@ final class BusinessVance_Services_Manager {
     }
 
     private function includes() {
+        require_once BV_PLUGIN_DIR . 'includes/class-bv-settings.php';
         require_once BV_PLUGIN_DIR . 'includes/class-bv-admin.php';
         require_once BV_PLUGIN_DIR . 'includes/class-bv-shortcodes.php';
         require_once BV_PLUGIN_DIR . 'includes/class-bv-client-portal.php';
@@ -184,6 +186,7 @@ final class BusinessVance_Services_Manager {
         $this->shortcodes           = new BV_Shortcodes();
         $this->client_portal        = new BV_Client_Portal();
         $this->consultant_dashboard = new BV_Consultant_Dashboard();
+        $this->settings             = new BV_Settings();
         BV_WooCommerce::init();
     }
 
