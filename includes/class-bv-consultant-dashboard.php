@@ -743,6 +743,6 @@ class BV_Consultant_Dashboard {
         .bv-cd-overview-grid { grid-template-columns: 1fr; }
         .bv-cd-project-header { flex-direction: column; }
     }
-    '';
+    ';
     }
 }
