@@ -67,7 +67,7 @@ class BV_Consultant_Dashboard {
 
         ?>
         <div class="wrap bv-cd-wrap" id="bv-cd-app">
-            <h1 class="bv-cd-title"><span class="bv-cd-icon">📋</span> Consultant Dashboard</h1>
+            <h1 class="bv-cd-title"><span class="bv-cd-icon">📋</span> <?php echo esc_html( BV_Settings::get( 'cd_welcome_title' ) ?: 'Consultant Dashboard' ); ?></h1>
 
             <!-- Stats Bar -->
             <div class="bv-cd-stats">
@@ -316,6 +316,10 @@ class BV_Consultant_Dashboard {
 
         $back_url = admin_url( 'admin.php?page=bv-consultant-dashboard' );
         $statuses = array( 'awaiting-agreement', 'awaiting-questionnaire', 'awaiting-documents', 'in-progress', 'quality-check', 'completed', 'delivered', 'archived' );
+        $cd_settings = BV_Settings::get_settings();
+        $show_messages = $cd_settings['cd_show_messages'] === 'yes';
+        $show_notes = $cd_settings['cd_show_notes'] === 'yes';
+        $show_activity = $cd_settings['cd_show_activity_log'] === 'yes';
         ?>
         <div class="bv-cd-back"><a href="<?php echo $back_url; ?>">&larr; Back to All Projects</a></div>
 
@@ -352,8 +356,12 @@ class BV_Consultant_Dashboard {
             <button class="bv-cd-tab <?php echo $active_tab === 'questionnaire' ? 'active' : ''; ?>" data-tab="questionnaire">Questionnaire</button>
             <button class="bv-cd-tab <?php echo $active_tab === 'documents' ? 'active' : ''; ?>" data-tab="documents">Documents</button>
             <button class="bv-cd-tab <?php echo $active_tab === 'reports' ? 'active' : ''; ?>" data-tab="reports">Reports</button>
+            <?php if ( $show_messages ) : ?>
             <button class="bv-cd-tab <?php echo $active_tab === 'messages' ? 'active' : ''; ?>" data-tab="messages">Messages</button>
+            <?php endif; ?>
+            <?php if ( $show_notes ) : ?>
             <button class="bv-cd-tab <?php echo $active_tab === 'notes' ? 'active' : ''; ?>" data-tab="notes">Notes</button>
+            <?php endif; ?>
         </div>
 
         <!-- Tab Panels -->

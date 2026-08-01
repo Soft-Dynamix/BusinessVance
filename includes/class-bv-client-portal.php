@@ -152,10 +152,28 @@ class BV_Client_Portal {
                     <!-- Tabs -->
                     <div class="bv-portal-tabs">
                         <?php
-                        // Build tabs - conditionally include Documents tab
+                        // Build tabs based on project status and admin settings
+                        $portal_settings = BV_Settings::get_settings();
                         $all_tabs = array( 'overview' => 'Overview', 'agreement' => 'Agreement', 'questionnaire' => 'Questionnaire', 'documents' => 'Documents', 'reports' => 'Reports', 'messages' => 'Messages' );
                         
-                        // Check if any service requires documents
+                        // Apply section visibility from settings
+                        if ( $portal_settings['portal_show_overview'] !== 'yes' ) {
+                            unset( $all_tabs['overview'] );
+                        }
+                        if ( $portal_settings['portal_show_questionnaire'] !== 'yes' ) {
+                            unset( $all_tabs['questionnaire'] );
+                        }
+                        if ( $portal_settings['portal_show_messages'] !== 'yes' ) {
+                            unset( $all_tabs['messages'] );
+                        }
+                        if ( $portal_settings['portal_show_reports'] !== 'yes' ) {
+                            unset( $all_tabs['reports'] );
+                        }
+                        if ( $portal_settings['portal_show_documents'] !== 'yes' ) {
+                            unset( $all_tabs['documents'] );
+                        }
+                        
+                        // Check if any service requires documents (override: show documents tab if required)
                         $documents_required = false;
                         foreach ( $services as $svc ) {
                             $req_docs = json_decode( $svc->required_documents, true );
@@ -164,16 +182,14 @@ class BV_Client_Portal {
                                 break;
                             }
                         }
-                        // If no services specify required_documents, keep documents tab visible (backward compatible)
-                        // Only hide if ALL services explicitly have empty required_documents
-                        $any_service_has_config = false;
-                        foreach ( $services as $svc ) {
-                            if ( $svc->required_documents !== '' ) {
-                                $any_service_has_config = true;
-                            }
+                        // If documents are required by service, always show the tab
+                        if ( $documents_required ) {
+                            $all_tabs['documents'] = 'Documents';
                         }
-                        if ( $any_service_has_config && ! $documents_required ) {
-                            unset( $all_tabs['documents'] );
+                        
+                        // Ensure at least overview exists as fallback
+                        if ( empty( $all_tabs ) ) {
+                            $all_tabs['overview'] = 'Overview';
                         }
                         
                         foreach ( $all_tabs as $tab_id => $tab_label ) :
@@ -219,7 +235,7 @@ class BV_Client_Portal {
             </div>
 
             <div class="bv-portal-footer">
-                <p>&copy; <?php echo date('Y'); ?> BusinessVance Consulting. All rights reserved.</p>
+                <p>&copy; <?php echo date('Y'); ?> <?php echo esc_html( BV_Settings::get( 'company_name' ) ?: 'BusinessVance Consulting' ); ?>. All rights reserved.</p>
             </div>
         </div>
         <?php
