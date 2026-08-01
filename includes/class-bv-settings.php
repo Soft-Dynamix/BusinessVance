@@ -724,7 +724,21 @@ class BV_Settings {
         ?>
         <div class="bv-settings-section">
             <h2><?php esc_html_e( 'Service Agreement', 'businessvance-services-manager' ); ?></h2>
-            <p><?php esc_html_e( 'Configure the client service agreement that clients sign in the portal.', 'businessvance-services-manager' ); ?></p>
+            <p><?php esc_html_e( 'Configure the default client service agreement that clients sign in the portal.', 'businessvance-services-manager' ); ?></p>
+
+            <div class="bv-settings-info-box" style="background:#EBF5FF;border:1px solid #93C5FD;border-radius:8px;padding:16px 20px;margin:16px 0;">
+                <p style="margin:0 0 8px;color:#1E40AF;font-weight:600;">
+                    <span class="dashicons dashicons-migrate" style="vertical-align:middle;margin-right:4px;"></span>
+                    <?php esc_html_e( 'Agreement Templates Manager', 'businessvance-services-manager' ); ?>
+                </p>
+                <p style="margin:0 0 12px;color:#1E3A8A;font-size:13px;">
+                    <?php esc_html_e( 'Create and manage multiple agreement templates (NDA, Service Agreement, Confidentiality, Custom). Each template can be assigned per-service in the Services editor.', 'businessvance-services-manager' ); ?>
+                </p>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=businessvance-agreements' ) ); ?>" class="button button-primary" style="background:#002B5C;border-color:#002B5C;">
+                    <span class="dashicons dashicons-file-alt" style="vertical-align:middle;margin-right:4px;"></span>
+                    <?php esc_html_e( 'Open Agreement Manager', 'businessvance-services-manager' ); ?>
+                </a>
+            </div>
 
             <table class="form-table">
                 <tr>

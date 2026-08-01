@@ -42,6 +42,10 @@
         $('#bv-icon-picker-grid .bv-icon-pick-btn').removeClass('selected');
         $('#bv-icon-picker-grid .bv-icon-pick-btn[data-icon="briefcase"]').addClass('selected');
         $('#bv-icon-preview').html($('.bv-icon-picker-grid .bv-icon-pick-btn[data-icon="briefcase"] svg').clone());
+        // Reset new service fields
+        $('#bv-service-form select[name="agreement_template_id"]').val(0);
+        $('#bv-service-form input[name="nda_only"]').prop('checked', false);
+        $('#bv-service-form input[name="required_documents"]').val('');
     }
 
     // Close modal on overlay click or X button
@@ -104,6 +108,9 @@
                 $('#bv-service-form select[name="service_type"]').val(svc.service_type);
                 $('#bv-service-form select[name="woo_product_id"]').val(svc.woo_product_id || 0);
                 $('#bv-service-form select[name="questionnaire_template_id"]').val(svc.questionnaire_template_id || 0);
+                $('#bv-service-form select[name="agreement_template_id"]').val(svc.agreement_template_id || 0);
+                $('#bv-service-form input[name="nda_only"]').prop('checked', svc.nda_only == 1);
+                $('#bv-service-form input[name="required_documents"]').val(svc.required_documents || '');
                 $('#bv-service-form select[name="category_id"]').val(svc.category_id);
                 $('#bv-service-form input[name="is_visible"]').prop('checked', svc.is_visible == 1);
                 $('#bv-service-form input[name="is_featured"]').prop('checked', svc.is_featured == 1);

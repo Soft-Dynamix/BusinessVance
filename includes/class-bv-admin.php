@@ -635,6 +635,52 @@ class BV_Admin {
                             <p class="description"><?php esc_html_e( 'Link a questionnaire template. Clients will answer these questions in the portal.', 'businessvance-services-manager' ); ?></p>
                         </div>
 
+                        <div class="bv-form-group bv-form-full">
+                            <label for="svc-agreement-template"><?php esc_html_e( 'Agreement Template', 'businessvance-services-manager' ); ?></label>
+                            <select id="svc-agreement-template" name="agreement_template_id">
+                                <option value="0"><?php esc_html_e( '-- Use Global Default --', 'businessvance-services-manager' ); ?></option>
+                                <?php
+                                $agreement_templates = $wpdb->get_results( "SELECT id, name, type FROM {$wpdb->prefix}bv_agreement_templates ORDER BY type ASC, name ASC" );
+                                $at_types = array();
+                                foreach ( $agreement_templates as $at ) {
+                                    $at_types[$at->type][] = $at;
+                                }
+                                $at_labels = array(
+                                    'nda'               => 'NDA',
+                                    'service-agreement' => 'Service Agreement',
+                                    'confidentiality'   => 'Confidentiality Agreement',
+                                    'custom'            => 'Custom',
+                                );
+                                foreach ( $at_types as $at_type => $at_items ) :
+                                    $at_label = isset( $at_labels[$at_type] ) ? $at_labels[$at_type] : $at_type;
+                                ?>
+                                    <optgroup label="<?php echo esc_attr( $at_label ); ?>">
+                                        <?php foreach ( $at_items as $at ) : ?>
+                                            <option value="<?php echo esc_attr( $at->id ); ?>"><?php echo esc_html( $at->name ); ?><?php echo $at->type === 'nda' ? ' (NDA)' : ''; ?></option>
+                                        <?php endforeach; ?>
+                                    </optgroup>
+                                <?php endforeach; ?>
+                                <?php if ( empty( $agreement_templates ) ) : ?>
+                                    <option value="0" disabled><?php esc_html_e( 'No templates created yet', 'businessvance-services-manager' ); ?></option>
+                                <?php endif; ?>
+                            </select>
+                            <p class="description"><?php esc_html_e( 'Assign a specific agreement template for this service. Leave as default to use the global agreement from Settings.', 'businessvance-services-manager' ); ?></p>
+                        </div>
+
+                        <div class="bv-form-group">
+                            <label>
+                                <input type="checkbox" name="nda_only" value="1">
+                                <?php esc_html_e( 'NDA Only (skip service agreement)', 'businessvance-services-manager' ); ?>
+                            </label>
+                            <p class="description" style="margin-top:4px;"><?php esc_html_e( 'If checked, only a confidentiality/NDA is required — the full service agreement is skipped.', 'businessvance-services-manager' ); ?></p>
+                        </div>
+
+                        <div class="bv-form-group bv-form-full">
+                            <label for="svc-required-docs"><?php esc_html_e( 'Required Documents', 'businessvance-services-manager' ); ?></label>
+                            <input type="text" id="svc-required-docs" name="required_documents" placeholder="<?php esc_attr_e( 'e.g. ID Copy, Proof of Address, Company Registration', 'businessvance-services-manager' ); ?>" class="large-text">
+                            <p class="description"><?php esc_html_e( 'Comma-separated list of documents the client must upload. Leave blank to skip document uploads for this service.', 'businessvance-services-manager' ); ?></p>
+                        </div>
+
                         <div class="bv-form-group">
                             <label>
                                 <input type="checkbox" name="is_visible" value="1" checked>
@@ -1087,20 +1133,23 @@ class BV_Admin {
 
         $id = intval( $_POST['id'] ?? 0 );
         $data = array(
-            'name'          => sanitize_text_field( $_POST['name'] ?? '' ),
-            'description'   => sanitize_textarea_field( $_POST['description'] ?? '' ),
-            'price'         => sanitize_text_field( $_POST['price'] ?? 'R0' ),
-            'price_display' => sanitize_text_field( $_POST['price_display'] ?? '' ),
-            'icon'          => sanitize_text_field( $_POST['icon'] ?? 'briefcase' ),
-            'button_label'  => sanitize_text_field( $_POST['button_label'] ?? 'Get Started' ),
-            'service_type'  => sanitize_text_field( $_POST['service_type'] ?? 'onceoff' ),
-            'woo_product_id' => intval( $_POST['woo_product_id'] ?? 0 ),
+            'name'                    => sanitize_text_field( $_POST['name'] ?? '' ),
+            'description'             => sanitize_textarea_field( $_POST['description'] ?? '' ),
+            'price'                   => sanitize_text_field( $_POST['price'] ?? 'R0' ),
+            'price_display'           => sanitize_text_field( $_POST['price_display'] ?? '' ),
+            'icon'                    => sanitize_text_field( $_POST['icon'] ?? 'briefcase' ),
+            'button_label'            => sanitize_text_field( $_POST['button_label'] ?? 'Get Started' ),
+            'service_type'            => sanitize_text_field( $_POST['service_type'] ?? 'onceoff' ),
+            'woo_product_id'          => intval( $_POST['woo_product_id'] ?? 0 ),
             'questionnaire_template_id' => intval( $_POST['questionnaire_template_id'] ?? 0 ),
-            'category_id'   => intval( $_POST['category_id'] ?? 0 ),
-            'is_visible'    => intval( $_POST['is_visible'] ?? 0 ),
-            'is_featured'   => intval( $_POST['is_featured'] ?? 0 ),
+            'category_id'             => intval( $_POST['category_id'] ?? 0 ),
+            'agreement_template_id'    => intval( $_POST['agreement_template_id'] ?? 0 ),
+            'nda_only'                => intval( $_POST['nda_only'] ?? 0 ),
+            'required_documents'       => sanitize_text_field( $_POST['required_documents'] ?? '' ),
+            'is_visible'              => intval( $_POST['is_visible'] ?? 0 ),
+            'is_featured'             => intval( $_POST['is_featured'] ?? 0 ),
         );
-        $format = array( '%s','%s','%s','%s','%s','%s','%s','%d','%d','%d','%d','%d' );
+        $format = array( '%s','%s','%s','%s','%s','%s','%s','%d','%d','%d','%d','%d','%s','%d','%d' );
 
         if ( empty( $data['name'] ) ) {
             wp_send_json_error( array( 'message' => __( 'Service name is required.', 'businessvance-services-manager' ) ) );
