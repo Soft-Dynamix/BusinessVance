@@ -76,6 +76,9 @@ class BV_Settings {
         add_action( 'admin_menu', array( $this, 'add_menu_pages' ) );
         add_action( 'admin_init', array( $this, 'register_settings' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+        add_action( 'wp_ajax_bv_export_data', array( $this, 'ajax_export_data' ) );
+        add_action( 'wp_ajax_bv_import_data', array( $this, 'ajax_import_data' ) );
+        add_action( 'wp_ajax_bv_purge_all_data', array( $this, 'ajax_purge_all_data' ) );
     }
 
     /**
@@ -244,6 +247,11 @@ class BV_Settings {
                        class="nav-tab <?php echo $tab === 'woocommerce' ? 'nav-tab-active' : ''; ?>">
                         <span class="dashicons dashicons-cart"></span> <?php esc_html_e( 'WooCommerce', 'businessvance-services-manager' ); ?>
                     </a>
+                    <a href="<?php echo esc_url( add_query_arg( 'tab', 'data', $page_url ) ); ?>"
+                       class="nav-tab <?php echo $tab === 'data' ? 'nav-tab-active' : ''; ?>"
+                       style="color: #DC2626;">
+                        <span class="dashicons dashicons-database"></span> <?php esc_html_e( 'Data', 'businessvance-services-manager' ); ?>
+                    </a>
                 </nav>
             </div>
 
@@ -269,6 +277,10 @@ class BV_Settings {
 
                     <div class="bv-settings-panel" style="display: <?php echo $tab === 'woocommerce' ? 'block' : 'none'; ?>;">
                         <?php $this->render_woocommerce_tab( $settings ); ?>
+                    </div>
+
+                    <div class="bv-settings-panel" style="display: <?php echo $tab === 'data' ? 'block' : 'none'; ?>;">
+                        <?php $this->render_data_tab( $settings ); ?>
                     </div>
 
                     <div class="bv-settings-footer">
@@ -965,5 +977,439 @@ class BV_Settings {
             </ol>
         </div>
         <?php
+    }
+
+    // =========================================================================
+    // Data Management Tab
+    // =========================================================================
+
+    /**
+     * Render the Data Management tab with export/import/purge tools
+     */
+    private function render_data_tab( $settings ) {
+        global $wpdb;
+        $prefix = $wpdb->prefix;
+
+        // Count records in each table
+        $counts = array();
+        $bv_tables = array(
+            'bv_categories'             => 'Categories',
+            'bv_services'               => 'Services',
+            'bv_plans'                  => 'Plans',
+            'bv_projects'               => 'Projects',
+            'bv_project_services'       => 'Project Services',
+            'bv_project_agreements'     => 'Agreements',
+            'bv_project_documents'       => 'Documents',
+            'bv_project_reports'         => 'Reports',
+            'bv_project_messages'        => 'Messages',
+            'bv_project_notes'           => 'Notes',
+            'bv_questionnaire_templates' => 'Questionnaire Templates',
+            'bv_questionnaire_sections' => 'Questionnaire Sections',
+            'bv_questionnaire_questions'=> 'Questionnaire Questions',
+            'bv_questionnaire_responses'=> 'Questionnaire Responses',
+            'bv_agreement_templates'     => 'Agreement Templates',
+            'bv_activity_log'           => 'Activity Log',
+        );
+
+        foreach ( $bv_tables as $table_name => $label ) {
+            $full_table = $prefix . $table_name;
+            $count = $wpdb->get_var( "SELECT COUNT(*) FROM {$full_table}" );
+            $counts[ $table_name ] = (int) $count;
+        }
+
+        $total = array_sum( $counts );
+        $upload_dir = wp_upload_dir()['basedir'] . '/bv-documents';
+        $file_count = 0;
+        if ( is_dir( $upload_dir ) ) {
+            $files = glob( $upload_dir . '/*' );
+            $file_count = $files ? count( $files ) : 0;
+        }
+
+        $delete_on_uninstall = get_option( 'bv_delete_data_on_uninstall', 'no' );
+        $nonce = wp_create_nonce( 'bv_data_management' );
+
+        ?>
+        <div class="bv-settings-section">
+            <h2><span class="dashicons dashicons-database" style="color: #002B5C;"></span> <?php esc_html_e( 'Data Management', 'businessvance-services-manager' ); ?></h2>
+            <p style="max-width:700px;"><?php esc_html_e( 'Manage your plugin data: export backups, import restored data, or purge everything. Your data is automatically preserved when you deactivate or delete the plugin unless you enable full cleanup below.', 'businessvance-services-manager' ); ?></p>
+
+            <!-- Data Overview -->
+            <div style="background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                <h4 style="margin: 0 0 14px; color: #002B5C;"><?php esc_html_e( 'Current Data Summary', 'businessvance-services-manager' ); ?></h4>
+                <table class="widefat striped" style="max-width: 500px;">
+                    <thead>
+                        <tr><th><?php esc_html_e( 'Data Type', 'businessvance-services-manager' ); ?></th><th><?php esc_html_e( 'Records', 'businessvance-services-manager' ); ?></th></tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ( $bv_tables as $table_name => $label ) : ?>
+                        <tr>
+                            <td><?php echo esc_html( $label ); ?></td>
+                            <td><strong><?php echo number_format( $counts[ $table_name ] ); ?></strong></td>
+                        </tr>
+                    <?php endforeach; ?>
+                        <tr>
+                            <td><strong><?php esc_html_e( 'Uploaded Files', 'businessvance-services-manager' ); ?></strong></td>
+                            <td><strong><?php echo number_format( $file_count ); ?></strong></td>
+                        </tr>
+                        <tr style="background: #EBF5FF;">
+                            <td><strong><?php esc_html_e( 'TOTAL', 'businessvance-services-manager' ); ?></strong></td>
+                            <td><strong style="color: #002B5C; font-size: 16px;"><?php echo number_format( $total ); ?></strong></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Export -->
+            <div style="background: #D1FAE5; border: 1px solid #6EE7B7; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                <h4 style="margin: 0 0 10px; color: #065F46;">
+                    <span class="dashicons dashicons-download" style="vertical-align: middle;"></span>
+                    <?php esc_html_e( 'Export Backup', 'businessvance-services-manager' ); ?>
+                </h4>
+                <p style="margin: 0 0 14px; color: #047857;"><?php esc_html_e( 'Download a complete JSON backup of all plugin data (settings, services, projects, documents metadata, questionnaires, etc.). Use this to restore data after a plugin reinstall or migration.', 'businessvance-services-manager' ); ?></p>
+                <button type="button" class="button button-primary button-large" onclick="bv_export_data(<?php echo esc_attr( json_encode( $nonce ) ); ?>)" style="background: #059669; border-color: #059669;">
+                    <span class="dashicons dashicons-download" style="vertical-align: middle; margin-right: 5px;"></span>
+                    <?php esc_html_e( 'Download Full Backup', 'businessvance-services-manager' ); ?>
+                </button>
+                <span id="bv-export-status" style="margin-left: 12px;"></span>
+            </div>
+
+            <!-- Import -->
+            <div style="background: #DBEAFE; border: 1px solid #93C5FD; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                <h4 style="margin: 0 0 10px; color: #1E40AF;">
+                    <span class="dashicons dashicons-upload" style="vertical-align: middle;"></span>
+                    <?php esc_html_e( 'Import Restore', 'businessvance-services-manager' ); ?>
+                </h4>
+                <p style="margin: 0 0 14px; color: #1E3A8A;"><?php esc_html_e( 'Restore data from a previously exported JSON backup file. Existing data with matching IDs will be updated. This action cannot be undone.', 'businessvance-services-manager' ); ?></p>
+                <input type="file" id="bv-import-file" accept=".json" style="margin-bottom: 10px;" />
+                <br>
+                <button type="button" class="button button-primary button-large" onclick="bv_import_data(<?php echo esc_attr( json_encode( $nonce ) ); ?>)" style="background: #2563EB; border-color: #2563EB;">
+                    <span class="dashicons dashicons-upload" style="vertical-align: middle; margin-right: 5px;"></span>
+                    <?php esc_html_e( 'Import from Backup', 'businessvance-services-manager' ); ?>
+                </button>
+                <span id="bv-import-status" style="margin-left: 12px;"></span>
+            </div>
+
+            <!-- Uninstall Behavior -->
+            <div style="background: #FFF7ED; border: 1px solid #FDBA74; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                <h4 style="margin: 0 0 10px; color: #9A3412;">
+                    <span class="dashicons dashicons-admin-plugins" style="vertical-align: middle;"></span>
+                    <?php esc_html_e( 'Uninstall Behavior', 'businessvance-services-manager' ); ?>
+                </h4>
+                <p style="margin: 0 0 14px; color: #9A3412;">
+                    <?php esc_html_e( 'By default, when you delete the plugin, ALL your data (projects, documents, questionnaires, reports, etc.) is <strong>preserved</strong>. If you want a completely clean removal, enable the option below BEFORE deleting the plugin.', 'businessvance-services-manager' ); ?>
+                </p>
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 12px; background: #fff; border: 2px solid #FED7AA; border-radius: 6px; max-width: 500px;">
+                    <input type="checkbox" id="bv-delete-on-uninstall" value="yes" <?php checked( $delete_on_uninstall, 'yes' ); ?> onchange="bv_toggle_uninstall(this)" />
+                    <strong style="color: #DC2626;"><?php esc_html_e( 'Delete all plugin data when the plugin is deleted', 'businessvance-services-manager' ); ?></strong>
+                </label>
+                <p style="margin: 10px 0 0; font-size: 12px; color: #78716C;"><?php esc_html_e( '⚠️ This includes: all database tables, uploaded documents, and plugin settings. Export a backup first!', 'businessvance-services-manager' ); ?></p>
+            </div>
+
+            <!-- Danger Zone: Purge -->
+            <div style="background: #FEF2F2; border: 2px solid #FCA5A5; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                <h4 style="margin: 0 0 10px; color: #DC2626;">
+                    <span class="dashicons dashicons-warning" style="vertical-align: middle;"></span>
+                    <?php esc_html_e( 'Danger Zone: Purge All Data Now', 'businessvance-services-manager' ); ?>
+                </h4>
+                <p style="margin: 0 0 14px; color: #991B1B;"><?php esc_html_e( 'Immediately delete ALL plugin data including database tables, uploaded files, and settings. The plugin remains active but starts completely fresh. Export a backup first!', 'businessvance-services-manager' ); ?></p>
+                <button type="button" class="button" onclick="bv_purge_all_data(<?php echo esc_attr( json_encode( $nonce ) ); ?>)" style="background: #DC2626; color: #fff; border-color: #DC2626;">
+                    <span class="dashicons dashicons-trash" style="vertical-align: middle; margin-right: 5px;"></span>
+                    <?php esc_html_e( 'Purge All Data (Irreversible)', 'businessvance-services-manager' ); ?>
+                </button>
+                <span id="bv-purge-status" style="margin-left: 12px;"></span>
+            </div>
+        </div>
+
+        <script>
+        function bv_export_data(nonce) {
+            var status = document.getElementById('bv-export-status');
+            status.innerHTML = '<em><?php esc_html_e( 'Exporting...', 'businessvance-services-manager' ); ?></em>';
+            jQuery.post(ajaxurl, {
+                action: 'bv_export_data',
+                nonce: nonce
+            }, function(r) {
+                if (r.success) {
+                    var blob = new Blob([r.data.json], {type: 'application/json'});
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = url;
+                    a.download = r.data.filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    status.innerHTML = '<span style="color:#059669;">✓ <?php esc_html_e( 'Backup downloaded!', 'businessvance-services-manager' ); ?></span>';
+                } else {
+                    status.innerHTML = '<span style="color:#DC2626;"><?php esc_html_e( 'Error:', 'businessvance-services-manager' ); ?> ' + (r.data || '<?php esc_html_e( 'Export failed.', 'businessvance-services-manager' ); ?>') + '</span>';
+                }
+            }).fail(function() {
+                status.innerHTML = '<span style="color:#DC2626;"><?php esc_html_e( 'Request failed.', 'businessvance-services-manager' ); ?></span>';
+            });
+        }
+
+        function bv_import_data(nonce) {
+            var fileInput = document.getElementById('bv-import-file');
+            var status = document.getElementById('bv-import-status');
+            if (!fileInput.files.length) { alert('<?php esc_html_e( 'Please select a backup file.', 'businessvance-services-manager' ); ?>'); return; }
+            if (!confirm('<?php esc_html_e( 'This will restore data from the backup file. Continue?', 'businessvance-services-manager' ); ?>')) return;
+            status.innerHTML = '<em><?php esc_html_e( 'Importing... this may take a moment.', 'businessvance-services-manager' ); ?></em>';
+            var fd = new FormData();
+            fd.append('file', fileInput.files[0]);
+            fd.append('action', 'bv_import_data');
+            fd.append('nonce', nonce);
+            jQuery.ajax({
+                url: ajaxurl, type: 'POST', data: fd,
+                processData: false, contentType: false,
+                success: function(r) {
+                    if (r.success) {
+                        status.innerHTML = '<span style="color:#059669;">✓ ' + (r.data || '<?php esc_html_e( 'Data restored successfully!', 'businessvance-services-manager' ); ?>') + '</span>';
+                    } else {
+                        status.innerHTML = '<span style="color:#DC2626;"><?php esc_html_e( 'Error:', 'businessvance-services-manager' ); ?> ' + (r.data || '<?php esc_html_e( 'Import failed.', 'businessvance-services-manager' ); ?>') + '</span>';
+                    }
+                },
+                error: function() {
+                    status.innerHTML = '<span style="color:#DC2626;"><?php esc_html_e( 'Request failed.', 'businessvance-services-manager' ); ?></span>';
+                }
+            });
+        }
+
+        function bv_purge_all_data(nonce) {
+            if (!confirm('<?php esc_html_e( '⚠️ WARNING: This will permanently delete ALL plugin data (projects, documents, questionnaires, reports, messages, settings, uploaded files). This cannot be undone!\n\nAre you absolutely sure?', 'businessvance-services-manager' ); ?>')) return;
+            if (!confirm('<?php esc_html_e( 'FINAL CONFIRMATION: Type "DELETE" mentally and click OK to proceed.', 'businessvance-services-manager' ); ?>')) return;
+            var status = document.getElementById('bv-purge-status');
+            status.innerHTML = '<em><?php esc_html_e( 'Purging...', 'businessvance-services-manager' ); ?></em>';
+            jQuery.post(ajaxurl, {
+                action: 'bv_purge_all_data',
+                nonce: nonce
+            }, function(r) {
+                if (r.success) {
+                    status.innerHTML = '<span style="color:#059669;">✓ <?php esc_html_e( 'All data purged. Refreshing...', 'businessvance-services-manager' ); ?></span>';
+                    setTimeout(function() { location.reload(); }, 2000);
+                } else {
+                    status.innerHTML = '<span style="color:#DC2626;"><?php esc_html_e( 'Error:', 'businessvance-services-manager' ); ?> ' + (r.data || '<?php esc_html_e( 'Purge failed.', 'businessvance-services-manager' ); ?>') + '</span>';
+                }
+            }).fail(function() {
+                status.innerHTML = '<span style="color:#DC2626;"><?php esc_html_e( 'Request failed.', 'businessvance-services-manager' ); ?></span>';
+            });
+        }
+
+        function bv_toggle_uninstall(checkbox) {
+            jQuery.post(ajaxurl, {
+                action: 'bv_purge_all_data',
+                nonce: <?php echo esc_attr( json_encode( $nonce ) ); ?>,
+                toggle_uninstall: 'yes',
+                value: checkbox.checked ? 'yes' : 'no'
+            }, function(r) {
+                if (r.success) {
+                    // Saved
+                }
+            });
+        }
+        </script>
+        <?php
+    }
+
+    // =========================================================================
+    // Data AJAX Handlers
+    // =========================================================================
+
+    /**
+     * Export all plugin data as JSON
+     */
+    public function ajax_export_data() {
+        check_ajax_referer( 'bv_data_management', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Access denied' );
+
+        global $wpdb;
+        $prefix = $wpdb->prefix;
+
+        $data = array(
+            'exported_at' => current_time( 'mysql' ),
+            'plugin_version' => BV_VERSION,
+            'site_url' => site_url(),
+            'settings' => get_option( self::OPTION_KEY, array() ),
+            'tables' => array(),
+        );
+
+        // Export all BV tables
+        $bv_tables = array(
+            'bv_categories', 'bv_services', 'bv_plans', 'bv_plan_features',
+            'bv_projects', 'bv_project_services', 'bv_project_agreements',
+            'bv_project_documents', 'bv_project_reports', 'bv_project_messages',
+            'bv_project_notes', 'bv_questionnaire_templates', 'bv_questionnaire_sections',
+            'bv_questionnaire_questions', 'bv_questionnaire_responses',
+            'bv_agreement_templates', 'bv_activity_log',
+        );
+
+        foreach ( $bv_tables as $table ) {
+            $full_table = $prefix . $table;
+            // Check table exists
+            $exists = $wpdb->get_var( "SHOW TABLES LIKE '{$full_table}'" );
+            if ( $exists ) {
+                $data['tables'][ $table ] = $wpdb->get_results( "SELECT * FROM {$full_table}", ARRAY_A );
+            }
+        }
+
+        // Export file list (not file contents — too large)
+        $upload_dir = wp_upload_dir()['basedir'] . '/bv-documents';
+        $data['files'] = array();
+        if ( is_dir( $upload_dir ) ) {
+            $files = glob( $upload_dir . '/*' );
+            if ( $files ) {
+                foreach ( $files as $file ) {
+                    if ( is_file( $file ) ) {
+                        $data['files'][] = array(
+                            'name' => basename( $file ),
+                            'size' => filesize( $file ),
+                            'md5'  => md5_file( $file ),
+                        );
+                    }
+                }
+            }
+        }
+
+        $filename = 'bv-backup-' . date( 'Y-m-d-His' ) . '.json';
+
+        wp_send_json_success( array(
+            'json'     => wp_json_encode( $data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE ),
+            'filename' => $filename,
+        ) );
+    }
+
+    /**
+     * Import data from a JSON backup file
+     */
+    public function ajax_import_data() {
+        check_ajax_referer( 'bv_data_management', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Access denied' );
+
+        if ( empty( $_FILES['file'] ) ) wp_send_json_error( 'No file uploaded' );
+
+        $file = $_FILES['file'];
+        $ext = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
+        if ( $ext !== 'json' ) wp_send_json_error( 'Only JSON backup files are accepted' );
+
+        $json_content = file_get_contents( $file['tmp_name'] );
+        $data = json_decode( $json_content, true );
+        if ( ! $data || empty( $data['tables'] ) ) {
+            wp_send_json_error( 'Invalid backup file format' );
+        }
+
+        global $wpdb;
+        $prefix = $wpdb->prefix;
+        $imported = 0;
+
+        foreach ( $data['tables'] as $table_name => $rows ) {
+            $full_table = $prefix . $table_name;
+            $exists = $wpdb->get_var( "SHOW TABLES LIKE '{$full_table}'" );
+            if ( ! $exists ) continue;
+
+            if ( empty( $rows ) || ! is_array( $rows ) ) continue;
+
+            foreach ( $rows as $row ) {
+                // Remove auto-increment column for insert
+                unset( $row['id'] );
+
+                // Remove timestamp columns for insert (let DB handle them)
+                unset( $row['created_at'] );
+                unset( $row['updated_at'] );
+
+                if ( empty( $row ) ) continue;
+
+                $columns = array_keys( $row );
+                $values = array_values( $row );
+                $placeholders = implode( ',', array_fill( 0, count( $columns ), '%s' ) );
+                $column_list = implode( ',', $columns );
+
+                // Try insert, ignore on duplicate
+                $wpdb->query( $wpdb->prepare(
+                    "INSERT IGNORE INTO {$full_table} ({$column_list}) VALUES ({$placeholders})",
+                    ...$values
+                ) );
+
+                $imported++;
+            }
+        }
+
+        // Restore settings if present
+        if ( ! empty( $data['settings'] ) && is_array( $data['settings'] ) ) {
+            update_option( self::OPTION_KEY, $data['settings'] );
+        }
+
+        wp_send_json_success( "Imported {$imported} records across " . count( $data['tables'] ) . " tables." );
+    }
+
+    /**
+     * Purge all plugin data OR toggle uninstall behavior
+     */
+    public function ajax_purge_all_data() {
+        check_ajax_referer( 'bv_data_management', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Access denied' );
+
+        // Handle toggle_uninstall flag
+        if ( isset( $_POST['toggle_uninstall'] ) && $_POST['toggle_uninstall'] === 'yes' ) {
+            $value = sanitize_text_field( $_POST['value'] ?? 'no' );
+            update_option( 'bv_delete_data_on_uninstall', $value );
+            wp_send_json_success( 'Uninstall setting updated.' );
+            return;
+        }
+
+        global $wpdb;
+        $prefix = $wpdb->prefix;
+
+        // Drop all BV tables
+        $tables = array(
+            'bv_activity_log',
+            'bv_project_notes',
+            'bv_project_messages',
+            'bv_project_reports',
+            'bv_project_documents',
+            'bv_questionnaire_responses',
+            'bv_questionnaire_questions',
+            'bv_questionnaire_sections',
+            'bv_questionnaire_templates',
+            'bv_project_agreements',
+            'bv_project_services',
+            'bv_projects',
+            'bv_plan_features',
+            'bv_plans',
+            'bv_services',
+            'bv_categories',
+            'bv_agreement_templates',
+        );
+
+        foreach ( $tables as $table ) {
+            $wpdb->query( "DROP TABLE IF EXISTS {$prefix}{$table}" );
+        }
+
+        // Delete options
+        delete_option( 'bv_plugin_version' );
+        delete_option( 'bv_agreement_template' );
+        delete_option( 'bv_services_manager_db_version' );
+        delete_option( 'bv_services_manager_seeded' );
+        delete_option( 'bv_settings' );
+        delete_option( 'bv_delete_data_on_uninstall' );
+
+        // Delete uploaded files
+        $upload_dir = wp_upload_dir()['basedir'] . '/bv-documents';
+        if ( is_dir( $upload_dir ) ) {
+            $files = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator( $upload_dir, RecursiveDirectoryIterator::SKIP_DOTS ),
+                RecursiveIteratorIterator::CHILD_FIRST
+            );
+            foreach ( $files as $fileinfo ) {
+                if ( $fileinfo->isDir() ) {
+                    @rmdir( $fileinfo->getRealPath() );
+                } else {
+                    @unlink( $fileinfo->getRealPath() );
+                }
+            }
+            @rmdir( $upload_dir );
+        }
+
+        // Re-create tables (fresh start)
+        BV_Activator::activate();
+
+        wp_send_json_success( 'All data purged. Tables recreated with fresh seed data.' );
     }
 }
