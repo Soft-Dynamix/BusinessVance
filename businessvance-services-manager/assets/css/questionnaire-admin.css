@@ -1,0 +1,57 @@
+/**
+ * BusinessVance Questionnaire Admin — Styles
+ */
+
+.bv-qt-wrap { max-width: 1200px; margin-top: 20px; }
+.bv-qt-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+.bv-qt-header h1 { font-size: 23px; margin: 0; }
+.bv-qt-header p { color: #646970; margin: 4px 0 0; font-size: 13px; }
+
+/* Stats bar */
+.bv-qt-stats { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+.bv-qt-stat { background: #fff; border: 1px solid #c3c4c7; border-radius: 4px; padding: 12px 20px; text-align: center; min-width: 120px; }
+.bv-qt-stat .bv-qt-stat-num { font-size: 24px; font-weight: 700; color: #002B5C; }
+.bv-qt-stat .bv-qt-stat-label { font-size: 12px; color: #646970; }
+
+/* Table */
+.bv-qt-table { width: 100%; }
+.bv-qt-table td { vertical-align: middle; }
+
+/* Editor panel */
+.bv-qt-editor { background: #fff; border: 1px solid #c3c4c7; border-radius: 4px; padding: 20px; margin-bottom: 20px; }
+.bv-qt-editor h2 { margin: 0 0 16px; font-size: 18px; }
+.bv-qt-editor .form-table th { width: 140px; padding: 12px 10px 12px 0; font-size: 13px; }
+.bv-qt-editor .form-table td { padding: 8px 0; }
+.bv-qt-editor .form-table input[type="text"],
+.bv-qt-editor .form-table textarea { max-width: 500px; }
+
+/* Sections panel */
+.bv-qt-sections-panel { background: #fff; border: 1px solid #c3c4c7; border-radius: 4px; padding: 20px; }
+.bv-qt-sections-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.bv-qt-sections-header h3 { margin: 0; font-size: 16px; }
+
+.bv-qt-sections-list { list-style: none; margin: 0; padding: 0; }
+.bv-qt-section-item { border: 1px solid #e0e0e0; border-radius: 4px; margin-bottom: 8px; background: #fafafa; }
+
+.bv-qt-section-header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: default; flex-wrap: wrap; }
+.bv-qt-section-header strong { font-size: 14px; }
+.bv-qt-meta { font-size: 12px; color: #646970; background: #e8e8e8; padding: 2px 8px; border-radius: 10px; }
+.bv-qt-section-actions { margin-left: auto; display: flex; gap: 4px; align-items: center; }
+.bv-qt-section-actions .button { font-size: 12px; padding: 2px 8px; height: auto; line-height: 1.5; }
+
+/* Questions list */
+.bv-qt-questions-list { list-style: decimal; margin: 0; padding: 8px 16px 12px 48px; background: #fff; }
+.bv-qt-questions-list li { padding: 6px 0; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.bv-qt-questions-list li:last-child { border-bottom: none; }
+.bv-qt-q-actions { margin-left: auto; display: flex; gap: 4px; }
+.bv-qt-q-actions .button { font-size: 11px; padding: 1px 6px; height: auto; line-height: 1.5; }
+
+/* Inline form wrapper */
+#bv-qt-q-form-wrap { border: 1px solid #ccd0d4; border-radius: 4px; }
+#bv-qt-q-form-wrap h4 { margin: 0 0 12px; }
+#bv-qt-q-form-wrap p { margin: 8px 0; }
+#bv-qt-q-form-wrap label { font-weight: 600; font-size: 13px; }
+
+/* Status badges */
+.bv-qt-badge-published { background: #d4edda; color: #155724; padding: 2px 10px; border-radius: 12px; font-size: 12px; }
+.bv-qt-badge-draft { background: #e2e3e5; color: #383d41; padding: 2px 10px; border-radius: 12px; font-size: 12px; }

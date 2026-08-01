@@ -239,14 +239,30 @@ class BV_Admin {
                 </div>
             </div>
 
+            <div class="bv-dashboard-info" style="display:flex;flex-wrap:wrap;gap:12px;">
+                <h2 style="width:100%;"><?php esc_html_e( 'Quick Access', 'businessvance-services-manager' ); ?></h2>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=businessvance-settings' ) ); ?>"
+                   class="button button-secondary" style="display:inline-flex;align-items:center;gap:6px;font-size:14px;padding:8px 20px;">
+                    <span class="dashicons dashicons-admin-generic" style="font-size:18px;"></span>
+                    <?php esc_html_e( 'Settings', 'businessvance-services-manager' ); ?>
+                </a>
+                <a href="#" onclick="prompt('<?php esc_attr_e( 'Client Portal Shortcode:', 'businessvance-services-manager' ); ?>', '[businessvance_client_portal]'); return false;"
+                   class="button button-secondary" style="display:inline-flex;align-items:center;gap:6px;font-size:14px;padding:8px 20px;">
+                    <span class="dashicons dashicons-admin-users" style="font-size:18px;"></span>
+                    <?php esc_html_e( 'Client Portal', 'businessvance-services-manager' ); ?>
+                </a>
+            </div>
+
             <div class="bv-dashboard-info">
                 <h2><?php esc_html_e( 'Quick Start', 'businessvance-services-manager' ); ?></h2>
                 <ol class="bv-steps">
+                    <li><?php esc_html_e( 'Go to <strong>Settings</strong> and configure your company branding, colors, and contact info.', 'businessvance-services-manager' ); ?></li>
                     <li><?php esc_html_e( 'Add your Categories under the Categories menu.', 'businessvance-services-manager' ); ?></li>
                     <li><?php esc_html_e( 'Create your WooCommerce products (simple products for once-off, subscription products for plans).', 'businessvance-services-manager' ); ?></li>
                     <li><?php esc_html_e( 'Add your Services and link each to its WooCommerce Product ID.', 'businessvance-services-manager' ); ?></li>
                     <li><?php esc_html_e( 'Set up Subscription Plans with features and link to WooCommerce subscription products.', 'businessvance-services-manager' ); ?></li>
                     <li><?php esc_html_e( 'Create a new WordPress page and add the shortcode [businessvance_services].', 'businessvance-services-manager' ); ?></li>
+                    <li><?php esc_html_e( 'Create another page with [businessvance_client_portal] for the client portal.', 'businessvance-services-manager' ); ?></li>
                     <li><?php esc_html_e( 'Ensure Yoco payment gateway is configured in WooCommerce settings.', 'businessvance-services-manager' ); ?></li>
                 </ol>
             </div>
@@ -290,6 +306,7 @@ class BV_Admin {
                             <th style="width:100px;"><?php esc_html_e( 'Price', 'businessvance-services-manager' ); ?></th>
                             <th style="width:120px;"><?php esc_html_e( 'Category', 'businessvance-services-manager' ); ?></th>
                             <th style="width:100px;"><?php esc_html_e( 'Woo Product', 'businessvance-services-manager' ); ?></th>
+                            <th style="width:110px;"><?php esc_html_e( 'Questionnaire', 'businessvance-services-manager' ); ?></th>
                             <th style="width:60px;"><?php esc_html_e( 'Visible', 'businessvance-services-manager' ); ?></th>
                             <th style="width:60px;"><?php esc_html_e( 'Featured', 'businessvance-services-manager' ); ?></th>
                             <th style="width:120px;"><?php esc_html_e( 'Actions', 'businessvance-services-manager' ); ?></th>
@@ -334,6 +351,15 @@ class BV_Admin {
                                             </a>
                                         <?php else : ?>
                                             <em style="color:#999;"><?php esc_html_e( 'Not linked', 'businessvance-services-manager' ); ?></em>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <?php if ( $service->questionnaire_template_id ) : ?>
+                                            <a href="<?php echo esc_url( admin_url( 'admin.php?page=businessvance-questionnaires' ) ); ?>" title="<?php esc_attr_e( 'Open Questionnaire Manager', 'businessvance-services-manager' ); ?>">
+                                                📋 #<?php echo esc_html( $service->questionnaire_template_id ); ?>
+                                            </a>
+                                        <?php else : ?>
+                                            <em style="color:#999;">—</em>
                                         <?php endif; ?>
                                     </td>
                                     <td>
@@ -434,6 +460,20 @@ class BV_Admin {
                             <label for="svc-woo-product"><?php esc_html_e( 'WooCommerce Product ID', 'businessvance-services-manager' ); ?></label>
                             <input type="number" id="svc-woo-product" name="woo_product_id" value="0" min="0" class="regular-text">
                             <p class="description"><?php esc_html_e( 'Enter the WooCommerce product ID to link for Yoco payment. Leave 0 if not linked.', 'businessvance-services-manager' ); ?></p>
+                        </div>
+
+                        <div class="bv-form-group">
+                            <label for="svc-questionnaire"><?php esc_html_e( 'Questionnaire Template', 'businessvance-services-manager' ); ?></label>
+                            <select id="svc-questionnaire" name="questionnaire_template_id">
+                                <option value="0"><?php esc_html_e( '-- None --', 'businessvance-services-manager' ); ?></option>
+                                <?php
+                                global $wpdb;
+                                $qt_templates = $wpdb->get_results( "SELECT id, name FROM {$wpdb->prefix}bv_questionnaire_templates ORDER BY name ASC" );
+                                foreach ( $qt_templates as $qt ) : ?>
+                                    <option value="<?php echo esc_attr( $qt->id ); ?>"><?php echo esc_html( $qt->name ); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <p class="description"><?php esc_html_e( 'Link a questionnaire template. Clients will answer these questions in the portal.', 'businessvance-services-manager' ); ?></p>
                         </div>
 
                         <div class="bv-form-group">
@@ -816,11 +856,12 @@ class BV_Admin {
             'button_label'  => sanitize_text_field( $_POST['button_label'] ?? 'Get Started' ),
             'service_type'  => sanitize_text_field( $_POST['service_type'] ?? 'onceoff' ),
             'woo_product_id' => intval( $_POST['woo_product_id'] ?? 0 ),
+            'questionnaire_template_id' => intval( $_POST['questionnaire_template_id'] ?? 0 ),
             'category_id'   => intval( $_POST['category_id'] ?? 0 ),
             'is_visible'    => intval( $_POST['is_visible'] ?? 0 ),
             'is_featured'   => intval( $_POST['is_featured'] ?? 0 ),
         );
-        $format = array( '%s','%s','%s','%s','%s','%s','%s','%d','%d','%d','%d' );
+        $format = array( '%s','%s','%s','%s','%s','%s','%s','%d','%d','%d','%d','%d' );
 
         if ( empty( $data['name'] ) ) {
             wp_send_json_error( array( 'message' => __( 'Service name is required.', 'businessvance-services-manager' ) ) );

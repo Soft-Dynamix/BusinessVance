@@ -89,6 +89,7 @@
                 $('#bv-service-form input[name="button_label"]').val(svc.button_label);
                 $('#bv-service-form select[name="service_type"]').val(svc.service_type);
                 $('#bv-service-form input[name="woo_product_id"]').val(svc.woo_product_id);
+                $('#bv-service-form select[name="questionnaire_template_id"]').val(svc.questionnaire_template_id || 0);
                 $('#bv-service-form select[name="category_id"]').val(svc.category_id);
                 $('#bv-service-form input[name="is_visible"]').prop('checked', svc.is_visible == 1);
                 $('#bv-service-form input[name="is_featured"]').prop('checked', svc.is_featured == 1);

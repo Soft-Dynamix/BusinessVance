@@ -1,0 +1,354 @@
+/**
+ * BusinessVance Settings Page Styles
+ */
+
+.bv-settings-wrap {
+    max-width: 960px;
+    margin: 20px 0;
+}
+
+.bv-settings-header {
+    margin-bottom: 20px;
+}
+
+.bv-settings-header h1 {
+    font-size: 23px;
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.bv-settings-header h1 .dashicons {
+    color: #002B5C;
+    font-size: 24px;
+}
+
+.bv-settings-subtitle {
+    color: #646970;
+    margin: 6px 0 0 0;
+    font-size: 13px;
+}
+
+/* Navigation Tabs */
+.bv-nav-tab-wrapper {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    background: #fff;
+    border-bottom: 2px solid #002B5C;
+    padding: 0;
+    margin-bottom: 20px;
+}
+
+.bv-nav-tab-wrapper .nav-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 18px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #50575e;
+    background: #f0f0f1;
+    border: 1px solid #c3c4c7;
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+    margin: 0;
+    text-decoration: none;
+    transition: all 0.15s ease;
+}
+
+.bv-nav-tab-wrapper .nav-tab:hover {
+    background: #fff;
+    color: #002B5C;
+}
+
+.bv-nav-tab-wrapper .nav-tab-active {
+    background: #fff !important;
+    color: #002B5C !important;
+    border-bottom: 2px solid #fff;
+    margin-bottom: -2px;
+    font-weight: 600;
+}
+
+.bv-nav-tab-wrapper .nav-tab .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+/* Settings Panels */
+.bv-settings-panel {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 0 0 4px 4px;
+    padding: 20px 24px;
+    min-height: 300px;
+}
+
+/* Sections */
+.bv-settings-section {
+    margin-bottom: 30px;
+    padding-bottom: 25px;
+    border-bottom: 1px solid #f0f0f1;
+}
+
+.bv-settings-section:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.bv-settings-section h2 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1d2327;
+    margin: 0 0 8px 0;
+    padding: 0;
+}
+
+.bv-settings-section h2 + p {
+    color: #646970;
+    font-size: 13px;
+    margin: 0 0 16px 0;
+}
+
+.bv-settings-section h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #2271b1;
+    margin: 20px 0 10px 0;
+}
+
+/* Form Table Overrides */
+.bv-settings-panel .form-table {
+    margin-top: 10px;
+}
+
+.bv-settings-panel .form-table th {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1d2327;
+    padding: 14px 20px 14px 0;
+    width: 220px;
+}
+
+.bv-settings-panel .form-table td {
+    padding: 10px 0;
+}
+
+.bv-settings-panel .form-table input[type="text"],
+.bv-settings-panel .form-table input[type="tel"],
+.bv-settings-panel .form-table input[type="email"],
+.bv-settings-panel .form-table textarea {
+    max-width: 500px;
+}
+
+.bv-settings-panel .form-table .description {
+    font-size: 12px;
+    color: #646970;
+    margin: 6px 0 0 0;
+}
+
+/* Color Picker */
+.bv-color-picker {
+    width: 70px !important;
+    height: 36px;
+    border: 1px solid #8c8f94;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.wp-picker-container {
+    display: inline-block;
+    vertical-align: middle;
+}
+
+/* Toggle Switch */
+.bv-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    position: relative;
+}
+
+.bv-toggle input[type="checkbox"] {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+}
+
+.bv-toggle-slider {
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+    background: #c3c4c7;
+    border-radius: 12px;
+    position: relative;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+}
+
+.bv-toggle-slider::after {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    background: #fff;
+    border-radius: 50%;
+    top: 3px;
+    left: 3px;
+    transition: transform 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.bv-toggle input:checked + .bv-toggle-slider {
+    background: #002B5C;
+}
+
+.bv-toggle input:checked + .bv-toggle-slider::after {
+    transform: translateX(20px);
+}
+
+.bv-toggle input:focus + .bv-toggle-slider {
+    box-shadow: 0 0 0 2px #fff, 0 0 0 4px #002B5C;
+}
+
+.bv-toggle-label {
+    font-size: 13px;
+    color: #50575e;
+    user-select: none;
+}
+
+/* Image Preview */
+.bv-image-preview {
+    margin-top: 10px;
+    min-height: 20px;
+}
+
+/* Media Buttons */
+.bv-media-upload,
+.bv-media-remove {
+    vertical-align: middle;
+    margin-left: 6px;
+}
+
+/* Placeholders Info */
+.bv-placeholders-info {
+    background: #f0f0f1;
+    padding: 12px 16px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    line-height: 2;
+    color: #50575e;
+}
+
+.bv-placeholders-info code {
+    background: #fff;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    border: 1px solid #ddd;
+    color: #d63638;
+}
+
+/* Info Box */
+.bv-settings-info-box {
+    background: #f6f7f7;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 20px;
+}
+
+.bv-settings-info-box h3 {
+    color: #002B5C;
+    margin: 0 0 10px 0;
+}
+
+.bv-settings-info-box ol {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.bv-settings-info-box li {
+    font-size: 13px;
+    color: #50575e;
+}
+
+/* Footer */
+.bv-settings-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    margin-top: -2px;
+}
+
+.bv-settings-footer .button-primary {
+    background: #002B5C;
+    border-color: #001d3d;
+    padding: 6px 24px;
+    font-size: 14px;
+    height: auto;
+    line-height: 1.6;
+}
+
+.bv-settings-footer .button-primary:hover {
+    background: #003d80;
+    border-color: #002B5C;
+}
+
+.bv-settings-reset-link {
+    font-size: 13px;
+}
+
+/* Multiselect */
+.bv-multiselect {
+    min-width: 250px;
+    min-height: 80px;
+}
+
+/* Responsive */
+@media (max-width: 782px) {
+    .bv-settings-panel .form-table th {
+        display: block;
+        width: 100%;
+        padding: 0 0 8px 0;
+    }
+
+    .bv-settings-panel .form-table td {
+        padding: 8px 0;
+    }
+
+    .bv-settings-panel .form-table input[type="text"],
+    .bv-settings-panel .form-table input[type="tel"],
+    .bv-settings-panel .form-table input[type="email"],
+    .bv-settings-panel .form-table textarea,
+    .bv-multiselect {
+        max-width: 100%;
+        width: 100%;
+    }
+
+    .bv-nav-tab-wrapper {
+        flex-direction: column;
+    }
+
+    .bv-nav-tab-wrapper .nav-tab {
+        border-radius: 0;
+        margin-bottom: 1px;
+    }
+
+    .bv-settings-footer {
+        flex-direction: column;
+        gap: 10px;
+        text-align: center;
+    }
+}
