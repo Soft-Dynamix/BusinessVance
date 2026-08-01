@@ -496,3 +496,75 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* ============================================
+   WooCommerce Product Select
+   ============================================ */
+
+.bv-woo-select-wrap {
+    position: relative;
+}
+
+.bv-woo-search {
+    width: 100%;
+    padding: 8px 12px;
+    margin-bottom: 4px;
+    border: 1px solid #8c8f94;
+    border-radius: 4px;
+    font-size: 13px;
+    box-sizing: border-box;
+    background: #fff;
+}
+
+.bv-woo-search:focus {
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #2271b1;
+    outline: none;
+}
+
+.bv-woo-product-select {
+    width: 100%;
+    min-height: 120px;
+    max-height: 250px;
+    padding: 4px 8px;
+    border: 1px solid #8c8f94;
+    border-radius: 4px;
+    font-size: 13px;
+    box-sizing: border-box;
+    background: #fff;
+}
+
+.bv-woo-product-select:focus {
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #2271b1;
+    outline: none;
+}
+
+.bv-woo-product-select optgroup {
+    font-weight: 600;
+    color: #1d2327;
+    font-style: normal;
+    padding: 4px 0;
+}
+
+.bv-woo-product-select optgroup option {
+    font-weight: 400;
+    color: #50575e;
+    padding: 2px 8px;
+}
+
+.bv-woo-product-select option[value="0"] {
+    font-weight: 600;
+    color: #1d2327;
+}
+
+.bv-woo-product-link {
+    color: #2271b1;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.bv-woo-product-link:hover {
+    color: #135e96;
+    text-decoration: underline;
+}

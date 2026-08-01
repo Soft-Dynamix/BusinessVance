@@ -35,6 +35,9 @@
         $('#' + formId + ' input[name="id"]').val('');
         // Reset features list
         $('#bv-features-list').empty();
+        // Reset WooCommerce product selects
+        $('.bv-woo-product-select').val(0);
+        $('.bv-woo-search').val('');
     }
 
     // Close modal on overlay click or X button
@@ -88,7 +91,7 @@
                 $('#bv-service-form select[name="icon"]').val(svc.icon);
                 $('#bv-service-form input[name="button_label"]').val(svc.button_label);
                 $('#bv-service-form select[name="service_type"]').val(svc.service_type);
-                $('#bv-service-form input[name="woo_product_id"]').val(svc.woo_product_id);
+                $('#bv-service-form select[name="woo_product_id"]').val(svc.woo_product_id || 0);
                 $('#bv-service-form select[name="questionnaire_template_id"]').val(svc.questionnaire_template_id || 0);
                 $('#bv-service-form select[name="category_id"]').val(svc.category_id);
                 $('#bv-service-form input[name="is_visible"]').prop('checked', svc.is_visible == 1);
@@ -182,7 +185,7 @@
                 $('#bv-plan-form input[name="price"]').val(plan.price);
                 $('#bv-plan-form input[name="color"]').val(plan.color);
                 $('#bv-plan-form input[name="button_label"]').val(plan.button_label);
-                $('#bv-plan-form input[name="woo_product_id"]').val(plan.woo_product_id);
+                $('#bv-plan-form select[name="woo_product_id"]').val(plan.woo_product_id || 0);
                 $('#bv-plan-form select[name="category_id"]').val(plan.category_id);
                 $('#bv-plan-form input[name="is_visible"]').prop('checked', plan.is_visible == 1);
                 $('#bv-plan-form input[name="is_featured"]').prop('checked', plan.is_featured == 1);
@@ -435,5 +438,51 @@
     // Register the AJAX handler in PHP if needed, or use inline data
     // For simplicity, plan edit fetches data from the table row and enriches with features
     // The full implementation adds a 'bv_get_plan' action to the admin class
+
+    /* ============================================
+       WOOCOMMERCE PRODUCT SEARCHABLE SELECT
+       ============================================ */
+
+    // Search filtering for WC product dropdowns
+    $(document).on('input', '.bv-woo-search', function() {
+        var $search = $(this);
+        var $select = $search.next('.bv-woo-product-select');
+        var term = $search.val().toLowerCase();
+        
+        $select.find('option').each(function() {
+            var $option = $(this);
+            var text = $option.text().toLowerCase();
+            var value = $option.val();
+            
+            if (value === '0') {
+                // Always show "None" option
+                $option.show();
+                return;
+            }
+            
+            if (term === '') {
+                $option.show();
+            } else {
+                $option.toggle(text.indexOf(term) !== -1);
+            }
+        });
+        
+        // Auto-select first visible option if only one match (excluding "None")
+        var visibleOptions = $select.find('option:visible:not([value="0"])');
+        if (visibleOptions.length === 1) {
+            $select.val(visibleOptions.val());
+        }
+    });
+
+    // When select changes, clear search
+    $(document).on('change', '.bv-woo-product-select', function() {
+        var $select = $(this);
+        var $search = $select.prev('.bv-woo-search');
+        var selectedOption = $select.find('option:selected');
+        
+        if (selectedOption.val() !== '0') {
+            $search.val('');
+        }
+    });
 
 })(jQuery);

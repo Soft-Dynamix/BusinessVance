@@ -292,4 +292,135 @@ class BV_WooCommerce {
 
         echo '</div>';
     }
+
+    /**
+     * Get all WooCommerce products as a keyed array for dropdowns.
+     *
+     * @param string $product_type Optional. Filter by product type: 'simple', 'variable', 'subscription', 'course', or 'all'. Default 'all'.
+     * @return array Array of [ product_id => 'Product Name (#ID) - R Price - Type' ]
+     */
+    public static function get_woo_products( $product_type = 'all' ) {
+        if ( ! self::is_active() ) {
+            return array();
+        }
+
+        $args = array(
+            'status'   => 'publish',
+            'limit'    => -1,
+            'orderby'  => 'title',
+            'order'    => 'ASC',
+            'return'   => 'objects',
+        );
+
+        // Filter by product type if needed
+        if ( 'all' !== $product_type ) {
+            $args['type'] = $product_type;
+        }
+
+        /** @var WC_Product[] $products */
+        $products = wc_get_products( $args );
+        $result   = array();
+
+        foreach ( $products as $product ) {
+            $id        = $product->get_id();
+            $name      = $product->get_name();
+            $type      = $product->get_type();
+            $price     = $product->get_price_html();
+            $sku       = $product->get_sku();
+            $stock_qty = $product->get_stock_quantity();
+            $status    = $product->get_stock_status();
+
+            // Build label: Product Name (#ID) [SKU]
+            $label = $name . ' (#' . $id . ')';
+            if ( $sku ) {
+                $label .= ' [' . $sku . ']';
+            }
+
+            // Append price
+            if ( $price && ! empty( strip_tags( $price ) ) ) {
+                $label .= ' — ' . strip_tags( $price );
+            }
+
+            // Append type badge
+            $type_label = ucfirst( str_replace( '_', ' ', $type ) );
+            if ( self::is_tutor_lms_course( $id ) ) {
+                $type_label = '🎓 Course';
+            }
+            $label .= ' — ' . $type_label;
+
+            // Stock indicator
+            if ( 'outofstock' === $status ) {
+                $label .= ' ⚠ Out of stock';
+            } elseif ( $stock_qty !== null && $stock_qty <= 5 ) {
+                $label .= ' ⚠ Low stock (' . $stock_qty . ')';
+            }
+
+            $result[ $id ] = $label;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Search WooCommerce products by keyword for AJAX dropdowns.
+     *
+     * @param string $search   Search term.
+     * @param string $product_type Optional. Filter by product type. Default 'all'.
+     * @return array Array of [ id, text, price, type, sku, status ]
+     */
+    public static function search_woo_products( $search = '', $product_type = 'all' ) {
+        if ( ! self::is_active() ) {
+            return array();
+        }
+
+        $args = array(
+            'status'  => 'publish',
+            'limit'   => 50,
+            'orderby' => 'title',
+            'order'   => 'ASC',
+            'return'  => 'objects',
+        );
+
+        if ( ! empty( $search ) ) {
+            $args['s'] = $search;
+        }
+
+        if ( 'all' !== $product_type ) {
+            $args['type'] = $product_type;
+        }
+
+        /** @var WC_Product[] $products */
+        $products = wc_get_products( $args );
+        $results = array();
+
+        foreach ( $products as $product ) {
+            $id        = $product->get_id();
+            $name      = $product->get_name();
+            $type      = $product->get_type();
+            $price     = $product->get_price_html();
+            $sku       = $product->get_sku();
+            $status    = $product->get_stock_status();
+
+            $type_label = ucfirst( str_replace( '_', ' ', $type ) );
+            if ( self::is_tutor_lms_course( $id ) ) {
+                $type_label = 'Course';
+            }
+
+            $text = $name . ' (#' . $id . ')';
+            if ( $sku ) {
+                $text .= ' — SKU: ' . $sku;
+            }
+
+            $results[] = array(
+                'id'     => $id,
+                'text'   => $text,
+                'price'  => $price ? strip_tags( $price ) : '',
+                'type'   => $type_label,
+                'sku'    => $sku,
+                'status' => $status,
+            );
+        }
+
+        return $results;
+    }
 }

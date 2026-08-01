@@ -346,8 +346,18 @@ class BV_Admin {
                                     </td>
                                     <td>
                                         <?php if ( $service->woo_product_id ) : ?>
-                                            <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $service->woo_product_id . '&action=edit' ) ); ?>" target="_blank">
-                                                #<?php echo esc_html( $service->woo_product_id ); ?>
+                                            <?php 
+                                            $woo_product = function_exists( 'wc_get_product' ) ? wc_get_product( $service->woo_product_id ) : null;
+                                            $woo_name = $woo_product ? $woo_product->get_name() : '';
+                                            ?>
+                                            <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $service->woo_product_id . '&action=edit' ) ); ?>" target="_blank" title="<?php esc_attr_e( 'Edit product in WooCommerce', 'businessvance-services-manager' ); ?>">
+                                                <?php if ( $woo_name ) : ?>
+                                                    <span class="bv-woo-product-link"><?php echo esc_html( $woo_name ); ?></span>
+                                                    <small style="color:#999;display:block;">#<?php echo esc_html( $service->woo_product_id ); ?></small>
+                                                <?php else : ?>
+                                                    #<?php echo esc_html( $service->woo_product_id ); ?>
+                                                    <small style="color:#d63638;display:block;"><?php esc_html_e( 'Product not found', 'businessvance-services-manager' ); ?></small>
+                                                <?php endif; ?>
                                             </a>
                                         <?php else : ?>
                                             <em style="color:#999;"><?php esc_html_e( 'Not linked', 'businessvance-services-manager' ); ?></em>
@@ -456,10 +466,80 @@ class BV_Admin {
                             </select>
                         </div>
 
-                        <div class="bv-form-group">
-                            <label for="svc-woo-product"><?php esc_html_e( 'WooCommerce Product ID', 'businessvance-services-manager' ); ?></label>
-                            <input type="number" id="svc-woo-product" name="woo_product_id" value="0" min="0" class="regular-text">
-                            <p class="description"><?php esc_html_e( 'Enter the WooCommerce product ID to link for Yoco payment. Leave 0 if not linked.', 'businessvance-services-manager' ); ?></p>
+                        <div class="bv-form-group bv-form-full">
+                            <label for="svc-woo-product"><?php esc_html_e( 'WooCommerce Product', 'businessvance-services-manager' ); ?></label>
+                            <?php if ( BV_WooCommerce::is_active() ) : ?>
+                                <?php 
+                                $svc_wc_products = BV_WooCommerce::get_woo_products();
+                                $svc_simple_products = array();
+                                $svc_variable_products = array();
+                                $svc_subscription_products = array();
+                                $svc_course_products = array();
+                                $svc_other_products = array();
+                                
+                                foreach ( $svc_wc_products as $pid => $plabel ) {
+                                    $product = wc_get_product( $pid );
+                                    if ( ! $product ) continue;
+                                    $type = $product->get_type();
+                                    if ( BV_WooCommerce::is_tutor_lms_course( $pid ) ) {
+                                        $svc_course_products[$pid] = $plabel;
+                                    } elseif ( $type === 'simple' ) {
+                                        $svc_simple_products[$pid] = $plabel;
+                                    } elseif ( $type === 'variable' || $type === 'variation' ) {
+                                        $svc_variable_products[$pid] = $plabel;
+                                    } elseif ( $type === 'subscription' || $type === 'variable-subscription' || $type === 'simple-subscription' ) {
+                                        $svc_subscription_products[$pid] = $plabel;
+                                    } else {
+                                        $svc_other_products[$pid] = $plabel;
+                                    }
+                                }
+                                ?>
+                                <div class="bv-woo-select-wrap">
+                                    <input type="text" class="bv-woo-search" placeholder="<?php esc_attr_e( 'Search products...', 'businessvance-services-manager' ); ?>">
+                                    <select id="svc-woo-product" name="woo_product_id" class="bv-woo-product-select regular-text">
+                                        <option value="0"><?php esc_html_e( '-- None (Not Linked) --', 'businessvance-services-manager' ); ?></option>
+                                        <?php if ( ! empty( $svc_simple_products ) ) : ?>
+                                            <optgroup label="<?php esc_attr_e( 'Simple Products', 'businessvance-services-manager' ); ?>">
+                                                <?php foreach ( $svc_simple_products as $pid => $plabel ) : ?>
+                                                    <option value="<?php echo esc_attr( $pid ); ?>"><?php echo esc_html( $plabel ); ?></option>
+                                                <?php endforeach; ?>
+                                            </optgroup>
+                                        <?php endif; ?>
+                                        <?php if ( ! empty( $svc_variable_products ) ) : ?>
+                                            <optgroup label="<?php esc_attr_e( 'Variable Products', 'businessvance-services-manager' ); ?>">
+                                                <?php foreach ( $svc_variable_products as $pid => $plabel ) : ?>
+                                                    <option value="<?php echo esc_attr( $pid ); ?>"><?php echo esc_html( $plabel ); ?></option>
+                                                <?php endforeach; ?>
+                                            </optgroup>
+                                        <?php endif; ?>
+                                        <?php if ( ! empty( $svc_subscription_products ) ) : ?>
+                                            <optgroup label="<?php esc_attr_e( 'Subscription Products', 'businessvance-services-manager' ); ?>">
+                                                <?php foreach ( $svc_subscription_products as $pid => $plabel ) : ?>
+                                                    <option value="<?php echo esc_attr( $pid ); ?>"><?php echo esc_html( $plabel ); ?></option>
+                                                <?php endforeach; ?>
+                                            </optgroup>
+                                        <?php endif; ?>
+                                        <?php if ( ! empty( $svc_course_products ) ) : ?>
+                                            <optgroup label="🎓 <?php esc_attr_e( 'Tutor LMS Courses', 'businessvance-services-manager' ); ?>">
+                                                <?php foreach ( $svc_course_products as $pid => $plabel ) : ?>
+                                                    <option value="<?php echo esc_attr( $pid ); ?>"><?php echo esc_html( $plabel ); ?></option>
+                                                <?php endforeach; ?>
+                                            </optgroup>
+                                        <?php endif; ?>
+                                        <?php if ( ! empty( $svc_other_products ) ) : ?>
+                                            <optgroup label="<?php esc_attr_e( 'Other Products', 'businessvance-services-manager' ); ?>">
+                                                <?php foreach ( $svc_other_products as $pid => $plabel ) : ?>
+                                                    <option value="<?php echo esc_attr( $pid ); ?>"><?php echo esc_html( $plabel ); ?></option>
+                                                <?php endforeach; ?>
+                                            </optgroup>
+                                        <?php endif; ?>
+                                    </select>
+                                    <p class="description"><?php echo esc_html( sprintf( __( '%d WooCommerce products found. Select one to link this service for payment processing.', 'businessvance-services-manager' ), count( $svc_wc_products ) ) ); ?></p>
+                                </div>
+                            <?php else : ?>
+                                <input type="number" id="svc-woo-product" name="woo_product_id" value="0" min="0" class="regular-text">
+                                <p class="description" style="color:#d63638;"><?php esc_html_e( 'WooCommerce is not active. Enter product ID manually.', 'businessvance-services-manager' ); ?></p>
+                            <?php endif; ?>
                         </div>
 
                         <div class="bv-form-group">
@@ -570,8 +650,18 @@ class BV_Admin {
                                     <td><span class="bv-color-dot" style="background-color:<?php echo esc_attr( $plan->color ); ?>"></span></td>
                                     <td>
                                         <?php if ( $plan->woo_product_id ) : ?>
-                                            <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $plan->woo_product_id . '&action=edit' ) ); ?>" target="_blank">
-                                                #<?php echo esc_html( $plan->woo_product_id ); ?>
+                                            <?php 
+                                            $plan_woo_product = function_exists( 'wc_get_product' ) ? wc_get_product( $plan->woo_product_id ) : null;
+                                            $plan_woo_name = $plan_woo_product ? $plan_woo_product->get_name() : '';
+                                            ?>
+                                            <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $plan->woo_product_id . '&action=edit' ) ); ?>" target="_blank" title="<?php esc_attr_e( 'Edit product in WooCommerce', 'businessvance-services-manager' ); ?>">
+                                                <?php if ( $plan_woo_name ) : ?>
+                                                    <span class="bv-woo-product-link"><?php echo esc_html( $plan_woo_name ); ?></span>
+                                                    <small style="color:#999;display:block;">#<?php echo esc_html( $plan->woo_product_id ); ?></small>
+                                                <?php else : ?>
+                                                    #<?php echo esc_html( $plan->woo_product_id ); ?>
+                                                    <small style="color:#d63638;display:block;"><?php esc_html_e( 'Product not found', 'businessvance-services-manager' ); ?></small>
+                                                <?php endif; ?>
                                             </a>
                                         <?php else : ?>
                                             <em style="color:#999;"><?php esc_html_e( 'Not linked', 'businessvance-services-manager' ); ?></em>
@@ -653,10 +743,80 @@ class BV_Admin {
                             </select>
                         </div>
 
-                        <div class="bv-form-group">
-                            <label for="plan-woo-product"><?php esc_html_e( 'WooCommerce Product ID', 'businessvance-services-manager' ); ?></label>
-                            <input type="number" id="plan-woo-product" name="woo_product_id" value="0" min="0" class="regular-text">
-                            <p class="description"><?php esc_html_e( 'Enter the WooCommerce subscription product ID for Yoco payment.', 'businessvance-services-manager' ); ?></p>
+                        <div class="bv-form-group bv-form-full">
+                            <label for="plan-woo-product"><?php esc_html_e( 'WooCommerce Product', 'businessvance-services-manager' ); ?></label>
+                            <?php if ( BV_WooCommerce::is_active() ) : ?>
+                                <?php 
+                                $plan_wc_products = BV_WooCommerce::get_woo_products();
+                                $plan_simple_products = array();
+                                $plan_variable_products = array();
+                                $plan_subscription_products = array();
+                                $plan_course_products = array();
+                                $plan_other_products = array();
+                                
+                                foreach ( $plan_wc_products as $pid => $plabel ) {
+                                    $product = wc_get_product( $pid );
+                                    if ( ! $product ) continue;
+                                    $type = $product->get_type();
+                                    if ( BV_WooCommerce::is_tutor_lms_course( $pid ) ) {
+                                        $plan_course_products[$pid] = $plabel;
+                                    } elseif ( $type === 'simple' ) {
+                                        $plan_simple_products[$pid] = $plabel;
+                                    } elseif ( $type === 'variable' || $type === 'variation' ) {
+                                        $plan_variable_products[$pid] = $plabel;
+                                    } elseif ( $type === 'subscription' || $type === 'variable-subscription' || $type === 'simple-subscription' ) {
+                                        $plan_subscription_products[$pid] = $plabel;
+                                    } else {
+                                        $plan_other_products[$pid] = $plabel;
+                                    }
+                                }
+                                ?>
+                                <div class="bv-woo-select-wrap">
+                                    <input type="text" class="bv-woo-search" placeholder="<?php esc_attr_e( 'Search products...', 'businessvance-services-manager' ); ?>">
+                                    <select id="plan-woo-product" name="woo_product_id" class="bv-woo-product-select regular-text">
+                                        <option value="0"><?php esc_html_e( '-- None (Not Linked) --', 'businessvance-services-manager' ); ?></option>
+                                        <?php if ( ! empty( $plan_simple_products ) ) : ?>
+                                            <optgroup label="<?php esc_attr_e( 'Simple Products', 'businessvance-services-manager' ); ?>">
+                                                <?php foreach ( $plan_simple_products as $pid => $plabel ) : ?>
+                                                    <option value="<?php echo esc_attr( $pid ); ?>"><?php echo esc_html( $plabel ); ?></option>
+                                                <?php endforeach; ?>
+                                            </optgroup>
+                                        <?php endif; ?>
+                                        <?php if ( ! empty( $plan_variable_products ) ) : ?>
+                                            <optgroup label="<?php esc_attr_e( 'Variable Products', 'businessvance-services-manager' ); ?>">
+                                                <?php foreach ( $plan_variable_products as $pid => $plabel ) : ?>
+                                                    <option value="<?php echo esc_attr( $pid ); ?>"><?php echo esc_html( $plabel ); ?></option>
+                                                <?php endforeach; ?>
+                                            </optgroup>
+                                        <?php endif; ?>
+                                        <?php if ( ! empty( $plan_subscription_products ) ) : ?>
+                                            <optgroup label="<?php esc_attr_e( 'Subscription Products', 'businessvance-services-manager' ); ?>">
+                                                <?php foreach ( $plan_subscription_products as $pid => $plabel ) : ?>
+                                                    <option value="<?php echo esc_attr( $pid ); ?>"><?php echo esc_html( $plabel ); ?></option>
+                                                <?php endforeach; ?>
+                                            </optgroup>
+                                        <?php endif; ?>
+                                        <?php if ( ! empty( $plan_course_products ) ) : ?>
+                                            <optgroup label="🎓 <?php esc_attr_e( 'Tutor LMS Courses', 'businessvance-services-manager' ); ?>">
+                                                <?php foreach ( $plan_course_products as $pid => $plabel ) : ?>
+                                                    <option value="<?php echo esc_attr( $pid ); ?>"><?php echo esc_html( $plabel ); ?></option>
+                                                <?php endforeach; ?>
+                                            </optgroup>
+                                        <?php endif; ?>
+                                        <?php if ( ! empty( $plan_other_products ) ) : ?>
+                                            <optgroup label="<?php esc_attr_e( 'Other Products', 'businessvance-services-manager' ); ?>">
+                                                <?php foreach ( $plan_other_products as $pid => $plabel ) : ?>
+                                                    <option value="<?php echo esc_attr( $pid ); ?>"><?php echo esc_html( $plabel ); ?></option>
+                                                <?php endforeach; ?>
+                                            </optgroup>
+                                        <?php endif; ?>
+                                    </select>
+                                    <p class="description"><?php echo esc_html( sprintf( __( '%d WooCommerce products found. Select one to link this plan for subscription payment.', 'businessvance-services-manager' ), count( $plan_wc_products ) ) ); ?></p>
+                                </div>
+                            <?php else : ?>
+                                <input type="number" id="plan-woo-product" name="woo_product_id" value="0" min="0" class="regular-text">
+                                <p class="description" style="color:#d63638;"><?php esc_html_e( 'WooCommerce is not active. Enter product ID manually.', 'businessvance-services-manager' ); ?></p>
+                            <?php endif; ?>
                         </div>
 
                         <div class="bv-form-group">
