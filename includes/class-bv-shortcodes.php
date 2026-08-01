@@ -119,6 +119,17 @@ class BV_Shortcodes {
                 array(),
                 BV_VERSION
             );
+
+            // Dynamic CSS from settings
+            $settings = BV_Settings::get_settings();
+            $dynamic_css = ':root{--bv-primary:' . esc_attr( $settings['primary_color'] ) . ';--bv-secondary:' . esc_attr( $settings['secondary_color'] ) . ';--bv-accent:' . esc_attr( $settings['accent_color'] ) . ';}';
+            if ( $settings['services_enable_animations'] !== 'yes' ) {
+                $dynamic_css .= '.bv-animate{opacity:1!important;transform:none!important;}';
+            }
+            if ( $settings['services_layout_style'] === 'cards' ) {
+                $dynamic_css .= '.bv-desktop-only{display:none!important;}.bv-mobile-only{display:block!important;}';
+            }
+            wp_add_inline_style( 'bv-frontend-css', $dynamic_css );
         }
     }
 
@@ -150,11 +161,24 @@ class BV_Shortcodes {
      */
     public function render_full_page( $atts ) {
         $atts = shortcode_atts( array(), $atts, 'businessvance_services' );
+        $settings = BV_Settings::get_settings();
 
         ob_start();
         echo $this->render_header();
+
+        // Section header for services
+        if ( $settings['services_show_header'] === 'yes' ) {
+            echo '<div class="bv-services-section"><div class="bv-section-header">';
+            echo '<div class="bv-section-banner">' . esc_html( $settings['services_page_title'] ) . '</div>';
+            echo '</div></div>';
+        }
+
         echo $this->render_services_section( $atts );
-        echo $this->render_plans_section( $atts );
+
+        if ( $settings['services_show_plans'] === 'yes' ) {
+            echo $this->render_plans_section( $atts );
+        }
+
         echo $this->render_footer();
         return ob_get_clean();
     }
@@ -163,26 +187,47 @@ class BV_Shortcodes {
      * Render page header
      */
     private function render_header() {
+        $settings = BV_Settings::get_settings();
+
+        // Check if header should be shown
+        if ( $settings['services_show_header'] !== 'yes' ) {
+            return '<div class="bv-page-wrapper">';
+        }
+
+        $company_name    = esc_html( $settings['company_name'] );
+        $company_tagline = esc_html( strtoupper( $settings['company_tagline'] ) );
+        $page_subtitle   = esc_html( $settings['services_page_subtitle'] );
+        $header_style    = $settings['services_header_style'];
+        $logo_url        = esc_url( $settings['logo_url'] );
+
         ob_start();
         ?>
         <div class="bv-page-wrapper">
-            <header class="bv-header">
+            <header class="bv-header bv-header-<?php echo esc_attr( $header_style ); ?>">
                 <div class="bv-header-inner">
+                    <?php if ( $header_style === 'navy' ) : ?>
                     <div class="bv-header-stars">
                         <?php echo $this->get_icon_svg( 'star', 18 ); ?>
                         <?php echo $this->get_icon_svg( 'star', 18 ); ?>
                         <?php echo $this->get_icon_svg( 'star', 18 ); ?>
                     </div>
+                    <?php endif; ?>
                     <div class="bv-header-brand">
                         <div class="bv-shield-logo">
-                            <?php echo $this->get_icon_svg( 'shield', 36 ); ?>
+                            <?php if ( $logo_url ) : ?>
+                                <img src="<?php echo $logo_url; ?>" alt="<?php echo $company_name; ?>" style="width:48px;height:48px;border-radius:50%;object-fit:cover;">
+                            <?php else : ?>
+                                <?php echo $this->get_icon_svg( 'shield', 36 ); ?>
+                            <?php endif; ?>
                         </div>
                         <div class="bv-brand-text">
-                            <h1 class="bv-brand-name">BUSINESSVANCE</h1>
-                            <p class="bv-brand-tagline">INSIGHT. STRATEGY. SUCCESS.</p>
+                            <h1 class="bv-brand-name"><?php echo $company_name; ?></h1>
+                            <p class="bv-brand-tagline"><?php echo $company_tagline; ?></p>
                         </div>
                     </div>
-                    <p class="bv-brand-description">Professional business reports and advisory services to help you make confident, informed decisions.</p>
+                    <?php if ( $page_subtitle ) : ?>
+                    <p class="bv-brand-description"><?php echo $page_subtitle; ?></p>
+                    <?php endif; ?>
                 </div>
             </header>
         <?php
@@ -193,10 +238,20 @@ class BV_Shortcodes {
      * Render page footer
      */
     private function render_footer() {
+        $settings = BV_Settings::get_settings();
+        $company_name    = esc_html( $settings['company_name'] );
+        $phone           = esc_html( $settings['phone_number'] );
+        $email           = esc_html( $settings['email_address'] );
+        $address         = esc_html( $settings['physical_address'] );
+        $website         = home_url( '/' );
+        $show_badges     = $settings['services_show_trust_badges'] === 'yes';
+        $custom_footer   = $settings['services_footer_text'];
+
         ob_start();
         ?>
             <footer class="bv-footer">
                 <div class="bv-footer-inner">
+                    <?php if ( $show_badges ) : ?>
                     <div class="bv-trust-badges">
                         <div class="bv-trust-badge">
                             <?php echo $this->get_icon_svg( 'shield-check', 20 ); ?>
@@ -215,12 +270,21 @@ class BV_Shortcodes {
                             <span>ACTIONABLE RECOMMENDATIONS</span>
                         </div>
                     </div>
+                    <?php endif; ?>
                     <div class="bv-footer-contact">
-                        <p><strong>BUSINESSVANCE CONSULTING</strong></p>
-                        <p>www.studyvance.co.za &nbsp;|&nbsp; 082 377 7490 &nbsp;|&nbsp; info@businessvance.co.za</p>
+                        <?php if ( $custom_footer ) : ?>
+                            <p><?php echo wp_kses_post( nl2br( $custom_footer ) ); ?></p>
+                        <?php else : ?>
+                            <p><strong><?php echo $company_name; ?></strong></p>
+                            <p>
+                                <?php echo esc_html( $website ); ?>
+                                <?php if ( $phone ) : ?>&nbsp;|&nbsp; <?php echo $phone; ?><?php endif; ?>
+                                <?php if ( $email ) : ?>&nbsp;|&nbsp; <?php echo $email; ?><?php endif; ?>
+                            </p>
+                        <?php endif; ?>
                     </div>
                     <div class="bv-footer-copyright">
-                        <p>&copy; <?php echo esc_html( date( 'Y' ) ); ?> BusinessVance Consulting. All rights reserved.</p>
+                        <p>&copy; <?php echo esc_html( date( 'Y' ) ); ?> <?php echo $company_name; ?>. All rights reserved.</p>
                     </div>
                 </div>
             </footer>

@@ -568,3 +568,99 @@
     color: #135e96;
     text-decoration: underline;
 }
+
+/* ============================================
+   Icon Picker Grid
+   ============================================ */
+.bv-icon-picker-wrap { position: relative; }
+.bv-icon-search-input {
+    width: 100%;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    border: 1px solid #8c8f94;
+    border-radius: 4px;
+    font-size: 13px;
+    box-sizing: border-box;
+    background: #fff;
+}
+.bv-icon-search-input:focus {
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #2271b1;
+    outline: none;
+}
+.bv-icon-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    gap: 4px;
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid #8c8f94;
+    border-radius: 6px;
+    padding: 6px;
+    background: #f9f9f9;
+    margin-bottom: 12px;
+}
+.bv-icon-pick-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 8px 4px 6px;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    color: #50575e;
+}
+.bv-icon-pick-btn:hover {
+    border-color: #2271b1;
+    color: #2271b1;
+    background: #f0f7ff;
+    transform: translateY(-1px);
+}
+.bv-icon-pick-btn.selected {
+    border-color: #2271b1;
+    background: #e6f0fa;
+    color: #2271b1;
+    box-shadow: 0 0 0 2px rgba(34,113,177,0.2);
+}
+.bv-icon-pick-btn svg {
+    flex-shrink: 0;
+}
+.bv-icon-pick-label {
+    font-size: 9px;
+    text-transform: capitalize;
+    text-align: center;
+    line-height: 1.1;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.bv-icon-picker-selected {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: #fff;
+    border: 1px solid #8c8f94;
+    border-radius: 6px;
+}
+.bv-icon-picker-selected label {
+    font-size: 12px;
+    color: #646970;
+    font-weight: 500;
+    margin: 0;
+}
+.bv-icon-preview-box {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #002B5C;
+    color: #D4AF37;
+    border-radius: 6px;
+    font-size: 20px;
+}

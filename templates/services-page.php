@@ -15,10 +15,10 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-$symbol      = esc_html( $settings['currency_symbol'] );
-$pos         = $settings['currency_position'];
-$show_cats   = (int) $settings['show_categories'] === 1 && ! empty( $categories );
-$animations  = (int) $settings['enable_animations'] === 1;
+$show_cats   = $settings['services_show_categories'] === 'yes' && ! empty( $categories );
+$animations  = $settings['services_enable_animations'] === 'yes';
+$symbol      = esc_html( $settings['services_currency_symbol'] );
+$pos         = $settings['services_currency_position'];
 
 /**
  * Format a price with the configured currency symbol.
@@ -39,7 +39,7 @@ function bv_format_price( $price, $symbol, $pos ) {
 
     <!-- Page Title -->
     <div class="bv-page-header">
-        <h2 class="bv-title"><?php echo esc_html( $settings['page_title'] ); ?></h2>
+        <h2 class="bv-title"><?php echo esc_html( $settings['services_page_title'] ); ?></h2>
     </div>
 
     <!-- Category Filter -->

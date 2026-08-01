@@ -67,6 +67,43 @@ class BV_Settings {
         'wc_status_triggers'        => 'completed',
         'wc_product_category'       => '',
         'wc_link_services'          => 'yes',
+
+        // Services Page Appearance
+        'services_page_title'          => 'Our Services',
+        'services_page_subtitle'       => 'Professional business reports and advisory services to help you make confident, informed decisions.',
+        'services_header_style'         => 'navy',           // navy, gradient, minimal
+        'services_show_header'         => 'yes',
+        'services_show_categories'     => 'yes',
+        'services_show_plans'          => 'yes',
+        'services_currency_symbol'      => 'R',
+        'services_currency_position'   => 'before',
+        'services_enable_animations'   => 'yes',
+        'services_layout_style'        => 'table',          // table, cards
+        'services_button_style'        => 'primary',       // primary, gold, teal
+        'services_footer_text'         => '',
+        'services_show_trust_badges'   => 'yes',
+
+        // Consultant Dashboard
+        'cd_enabled'                   => 'yes',
+        'cd_welcome_title'             => 'Consultant Dashboard',
+        'cd_show_activity_log'         => 'yes',
+        'cd_show_messages'             => 'yes',
+        'cd_show_notes'                => 'yes',
+        'cd_default_status'            => 'awaiting-agreement',
+        'cd_items_per_page'            => '20',
+        'cd_auto_notify_consultant'   => 'yes',
+
+        // Client Portal Appearance
+        'portal_header_color'          => '#002B5C',
+        'portal_accent_color'          => '#2A9D8F',
+        'portal_button_color'          => '#D4AF37',
+        'portal_sidebar_color'         => '#f8f9fb',
+        'portal_card_border_color'     => '#e5e7eb',
+        'portal_tab_style'             => 'underline',      // underline, pill
+        'portal_show_overview'         => 'yes',
+        'portal_show_questionnaire'    => 'yes',
+        'portal_show_messages'         => 'yes',
+        'portal_show_reports'          => 'yes',
     );
 
     /**
@@ -235,6 +272,10 @@ class BV_Settings {
                        class="nav-tab <?php echo $tab === 'portal' ? 'nav-tab-active' : ''; ?>">
                         <span class="dashicons dashicons-admin-users"></span> <?php esc_html_e( 'Portal Settings', 'businessvance-services-manager' ); ?>
                     </a>
+                    <a href="<?php echo esc_url( add_query_arg( 'tab', 'appearance', $page_url ) ); ?>"
+                       class="nav-tab <?php echo $tab === 'appearance' ? 'nav-tab-active' : ''; ?>">
+                        <span class="dashicons dashicons-art"></span> <?php esc_html_e( 'Appearance', 'businessvance-services-manager' ); ?>
+                    </a>
                     <a href="<?php echo esc_url( add_query_arg( 'tab', 'agreement', $page_url ) ); ?>"
                        class="nav-tab <?php echo $tab === 'agreement' ? 'nav-tab-active' : ''; ?>">
                         <span class="dashicons dashicons-file-alt"></span> <?php esc_html_e( 'Agreement', 'businessvance-services-manager' ); ?>
@@ -246,6 +287,10 @@ class BV_Settings {
                     <a href="<?php echo esc_url( add_query_arg( 'tab', 'woocommerce', $page_url ) ); ?>"
                        class="nav-tab <?php echo $tab === 'woocommerce' ? 'nav-tab-active' : ''; ?>">
                         <span class="dashicons dashicons-cart"></span> <?php esc_html_e( 'WooCommerce', 'businessvance-services-manager' ); ?>
+                    </a>
+                    <a href="<?php echo esc_url( add_query_arg( 'tab', 'consultant', $page_url ) ); ?>"
+                       class="nav-tab <?php echo $tab === 'consultant' ? 'nav-tab-active' : ''; ?>">
+                        <span class="dashicons dashicons-clipboard"></span> <?php esc_html_e( 'Consultant Dashboard', 'businessvance-services-manager' ); ?>
                     </a>
                     <a href="<?php echo esc_url( add_query_arg( 'tab', 'data', $page_url ) ); ?>"
                        class="nav-tab <?php echo $tab === 'data' ? 'nav-tab-active' : ''; ?>"
@@ -265,6 +310,14 @@ class BV_Settings {
 
                     <div class="bv-settings-panel" style="display: <?php echo $tab === 'portal' ? 'block' : 'none'; ?>;">
                         <?php $this->render_portal_tab( $settings ); ?>
+                    </div>
+
+                    <div class="bv-settings-panel" style="display: <?php echo $tab === 'appearance' ? 'block' : 'none'; ?>;">
+                        <?php $this->render_appearance_tab( $settings ); ?>
+                    </div>
+
+                    <div class="bv-settings-panel" style="display: <?php echo $tab === 'consultant' ? 'block' : 'none'; ?>;">
+                        <?php $this->render_consultant_tab( $settings ); ?>
                     </div>
 
                     <div class="bv-settings-panel" style="display: <?php echo $tab === 'agreement' ? 'block' : 'none'; ?>;">
@@ -975,6 +1028,366 @@ class BV_Settings {
                 <li><?php esc_html_e( 'When a customer purchases a linked product, a project is auto-created in the system.', 'businessvance-services-manager' ); ?></li>
                 <li><?php esc_html_e( 'The customer can access their project via the Client Portal shortcode.', 'businessvance-services-manager' ); ?></li>
             </ol>
+        </div>
+        <?php
+    }
+
+    /**
+     * Render Appearance Settings tab
+     */
+    private function render_appearance_tab( $settings ) {
+        ?>
+        <div class="bv-settings-section">
+            <h2><?php esc_html_e( 'Services Page Appearance', 'businessvance-services-manager' ); ?></h2>
+            <p><?php esc_html_e( 'Customize the frontend services page rendered by the [businessvance_services] shortcode.', 'businessvance-services-manager' ); ?></p>
+
+            <table class="form-table">
+                <tr>
+                    <th scope="row">
+                        <label for="bv_services_page_title"><?php esc_html_e( 'Page Title', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <input type="text" id="bv_services_page_title" name="bv_settings[services_page_title]"
+                               value="<?php echo esc_attr( $settings['services_page_title'] ); ?>"
+                               class="large-text" />
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_services_page_subtitle"><?php esc_html_e( 'Page Subtitle', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <textarea id="bv_services_page_subtitle" name="bv_settings[services_page_subtitle]"
+                                  rows="2" class="large-text"><?php echo esc_textarea( $settings['services_page_subtitle'] ); ?></textarea>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label><?php esc_html_e( 'Show Header', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <label class="bv-toggle">
+                            <input type="checkbox" name="bv_settings[services_show_header]"
+                                   value="yes" <?php checked( $settings['services_show_header'], 'yes' ); ?> />
+                            <span class="bv-toggle-slider"></span>
+                            <span class="bv-toggle-label"><?php esc_html_e( 'Show the branded header section with logo and tagline', 'businessvance-services-manager' ); ?></span>
+                        </label>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_services_header_style"><?php esc_html_e( 'Header Style', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <select id="bv_services_header_style" name="bv_settings[services_header_style]">
+                            <option value="navy" <?php selected( $settings['services_header_style'], 'navy' ); ?>><?php esc_html_e( 'Navy Classic', 'businessvance-services-manager' ); ?></option>
+                            <option value="gradient" <?php selected( $settings['services_header_style'], 'gradient' ); ?>><?php esc_html_e( 'Gradient', 'businessvance-services-manager' ); ?></option>
+                            <option value="minimal" <?php selected( $settings['services_header_style'], 'minimal' ); ?>><?php esc_html_e( 'Minimal (No Background)', 'businessvance-services-manager' ); ?></option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label><?php esc_html_e( 'Show Category Filter', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <label class="bv-toggle">
+                            <input type="checkbox" name="bv_settings[services_show_categories]"
+                                   value="yes" <?php checked( $settings['services_show_categories'], 'yes' ); ?> />
+                            <span class="bv-toggle-slider"></span>
+                            <span class="bv-toggle-label"><?php esc_html_e( 'Show category filter buttons above services', 'businessvance-services-manager' ); ?></span>
+                        </label>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label><?php esc_html_e( 'Show Plans Section', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <label class="bv-toggle">
+                            <input type="checkbox" name="bv_settings[services_show_plans]"
+                                   value="yes" <?php checked( $settings['services_show_plans'], 'yes' ); ?> />
+                            <span class="bv-toggle-slider"></span>
+                            <span class="bv-toggle-label"><?php esc_html_e( 'Display subscription plans section', 'businessvance-services-manager' ); ?></span>
+                        </label>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_services_layout_style"><?php esc_html_e( 'Services Layout', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <select id="bv_services_layout_style" name="bv_settings[services_layout_style]">
+                            <option value="table" <?php selected( $settings['services_layout_style'], 'table' ); ?>><?php esc_html_e( 'Table (Desktop) / Cards (Mobile)', 'businessvance-services-manager' ); ?></option>
+                            <option value="cards" <?php selected( $settings['services_layout_style'], 'cards' ); ?>><?php esc_html_e( 'Cards (Always)', 'businessvance-services-manager' ); ?></option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_services_button_style"><?php esc_html_e( 'Button Style', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <select id="bv_services_button_style" name="bv_settings[services_button_style]">
+                            <option value="primary" <?php selected( $settings['services_button_style'], 'primary' ); ?>><?php esc_html_e( 'Navy (Primary)', 'businessvance-services-manager' ); ?></option>
+                            <option value="gold" <?php selected( $settings['services_button_style'], 'gold' ); ?>><?php esc_html_e( 'Gold (Accent)', 'businessvance-services-manager' ); ?></option>
+                            <option value="teal" <?php selected( $settings['services_button_style'], 'teal' ); ?>><?php esc_html_e( 'Teal (Secondary)', 'businessvance-services-manager' ); ?></option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_services_currency_symbol"><?php esc_html_e( 'Currency Symbol', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <input type="text" id="bv_services_currency_symbol" name="bv_settings[services_currency_symbol]"
+                               value="<?php echo esc_attr( $settings['services_currency_symbol'] ); ?>"
+                               class="small-text" style="width:60px;" />
+                        <select name="bv_settings[services_currency_position]" style="width:auto;">
+                            <option value="before" <?php selected( $settings['services_currency_position'], 'before' ); ?>><?php esc_html_e( 'Before (R 100)', 'businessvance-services-manager' ); ?></option>
+                            <option value="after" <?php selected( $settings['services_currency_position'], 'after' ); ?>><?php esc_html_e( 'After (100 R)', 'businessvance-services-manager' ); ?></option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label><?php esc_html_e( 'Enable Animations', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <label class="bv-toggle">
+                            <input type="checkbox" name="bv_settings[services_enable_animations]"
+                                   value="yes" <?php checked( $settings['services_enable_animations'], 'yes' ); ?> />
+                            <span class="bv-toggle-slider"></span>
+                            <span class="bv-toggle-label"><?php esc_html_e( 'Fade-in animations on page load', 'businessvance-services-manager' ); ?></span>
+                        </label>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label><?php esc_html_e( 'Show Trust Badges', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <label class="bv-toggle">
+                            <input type="checkbox" name="bv_settings[services_show_trust_badges]"
+                                   value="yes" <?php checked( $settings['services_show_trust_badges'], 'yes' ); ?> />
+                            <span class="bv-toggle-slider"></span>
+                            <span class="bv-toggle-label"><?php esc_html_e( 'Show trust badges in footer', 'businessvance-services-manager' ); ?></span>
+                        </label>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_services_footer_text"><?php esc_html_e( 'Footer Custom Text', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <textarea id="bv_services_footer_text" name="bv_settings[services_footer_text]"
+                                  rows="2" class="large-text" placeholder="<?php esc_attr_e( 'Leave blank to use default footer with contact details', 'businessvance-services-manager' ); ?>"><?php echo esc_textarea( $settings['services_footer_text'] ); ?></textarea>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="bv-settings-section">
+            <h2><?php esc_html_e( 'Client Portal Appearance', 'businessvance-services-manager' ); ?></h2>
+            <p><?php esc_html_e( 'Customize colors and sections for the client portal.', 'businessvance-services-manager' ); ?></p>
+
+            <table class="form-table">
+                <tr>
+                    <th scope="row">
+                        <label for="bv_portal_header_color"><?php esc_html_e( 'Header Color', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <input type="text" id="bv_portal_header_color" name="bv_settings[portal_header_color]"
+                               value="<?php echo esc_attr( $settings['portal_header_color'] ); ?>"
+                               class="bv-color-picker" />
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_portal_accent_color"><?php esc_html_e( 'Accent Color', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <input type="text" id="bv_portal_accent_color" name="bv_settings[portal_accent_color]"
+                               value="<?php echo esc_attr( $settings['portal_accent_color'] ); ?>"
+                               class="bv-color-picker" />
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_portal_button_color"><?php esc_html_e( 'Button Color', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <input type="text" id="bv_portal_button_color" name="bv_settings[portal_button_color]"
+                               value="<?php echo esc_attr( $settings['portal_button_color'] ); ?>"
+                               class="bv-color-picker" />
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_portal_tab_style"><?php esc_html_e( 'Tab Style', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <select id="bv_portal_tab_style" name="bv_settings[portal_tab_style]">
+                            <option value="underline" <?php selected( $settings['portal_tab_style'], 'underline' ); ?>><?php esc_html_e( 'Underline Tabs', 'businessvance-services-manager' ); ?></option>
+                            <option value="pill" <?php selected( $settings['portal_tab_style'], 'pill' ); ?>><?php esc_html_e( 'Pill Tabs', 'businessvance-services-manager' ); ?></option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label><?php esc_html_e( 'Portal Sections Visibility', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <fieldset>
+                            <label style="display:block;margin-bottom:8px;">
+                                <input type="checkbox" name="bv_settings[portal_show_overview]" value="yes" <?php checked( $settings['portal_show_overview'], 'yes' ); ?>>
+                                <?php esc_html_e( 'Overview Tab', 'businessvance-services-manager' ); ?>
+                            </label>
+                            <label style="display:block;margin-bottom:8px;">
+                                <input type="checkbox" name="bv_settings[portal_show_questionnaire]" value="yes" <?php checked( $settings['portal_show_questionnaire'], 'yes' ); ?>>
+                                <?php esc_html_e( 'Questionnaire Tab', 'businessvance-services-manager' ); ?>
+                            </label>
+                            <label style="display:block;margin-bottom:8px;">
+                                <input type="checkbox" name="bv_settings[portal_show_messages]" value="yes" <?php checked( $settings['portal_show_messages'], 'yes' ); ?>>
+                                <?php esc_html_e( 'Messages Tab', 'businessvance-services-manager' ); ?>
+                            </label>
+                            <label>
+                                <input type="checkbox" name="bv_settings[portal_show_reports]" value="yes" <?php checked( $settings['portal_show_reports'], 'yes' ); ?>>
+                                <?php esc_html_e( 'Reports Tab', 'businessvance-services-manager' ); ?>
+                            </label>
+                        </fieldset>
+                    </td>
+                </tr>
+            </table>
+        </div>
+        <?php
+    }
+
+    /**
+     * Render Consultant Dashboard Settings tab
+     */
+    private function render_consultant_tab( $settings ) {
+        ?>
+        <div class="bv-settings-section">
+            <h2><?php esc_html_e( 'Consultant Dashboard Configuration', 'businessvance-services-manager' ); ?></h2>
+            <p><?php esc_html_e( 'Configure the consultant dashboard behaviour and defaults.', 'businessvance-services-manager' ); ?></p>
+
+            <table class="form-table">
+                <tr>
+                    <th scope="row">
+                        <label for="bv_cd_enabled"><?php esc_html_e( 'Enable Dashboard', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <label class="bv-toggle">
+                            <input type="checkbox" id="bv_cd_enabled" name="bv_settings[cd_enabled]"
+                                   value="yes" <?php checked( $settings['cd_enabled'], 'yes' ); ?> />
+                            <span class="bv-toggle-slider"></span>
+                            <span class="bv-toggle-label"><?php esc_html_e( 'Enable the consultant dashboard shortcode', 'businessvance-services-manager' ); ?></span>
+                        </label>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_cd_welcome_title"><?php esc_html_e( 'Dashboard Title', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <input type="text" id="bv_cd_welcome_title" name="bv_settings[cd_welcome_title]"
+                               value="<?php echo esc_attr( $settings['cd_welcome_title'] ); ?>"
+                               class="large-text" />
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_cd_default_status"><?php esc_html_e( 'Default Project Status', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <select id="bv_cd_default_status" name="bv_settings[cd_default_status]">
+                            <option value="awaiting-agreement" <?php selected( $settings['cd_default_status'], 'awaiting-agreement' ); ?>><?php esc_html_e( 'Awaiting Agreement', 'businessvance-services-manager' ); ?></option>
+                            <option value="awaiting-questionnaire" <?php selected( $settings['cd_default_status'], 'awaiting-questionnaire' ); ?>><?php esc_html_e( 'Awaiting Questionnaire', 'businessvance-services-manager' ); ?></option>
+                            <option value="awaiting-documents" <?php selected( $settings['cd_default_status'], 'awaiting-documents' ); ?>><?php esc_html_e( 'Awaiting Documents', 'businessvance-services-manager' ); ?></option>
+                            <option value="in-progress" <?php selected( $settings['cd_default_status'], 'in-progress' ); ?>><?php esc_html_e( 'In Progress', 'businessvance-services-manager' ); ?></option>
+                            <option value="quality-check" <?php selected( $settings['cd_default_status'], 'quality-check' ); ?>><?php esc_html_e( 'Quality Check', 'businessvance-services-manager' ); ?></option>
+                        </select>
+                        <p class="description"><?php esc_html_e( 'Status assigned when a new project is created.', 'businessvance-services-manager' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_cd_items_per_page"><?php esc_html_e( 'Items Per Page', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <input type="number" id="bv_cd_items_per_page" name="bv_settings[cd_items_per_page]"
+                               value="<?php echo esc_attr( $settings['cd_items_per_page'] ); ?>"
+                               min="5" max="100" class="small-text" style="width:80px;" />
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="bv-settings-section">
+            <h2><?php esc_html_e( 'Dashboard Sections', 'businessvance-services-manager' ); ?></h2>
+            <p><?php esc_html_e( 'Toggle which sections are visible in the consultant dashboard.', 'businessvance-services-manager' ); ?></p>
+
+            <table class="form-table">
+                <tr>
+                    <th scope="row">
+                        <label><?php esc_html_e( 'Show Activity Log', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <label class="bv-toggle">
+                            <input type="checkbox" name="bv_settings[cd_show_activity_log]"
+                                   value="yes" <?php checked( $settings['cd_show_activity_log'], 'yes' ); ?> />
+                            <span class="bv-toggle-slider"></span>
+                            <span class="bv-toggle-label"><?php esc_html_e( 'Display activity/timeline log for projects', 'businessvance-services-manager' ); ?></span>
+                        </label>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label><?php esc_html_e( 'Show Messages', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <label class="bv-toggle">
+                            <input type="checkbox" name="bv_settings[cd_show_messages]"
+                                   value="yes" <?php checked( $settings['cd_show_messages'], 'yes' ); ?> />
+                            <span class="bv-toggle-slider"></span>
+                            <span class="bv-toggle-label"><?php esc_html_e( 'Display messaging tab in project view', 'businessvance-services-manager' ); ?></span>
+                        </label>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label><?php esc_html_e( 'Show Notes', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <label class="bv-toggle">
+                            <input type="checkbox" name="bv_settings[cd_show_notes]"
+                                   value="yes" <?php checked( $settings['cd_show_notes'], 'yes' ); ?> />
+                            <span class="bv-toggle-slider"></span>
+                            <span class="bv-toggle-label"><?php esc_html_e( 'Display internal notes section', 'businessvance-services-manager' ); ?></span>
+                        </label>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label><?php esc_html_e( 'Auto-Notify Consultant', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <label class="bv-toggle">
+                            <input type="checkbox" name="bv_settings[cd_auto_notify_consultant]"
+                                   value="yes" <?php checked( $settings['cd_auto_notify_consultant'], 'yes' ); ?> />
+                            <span class="bv-toggle-slider"></span>
+                            <span class="bv-toggle-label"><?php esc_html_e( 'Send email to consultant when client signs agreement, submits questionnaire, or uploads documents', 'businessvance-services-manager' ); ?></span>
+                        </label>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="bv-settings-section bv-settings-info-box">
+            <h3><?php esc_html_e( 'Consultant Dashboard Shortcode', 'businessvance-services-manager' ); ?></h3>
+            <p><?php esc_html_e( 'Add this shortcode to a page to display the consultant dashboard:', 'businessvance-services-manager' ); ?></p>
+            <code style="display:inline-block;padding:8px 16px;background:#f0f0f1;border-radius:4px;font-size:14px;">[businessvance_consultant_dashboard]</code>
         </div>
         <?php
     }

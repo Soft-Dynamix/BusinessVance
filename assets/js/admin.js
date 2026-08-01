@@ -38,6 +38,10 @@
         // Reset WooCommerce product selects
         $('.bv-woo-product-select').val(0);
         $('.bv-woo-search').val('');
+        // Reset icon picker
+        $('#bv-icon-picker-grid .bv-icon-pick-btn').removeClass('selected');
+        $('#bv-icon-picker-grid .bv-icon-pick-btn[data-icon="briefcase"]').addClass('selected');
+        $('#bv-icon-preview').html($('.bv-icon-picker-grid .bv-icon-pick-btn[data-icon="briefcase"] svg').clone());
     }
 
     // Close modal on overlay click or X button
@@ -88,7 +92,14 @@
                 $('#bv-service-form textarea[name="description"]').val(svc.description);
                 $('#bv-service-form input[name="price"]').val(svc.price);
                 $('#bv-service-form input[name="price_display"]').val(svc.price_display);
-                $('#bv-service-form select[name="icon"]').val(svc.icon);
+                // Set icon picker
+                $('#bv-service-form input[name="icon"]').val(svc.icon || 'briefcase');
+                // Highlight the selected icon button
+                $('.bv-icon-picker-grid .bv-icon-pick-btn').removeClass('selected');
+                $('.bv-icon-picker-grid .bv-icon-pick-btn[data-icon="' + (svc.icon || 'briefcase') + '"]').addClass('selected');
+                // Update preview
+                var selectedSvg = $('.bv-icon-picker-grid .bv-icon-pick-btn[data-icon="' + (svc.icon || 'briefcase') + '"] svg').clone();
+                $('#bv-icon-preview').html(selectedSvg);
                 $('#bv-service-form input[name="button_label"]').val(svc.button_label);
                 $('#bv-service-form select[name="service_type"]').val(svc.service_type);
                 $('#bv-service-form select[name="woo_product_id"]').val(svc.woo_product_id || 0);
@@ -483,6 +494,39 @@
         if (selectedOption.val() !== '0') {
             $search.val('');
         }
+    });
+
+    /* ============================================
+       ICON PICKER
+       ============================================ */
+
+    // Icon picker click handler
+    $(document).on('click', '.bv-icon-pick-btn', function() {
+        var $btn = $(this);
+        var iconName = $btn.data('icon');
+        
+        // Remove selected from all buttons in this grid
+        $btn.closest('.bv-icon-picker-grid').find('.bv-icon-pick-btn').removeClass('selected');
+        $btn.addClass('selected');
+        
+        // Update hidden input
+        var gridId = $btn.closest('.bv-icon-picker-grid').attr('id');
+        if (gridId === 'bv-icon-picker-grid') {
+            $('#svc-icon').val(iconName);
+        }
+        
+        // Update preview
+        var svg = $btn.find('svg').clone();
+        $('#bv-icon-preview').html(svg);
+    });
+
+    // Icon search filter
+    $(document).on('input', '.bv-icon-search-input', function() {
+        var term = $(this).val().toLowerCase();
+        $(this).next('.bv-icon-picker-grid').find('.bv-icon-pick-btn').each(function() {
+            var name = $(this).data('icon');
+            $(this).toggle(name.indexOf(term) !== -1);
+        });
     });
 
 })(jQuery);
