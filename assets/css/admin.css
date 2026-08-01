@@ -664,3 +664,60 @@
     border-radius: 6px;
     font-size: 20px;
 }
+
+/* ============================================
+   MULTI-SELECT (Agreement Templates)
+   ============================================ */
+.bv-multi-select-wrap {
+    border: 1px solid #8c8f94;
+    border-radius: 4px;
+    padding: 12px;
+    background: #fff;
+}
+.bv-multi-select-list {
+    max-height: 180px;
+    overflow-y: auto;
+    margin-bottom: 10px;
+    min-height: 38px;
+}
+.bv-multi-select-list:empty::after {
+    content: "No agreements assigned — global default will be used";
+    display: block;
+    padding: 8px 4px;
+    color: #999;
+    font-size: 12px;
+    font-style: italic;
+}
+.bv-multi-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    margin-bottom: 4px;
+    background: #f0f6fc;
+    border: 1px solid #c3daf5;
+    border-radius: 4px;
+    font-size: 13px;
+}
+.bv-multi-item-label {
+    flex: 1;
+    color: #1d2327;
+}
+.bv-multi-item-remove {
+    background: none;
+    border: none;
+    color: #d63638;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 2px;
+    flex-shrink: 0;
+}
+.bv-multi-item-remove:hover {
+    color: #a31d2b;
+}
+.bv-multi-select-add {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}

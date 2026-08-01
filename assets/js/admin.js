@@ -43,7 +43,8 @@
         $('#bv-icon-picker-grid .bv-icon-pick-btn[data-icon="briefcase"]').addClass('selected');
         $('#bv-icon-preview').html($('.bv-icon-picker-grid .bv-icon-pick-btn[data-icon="briefcase"] svg').clone());
         // Reset new service fields
-        $('#bv-service-form select[name="agreement_template_id"]').val(0);
+        $('#bv-svc-agreements-list').empty();
+        $('#svc-agreement-ids').val('');
         $('#bv-service-form input[name="nda_only"]').prop('checked', false);
         $('#bv-service-form input[name="required_documents"]').val('');
     }
@@ -108,7 +109,8 @@
                 $('#bv-service-form select[name="service_type"]').val(svc.service_type);
                 $('#bv-service-form select[name="woo_product_id"]').val(svc.woo_product_id || 0);
                 $('#bv-service-form select[name="questionnaire_template_id"]').val(svc.questionnaire_template_id || 0);
-                $('#bv-service-form select[name="agreement_template_id"]').val(svc.agreement_template_id || 0);
+                // Populate multi-agreement list
+                bv_populate_agreements_list(svc.agreement_ids || []);
                 $('#bv-service-form input[name="nda_only"]').prop('checked', svc.nda_only == 1);
                 $('#bv-service-form input[name="required_documents"]').val(svc.required_documents || '');
                 $('#bv-service-form select[name="category_id"]').val(svc.category_id);
@@ -534,6 +536,84 @@
             var name = $(this).data('icon');
             $(this).toggle(name.indexOf(term) !== -1);
         });
+    });
+
+    /* ============================================
+       MULTI-AGREEMENT SELECTOR
+       ============================================ */
+
+    // Build a lookup map for agreement names from the dropdown options
+    function bv_get_agreement_name(id) {
+        var name = '';
+        $('#bv-svc-add-agreement option[value="' + id + '"]').each(function() {
+            if ($(this).parent().is('optgroup')) {
+                name = $(this).parent().attr('label') + ' › ' + $(this).text();
+            } else {
+                name = $(this).text();
+            }
+        });
+        return name || ('Agreement #' + id);
+    }
+
+    // Populate the agreements list from an array of IDs
+    function bv_populate_agreements_list(ids) {
+        var $list = $('#bv-svc-agreements-list');
+        $list.empty();
+        if (!ids || ids.length === 0) {
+            $('#svc-agreement-ids').val('');
+            return;
+        }
+        ids.forEach(function(id) {
+            bv_add_agreement_item(id);
+        });
+        bv_sync_agreement_ids();
+    }
+
+    // Add a single agreement item to the list
+    function bv_add_agreement_item(id) {
+        var $list = $('#bv-svc-agreements-list');
+        // Prevent duplicates
+        if ($list.find('input[data-tpl-id="' + id + '"]').length > 0) return;
+
+        var name = bv_get_agreement_name(id);
+        var $item = $(
+            '<div class="bv-multi-item" data-id="' + id + '">' +
+                '<input type="hidden" data-tpl-id="' + id + '" value="' + id + '">' +
+                '<span class="bv-multi-item-label">' + $('<span>').text(name).html() + '</span>' +
+                '<button type="button" class="bv-multi-item-remove" title="Remove">&times;</button>' +
+            '</div>'
+        );
+        $list.append($item);
+    }
+
+    // Sync the hidden input with current list items
+    function bv_sync_agreement_ids() {
+        var ids = [];
+        $('#bv-svc-agreements-list input[data-tpl-id]').each(function() {
+            ids.push($(this).val());
+        });
+        $('#svc-agreement-ids').val(ids.join(','));
+    }
+
+    // Add agreement button click
+    $(document).on('click', '#bv-svc-add-agreement-btn', function() {
+        var $select = $('#bv-svc-add-agreement');
+        var id = parseInt($select.val()) || 0;
+        if (id <= 0) return;
+        bv_add_agreement_item(id);
+        bv_sync_agreement_ids();
+        $select.val('');
+    });
+
+    // Also trigger on double-click of select option
+    $(document).on('dblclick', '#bv-svc-add-agreement', function() {
+        $(this).next('#bv-svc-add-agreement-btn').trigger('click');
+    });
+
+    // Remove agreement item
+    $(document).on('click', '.bv-multi-item-remove', function() {
+        $(this).closest('.bv-multi-item').remove();
+        bv_sync_agreement_ids();
     });
 
 })(jQuery);

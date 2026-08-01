@@ -383,6 +383,22 @@ class BV_Activator {
 
                 dbDelta( $sql_agreement_templates );
 
+                // -------------------------------------------------------
+                // 19. bv_service_agreements (junction: services ↔ agreement_templates)
+                // -------------------------------------------------------
+                $table_service_agreements = $wpdb->prefix . 'bv_service_agreements';
+
+                $sql_service_agreements = "CREATE TABLE {$table_service_agreements} (
+                        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+                        service_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+                        agreement_template_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+                        display_order int(11) NOT NULL DEFAULT 0,
+                        PRIMARY KEY  (id),
+                        UNIQUE KEY service_template (service_id, agreement_template_id)
+                ) {$charset_collate};";
+
+                dbDelta( $sql_service_agreements );
+
                 // Add new columns to existing bv_services table if they don't exist
                 $services_columns = $wpdb->get_results( "SHOW COLUMNS FROM {$table_services}" );
                 $existing_cols = array();
@@ -400,8 +416,58 @@ class BV_Activator {
                     $wpdb->query( "ALTER TABLE {$table_services} ADD COLUMN required_documents varchar(1000) NOT NULL DEFAULT '' AFTER nda_only" );
                 }
 
+                // Migrate legacy single agreement_template_id to junction table
+                self::migrate_service_agreements();
+
                 // Store the current version for future update comparisons.
                 update_option( 'bv_services_manager_db_version', BV_VERSION, false );
+        }
+
+        /**
+         * Migrate legacy single agreement_template_id from bv_services to the
+         * bv_service_agreements junction table. Runs only once (option-gated).
+         *
+         * @since 2.3.0
+         * @return void
+         */
+        private static function migrate_service_agreements() {
+                if ( get_option( 'bv_agreements_migrated', '0' ) === '1' ) {
+                        return;
+                }
+
+                global $wpdb;
+                $services_table    = $wpdb->prefix . 'bv_services';
+                $junction_table    = $wpdb->prefix . 'bv_service_agreements';
+
+                // Check that both tables exist
+                $table_exists = $wpdb->get_var( "SHOW TABLES LIKE '{$junction_table}'" );
+                if ( ! $table_exists ) {
+                        return;
+                }
+
+                // Find all services that have a legacy agreement_template_id > 0
+                $legacy_rows = $wpdb->get_results(
+                        "SELECT id, agreement_template_id FROM {$services_table} WHERE agreement_template_id > 0"
+                );
+
+                foreach ( $legacy_rows as $row ) {
+                        // Skip if already in junction
+                        $exists = $wpdb->get_var( $wpdb->prepare(
+                                "SELECT COUNT(*) FROM {$junction_table} WHERE service_id = %d AND agreement_template_id = %d",
+                                $row->id,
+                                $row->agreement_template_id
+                        ) );
+
+                        if ( ! $exists ) {
+                                $wpdb->insert( $junction_table, array(
+                                        'service_id'            => $row->id,
+                                        'agreement_template_id' => $row->agreement_template_id,
+                                        'display_order'         => 0,
+                                ), array( '%d', '%d', '%d' ) );
+                        }
+                }
+
+                update_option( 'bv_agreements_migrated', '1' );
         }
 
         /**

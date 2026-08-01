@@ -336,12 +336,12 @@ class BV_Client_Portal {
     private function render_agreement_tab( $project, $agreement ) {
         global $wpdb;
         
-        // Determine agreement template to use
+        // Determine agreement template(s) to use
         $template = '';
         
-        // Check if any service has a custom agreement template
+        // Check if any service has custom agreement templates via junction table
         $project_services = $wpdb->get_results( $wpdb->prepare(
-            "SELECT ps.service_id, s.name, s.agreement_template_id, s.nda_only
+            "SELECT ps.service_id, s.name, s.nda_only
              FROM {$wpdb->prefix}bv_project_services ps
              JOIN {$wpdb->prefix}bv_services s ON ps.service_id = s.id
              WHERE ps.project_id = %d",
@@ -351,15 +351,37 @@ class BV_Client_Portal {
         $custom_templates = array();
         $has_nda_only = false;
         foreach ( $project_services as $ps ) {
-            if ( $ps->agreement_template_id > 0 ) {
+            // Get agreement templates from junction table
+            $agreement_tids = $wpdb->get_col( $wpdb->prepare(
+                "SELECT sa.agreement_template_id 
+                 FROM {$wpdb->prefix}bv_service_agreements sa
+                 JOIN {$wpdb->prefix}bv_agreement_templates t ON t.id = sa.agreement_template_id
+                 WHERE sa.service_id = %d 
+                 ORDER BY sa.display_order ASC",
+                $ps->service_id
+            ) );
+            
+            // Fallback to legacy column if junction is empty
+            if ( empty( $agreement_tids ) ) {
+                $legacy_id = $wpdb->get_var( $wpdb->prepare(
+                    "SELECT agreement_template_id FROM {$wpdb->prefix}bv_services WHERE id = %d",
+                    $ps->service_id
+                ) );
+                if ( $legacy_id > 0 ) {
+                    $agreement_tids = array( $legacy_id );
+                }
+            }
+            
+            foreach ( $agreement_tids as $tid ) {
                 $tpl = $wpdb->get_row( $wpdb->prepare(
                     "SELECT * FROM {$wpdb->prefix}bv_agreement_templates WHERE id = %d",
-                    $ps->agreement_template_id
+                    $tid
                 ) );
                 if ( $tpl ) {
                     $custom_templates[] = array( 'service' => $ps->name, 'template' => $tpl );
                 }
             }
+            
             if ( $ps->nda_only ) {
                 $has_nda_only = true;
             }
@@ -853,18 +875,37 @@ class BV_Client_Portal {
         // Build template content for the signed record
         global $wpdb;
         $project_services = $wpdb->get_results( $wpdb->prepare(
-            "SELECT ps.service_id, s.agreement_template_id
+            "SELECT ps.service_id, ps.service_id as sid
              FROM {$wpdb->prefix}bv_project_services ps
-             JOIN {$wpdb->prefix}bv_services s ON ps.service_id = s.id
              WHERE ps.project_id = %d",
             $project_id
         ) );
         $template_parts = array();
         foreach ( $project_services as $ps ) {
-            if ( $ps->agreement_template_id > 0 ) {
+            // Get agreement templates from junction table
+            $agreement_tids = $wpdb->get_col( $wpdb->prepare(
+                "SELECT agreement_template_id 
+                 FROM {$wpdb->prefix}bv_service_agreements 
+                 WHERE service_id = %d 
+                 ORDER BY display_order ASC",
+                $ps->service_id
+            ) );
+            
+            // Fallback to legacy column
+            if ( empty( $agreement_tids ) ) {
+                $legacy_id = $wpdb->get_var( $wpdb->prepare(
+                    "SELECT agreement_template_id FROM {$wpdb->prefix}bv_services WHERE id = %d",
+                    $ps->service_id
+                ) );
+                if ( $legacy_id > 0 ) {
+                    $agreement_tids = array( $legacy_id );
+                }
+            }
+            
+            foreach ( $agreement_tids as $tid ) {
                 $tpl = $wpdb->get_row( $wpdb->prepare(
                     "SELECT * FROM {$wpdb->prefix}bv_agreement_templates WHERE id = %d",
-                    $ps->agreement_template_id
+                    $tid
                 ) );
                 if ( $tpl ) {
                     $svc = $wpdb->get_var( $wpdb->prepare( "SELECT name FROM {$wpdb->prefix}bv_services WHERE id = %d", $ps->service_id ) );

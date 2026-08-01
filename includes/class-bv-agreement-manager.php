@@ -257,6 +257,13 @@ class BV_Agreement_Manager {
             array( '%d' )
         );
 
+        // Also remove junction table entries
+        $wpdb->delete(
+            $wpdb->prefix . 'bv_service_agreements',
+            array( 'agreement_template_id' => $id ),
+            array( '%d' )
+        );
+
         $wpdb->delete( $table, array( 'id' => $id ), array( '%d' ) );
         wp_send_json_success( array( 'message' => __( 'Agreement template deleted.', 'businessvance-services-manager' ) ) );
     }
@@ -315,11 +322,11 @@ class BV_Agreement_Manager {
         global $wpdb;
 
         $table    = $this->get_table();
-        $services_table = $wpdb->prefix . 'bv_services';
+        $junction_table = $wpdb->prefix . 'bv_service_agreements';
 
         $templates = $wpdb->get_results(
             "SELECT t.*,
-                ( SELECT COUNT(*) FROM {$services_table} s WHERE s.agreement_template_id = t.id ) AS service_count
+                ( SELECT COUNT(DISTINCT sa.service_id) FROM {$junction_table} sa WHERE sa.agreement_template_id = t.id ) AS service_count
              FROM {$table} t
              ORDER BY t.type ASC, t.name ASC"
         );

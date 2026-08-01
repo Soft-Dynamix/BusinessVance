@@ -636,35 +636,45 @@ class BV_Admin {
                         </div>
 
                         <div class="bv-form-group bv-form-full">
-                            <label for="svc-agreement-template"><?php esc_html_e( 'Agreement Template', 'businessvance-services-manager' ); ?></label>
-                            <select id="svc-agreement-template" name="agreement_template_id">
-                                <option value="0"><?php esc_html_e( '-- Use Global Default --', 'businessvance-services-manager' ); ?></option>
-                                <?php
-                                $agreement_templates = $wpdb->get_results( "SELECT id, name, type FROM {$wpdb->prefix}bv_agreement_templates ORDER BY type ASC, name ASC" );
-                                $at_types = array();
-                                foreach ( $agreement_templates as $at ) {
-                                    $at_types[$at->type][] = $at;
-                                }
-                                $at_labels = array(
-                                    'nda'               => 'NDA',
-                                    'service-agreement' => 'Service Agreement',
-                                    'confidentiality'   => 'Confidentiality Agreement',
-                                    'custom'            => 'Custom',
-                                );
-                                foreach ( $at_types as $at_type => $at_items ) :
-                                    $at_label = isset( $at_labels[$at_type] ) ? $at_labels[$at_type] : $at_type;
-                                ?>
-                                    <optgroup label="<?php echo esc_attr( $at_label ); ?>">
-                                        <?php foreach ( $at_items as $at ) : ?>
-                                            <option value="<?php echo esc_attr( $at->id ); ?>"><?php echo esc_html( $at->name ); ?><?php echo $at->type === 'nda' ? ' (NDA)' : ''; ?></option>
+                            <label><?php esc_html_e( 'Agreement Templates', 'businessvance-services-manager' ); ?></label>
+                            <div class="bv-multi-select-wrap">
+                                <div class="bv-multi-select-list" id="bv-svc-agreements-list">
+                                    <!-- Dynamically populated by JS -->
+                                </div>
+                                <div class="bv-multi-select-add">
+                                    <select id="bv-svc-add-agreement" class="regular-text" style="max-width:320px;">
+                                        <option value=""><?php esc_html_e( '+ Add agreement...', 'businessvance-services-manager' ); ?></option>
+                                        <?php
+                                        $all_agreement_templates = $wpdb->get_results( "SELECT id, name, type FROM {$wpdb->prefix}bv_agreement_templates ORDER BY type ASC, name ASC" );
+                                        $aat_types = array();
+                                        foreach ( $all_agreement_templates as $aat ) {
+                                            $aat_types[$aat->type][] = $aat;
+                                        }
+                                        $aat_labels = array(
+                                            'nda'               => 'NDA',
+                                            'service-agreement' => 'Service Agreement',
+                                            'confidentiality'   => 'Confidentiality Agreement',
+                                            'custom'            => 'Custom',
+                                        );
+                                        foreach ( $aat_types as $aat_type => $aat_items ) :
+                                            $aat_label = isset( $aat_labels[$aat_type] ) ? $aat_labels[$aat_type] : $aat_type;
+                                        ?>
+                                            <optgroup label="<?php echo esc_attr( $aat_label ); ?>">
+                                                <?php foreach ( $aat_items as $aat ) : ?>
+                                                    <option value="<?php echo esc_attr( $aat->id ); ?>"><?php echo esc_html( $aat->name ); ?></option>
+                                                <?php endforeach; ?>
+                                            </optgroup>
                                         <?php endforeach; ?>
-                                    </optgroup>
-                                <?php endforeach; ?>
-                                <?php if ( empty( $agreement_templates ) ) : ?>
-                                    <option value="0" disabled><?php esc_html_e( 'No templates created yet', 'businessvance-services-manager' ); ?></option>
-                                <?php endif; ?>
-                            </select>
-                            <p class="description"><?php esc_html_e( 'Assign a specific agreement template for this service. Leave as default to use the global agreement from Settings.', 'businessvance-services-manager' ); ?></p>
+                                        <?php if ( empty( $all_agreement_templates ) ) : ?>
+                                            <option value="" disabled><?php esc_html_e( 'No templates yet', 'businessvance-services-manager' ); ?></option>
+                                        <?php endif; ?>
+                                    </select>
+                                    <button type="button" class="button button-small" id="bv-svc-add-agreement-btn" title="<?php esc_attr_e( 'Add selected agreement template', 'businessvance-services-manager' ); ?>">+</button>
+                                </div>
+                                <p class="description"><?php esc_html_e( 'Select one or more agreement/NDA templates. If none are assigned, the global agreement from Settings will be used.', 'businessvance-services-manager' ); ?></p>
+                            </div>
+                            <!-- Hidden input stores comma-separated IDs for form submission -->
+                            <input type="hidden" id="svc-agreement-ids" name="agreement_ids" value="">
                         </div>
 
                         <div class="bv-form-group">
@@ -1120,6 +1130,17 @@ class BV_Admin {
             wp_send_json_error( array( 'message' => 'Service not found.' ) );
         }
 
+        // Get associated agreement template IDs from junction table
+        $service['agreement_ids'] = $wpdb->get_col( $wpdb->prepare(
+            "SELECT agreement_template_id FROM {$wpdb->prefix}bv_service_agreements WHERE service_id = %d ORDER BY display_order ASC",
+            $id
+        ) );
+
+        // Fallback: if junction is empty but legacy column has a value, use that
+        if ( empty( $service['agreement_ids'] ) && ! empty( $service['agreement_template_id'] ) ) {
+            $service['agreement_ids'] = array( $service['agreement_template_id'] );
+        }
+
         wp_send_json_success( $service );
     }
 
@@ -1143,21 +1164,33 @@ class BV_Admin {
             'woo_product_id'          => intval( $_POST['woo_product_id'] ?? 0 ),
             'questionnaire_template_id' => intval( $_POST['questionnaire_template_id'] ?? 0 ),
             'category_id'             => intval( $_POST['category_id'] ?? 0 ),
-            'agreement_template_id'    => intval( $_POST['agreement_template_id'] ?? 0 ),
             'nda_only'                => intval( $_POST['nda_only'] ?? 0 ),
             'required_documents'       => sanitize_text_field( $_POST['required_documents'] ?? '' ),
             'is_visible'              => intval( $_POST['is_visible'] ?? 0 ),
             'is_featured'             => intval( $_POST['is_featured'] ?? 0 ),
         );
-        $format = array( '%s','%s','%s','%s','%s','%s','%s','%d','%d','%d','%d','%d','%s','%d','%d' );
+        $format = array( '%s','%s','%s','%s','%s','%s','%s','%d','%d','%d','%d','%s','%d','%d' );
 
         if ( empty( $data['name'] ) ) {
             wp_send_json_error( array( 'message' => __( 'Service name is required.', 'businessvance-services-manager' ) ) );
         }
 
+        // Parse agreement IDs from comma-separated string
+        $agreement_ids_raw = isset( $_POST['agreement_ids'] ) ? sanitize_text_field( $_POST['agreement_ids'] ) : '';
+        $agreement_ids = array();
+        if ( ! empty( $agreement_ids_raw ) ) {
+            $agreement_ids = array_map( 'intval', explode( ',', $agreement_ids_raw ) );
+            $agreement_ids = array_filter( $agreement_ids, function( $v ) { return $v > 0; } );
+            $agreement_ids = array_values( array_unique( $agreement_ids ) );
+        }
+
         if ( $id > 0 ) {
             // Update
             $wpdb->update( $tables['services'], $data, array( 'id' => $id ), $format, array( '%d' ) );
+
+            // Sync agreement junction table
+            $this->sync_service_agreements( $id, $agreement_ids );
+
             wp_send_json_success( array( 'message' => __( 'Service updated.', 'businessvance-services-manager' ), 'id' => $id ) );
         } else {
             // Get max display_order
@@ -1167,8 +1200,46 @@ class BV_Admin {
 
             $wpdb->insert( $tables['services'], $data, $format );
             $new_id = $wpdb->insert_id;
+
+            // Sync agreement junction table
+            $this->sync_service_agreements( $new_id, $agreement_ids );
+
             wp_send_json_success( array( 'message' => __( 'Service created.', 'businessvance-services-manager' ), 'id' => $new_id ) );
         }
+    }
+
+    /**
+     * Sync the bv_service_agreements junction table for a service.
+     * Deletes all existing rows then re-inserts.
+     *
+     * @param int   $service_id
+     * @param array $agreement_ids Array of agreement_template_id values
+     */
+    private function sync_service_agreements( $service_id, $agreement_ids ) {
+        global $wpdb;
+        $junction = $wpdb->prefix . 'bv_service_agreements';
+
+        // Delete existing
+        $wpdb->delete( $junction, array( 'service_id' => $service_id ), array( '%d' ) );
+
+        // Insert new
+        foreach ( $agreement_ids as $order => $tpl_id ) {
+            $wpdb->insert( $junction, array(
+                'service_id'            => $service_id,
+                'agreement_template_id' => intval( $tpl_id ),
+                'display_order'         => $order,
+            ), array( '%d', '%d', '%d' ) );
+        }
+
+        // Also update the legacy column for backward compat (first one)
+        $first_id = ! empty( $agreement_ids ) ? intval( $agreement_ids[0] ) : 0;
+        $wpdb->update(
+            $wpdb->prefix . 'bv_services',
+            array( 'agreement_template_id' => $first_id ),
+            array( 'id' => $service_id ),
+            array( '%d' ),
+            array( '%d' )
+        );
     }
 
     /**

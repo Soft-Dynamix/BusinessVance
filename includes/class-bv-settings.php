@@ -1435,6 +1435,7 @@ class BV_Settings {
             'bv_questionnaire_questions'=> 'Questionnaire Questions',
             'bv_questionnaire_responses'=> 'Questionnaire Responses',
             'bv_agreement_templates'     => 'Agreement Templates',
+            'bv_service_agreements'     => 'Service-Agreement Links',
             'bv_activity_log'           => 'Activity Log',
         );
 
