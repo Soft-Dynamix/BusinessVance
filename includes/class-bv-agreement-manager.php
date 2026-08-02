@@ -1129,28 +1129,33 @@ except ImportError:
             }
 
             // Submit import form
-            $importForm.on('submit', function(e) {
+            $(document).on('submit', '#bv-import-pdf-form', function(e) {
                 e.preventDefault();
 
+                // Inline fallbacks in case bvAdmin is not fully loaded
+                var bvStr = (typeof bvAdmin !== 'undefined' && bvAdmin.strings) ? bvAdmin.strings : {};
+                var bvUrl = (typeof bvAdmin !== 'undefined') ? bvAdmin.ajax_url : ajaxUrl;
+                var bvNonce = (typeof bvAdmin !== 'undefined') ? bvAdmin.nonce : nonce;
+
                 if (!selectedFile) {
-                    alert(bvAdmin.strings.select_pdf);
+                    alert(bvStr.select_pdf || 'Please select a PDF file to import.');
                     return;
                 }
 
                 var $btn = $importSubmit;
                 var originalText = $btn.text();
-                $btn.text(bvAdmin.strings.importing).prop('disabled', true);
+                $btn.text(bvStr.importing || 'Importing...').prop('disabled', true);
 
                 var formData = new FormData();
                 formData.append('action', 'bv_import_agreement_pdf');
-                formData.append('nonce', bvAdmin.nonce);
+                formData.append('nonce', bvNonce);
                 formData.append('pdf_file', selectedFile);
                 formData.append('name', $('#bv-import-name').val());
                 formData.append('type', $('#bv-import-type').val());
                 formData.append('is_default', $('#bv-import-default').is(':checked') ? 1 : 0);
 
                 $.ajax({
-                    url: bvAdmin.ajax_url,
+                    url: bvUrl,
                     type: 'POST',
                     data: formData,
                     processData: false,
@@ -1161,12 +1166,12 @@ except ImportError:
                             $importModal.hide();
                             location.reload();
                         } else {
-                            alert(res.data.message || bvAdmin.strings.import_error);
+                            alert(res.data.message || bvStr.import_error || 'Failed to import agreement. Please check the file and try again.');
                         }
                     },
                     error: function() {
                         $btn.text(originalText).prop('disabled', false);
-                        alert(bvAdmin.strings.import_error);
+                        alert(bvStr.import_error || 'Failed to import agreement. Please check the file and try again.');
                     }
                 });
             });

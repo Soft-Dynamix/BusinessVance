@@ -7,6 +7,10 @@
 
     if (typeof bvAdmin === 'undefined') return;
 
+    // Only run services/plans CRUD code on the main Services admin page.
+    // Other pages (Agreements, Documents, Icons) have their own inline scripts.
+    if (bvAdmin.page !== 'services') return;
+
     var ajaxUrl = bvAdmin.ajax_url;
     var nonce   = bvAdmin.nonce;
     var strings = bvAdmin.strings;
