@@ -1342,7 +1342,7 @@ class BV_Icon_Manager {
             }
 
             // Extract viewBox
-            if ( preg_match( '/viewBox\s*=\s*["\']([^"']+)["\']/i', $svg_tag, $vb_matches ) ) {
+            if ( preg_match( '/viewBox\s*=\s*["\']([^"\']+)["\']/i', $svg_tag, $vb_matches ) ) {
                 $result['view_box'] = $vb_matches[1];
             }
 
