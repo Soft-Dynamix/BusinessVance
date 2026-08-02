@@ -71,6 +71,7 @@ class BV_Agreement_Manager {
         wp_localize_script( 'bv-admin-js', 'bvAdmin', array(
             'ajax_url' => admin_url( 'admin-ajax.php' ),
             'nonce'    => wp_create_nonce( 'bv_admin_nonce' ),
+            'page'     => 'agreements',
             'strings'  => array(
                 'confirm_delete'     => __( 'Are you sure you want to delete this agreement template?', 'businessvance-services-manager' ),
                 'saving'             => __( 'Saving...', 'businessvance-services-manager' ),

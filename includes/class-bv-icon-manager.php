@@ -427,7 +427,7 @@ class BV_Icon_Manager {
      * @return void
      */
     public function enqueue_assets( $hook ) {
-        if ( strpos( $hook, 'businessvance' ) === false ) {
+        if ( $hook !== 'businessvance_page_businessvance-icons' ) {
             return;
         }
 
@@ -449,6 +449,7 @@ class BV_Icon_Manager {
         wp_localize_script( 'bv-admin-js', 'bvAdmin', array(
             'ajax_url' => admin_url( 'admin-ajax.php' ),
             'nonce'    => wp_create_nonce( 'bv_admin_nonce' ),
+            'page'     => 'icons',
         ) );
     }
 

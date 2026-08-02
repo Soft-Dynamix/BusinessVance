@@ -70,6 +70,7 @@ class BV_Document_Requirements {
         wp_localize_script( 'bv-admin-js', 'bvAdmin', array(
             'ajax_url' => admin_url( 'admin-ajax.php' ),
             'nonce'    => wp_create_nonce( 'bv_admin_nonce' ),
+            'page'     => 'documents',
             'strings'  => array(
                 'confirm_delete' => __( 'Are you sure you want to delete this document requirement?', 'businessvance-services-manager' ),
                 'saving'        => __( 'Saving...', 'businessvance-services-manager' ),
@@ -471,7 +472,7 @@ class BV_Document_Requirements {
                 var origText = $btn.text();
                 $btn.text(strings.saving).prop('disabled', true);
 
-                var formData = $(this).serialize() + '&action=bv_save_document_requirement&nonce=' + nonce;
+                var formData = $(this).serialize() + '&action=bv_save_document_requirement';
                 $.post(ajaxUrl, formData, function(res) {
                     if (res.success) { alert(strings.saved); location.reload(); }
                     else { alert(res.data.message || strings.error); $btn.text(origText).prop('disabled', false); }
