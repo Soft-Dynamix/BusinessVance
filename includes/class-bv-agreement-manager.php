@@ -65,7 +65,7 @@ class BV_Agreement_Manager {
             BV_PLUGIN_URL . 'assets/js/admin.js',
             array( 'jquery' ),
             BV_VERSION,
-            true
+            false
         );
 
         wp_localize_script( 'bv-admin-js', 'bvAdmin', array(

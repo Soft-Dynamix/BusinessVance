@@ -190,7 +190,7 @@ class BV_Admin {
             BV_PLUGIN_URL . 'assets/js/admin.js',
             array( 'jquery', 'jquery-ui-sortable' ),
             BV_VERSION,
-            true
+            false
         );
 
         wp_localize_script( 'bv-admin-js', 'bvAdmin', array(
