@@ -1473,6 +1473,9 @@ class BV_Client_Portal {
             'is_read'     => 0,
         ), array( '%d', '%s', '%s', '%s', '%s', '%d' ) );
 
+        // Notify consultant via email
+        $this->notify_consultant_new_message( $project_id, $user->display_name, $message );
+
         wp_send_json_success( array(
             'sender_name' => $user->display_name,
             'sender_type' => 'client',
@@ -1545,6 +1548,61 @@ class BV_Client_Portal {
         
         $headers = array( 'Content-Type: text/plain; charset=UTF-8', 'From: ' . $company_name . ' <' . $consultant_email . '>' );
         wp_mail( $consultant_email, $subject, $body, $headers );
+    }
+
+    /**
+     * Notify consultant when a client sends a new message.
+     *
+     * @since 2.6.0
+     * @param int    $project_id
+     * @param string $sender_name
+     * @param string $message
+     * @return void
+     */
+    private function notify_consultant_new_message( $project_id, $sender_name, $message ) {
+        $settings = BV_Settings::get_settings();
+        if ( ( $settings['email_message_to_consultant'] ?? 'yes' ) !== 'yes' ) {
+            return;
+        }
+
+        $consultant_email = $settings['consultant_email'] ?? get_option( 'admin_email' );
+        if ( empty( $consultant_email ) ) return;
+
+        global $wpdb;
+        $project = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_projects WHERE id = %d", $project_id ) );
+        if ( ! $project ) return;
+
+        $company_name  = $settings['company_name'] ?? 'BusinessVance';
+        $dashboard_url = admin_url( 'admin.php?page=bv-consultant-dashboard&project_id=' . $project_id );
+
+        // Build subject
+        $subject = $settings['email_message_to_consultant_subject'] ?? 'New Client Message - {project_number}';
+        $subject = str_replace(
+            array( '{project_number}', '{sender_name}' ),
+            array( $project->project_number, $sender_name ),
+            $subject
+        );
+
+        // Build body
+        $body = $settings['email_message_to_consultant_body'] ?? '';
+        $body = str_replace(
+            array( '{sender_name}', '{project_number}', '{message}', '{dashboard_url}', '{company_name}' ),
+            array( $sender_name, $project->project_number, $message, $dashboard_url, $company_name ),
+            $body
+        );
+
+        $headers = array( 'Content-Type: text/plain; charset=UTF-8', 'From: ' . $company_name . ' <' . $consultant_email . '>' );
+        wp_mail( $consultant_email, $subject, $body, $headers );
+
+        // Also log activity
+        $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array(
+            'project_id'  => $project_id,
+            'entity_type' => 'project',
+            'entity_id'   => $project_id,
+            'action'      => 'message_sent',
+            'description' => 'Client message notification sent to consultant',
+            'user_id'     => get_current_user_id(),
+        ), array( '%d', '%s', '%d', '%s', '%s', '%d' ) );
     }
 
     private function get_inline_css() {

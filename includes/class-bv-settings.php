@@ -61,6 +61,12 @@ class BV_Settings {
         'email_report_ready'           => 'yes',
         'email_report_ready_subject'   => 'New Report Available - {project_number}',
         'email_report_ready_body'      => "Dear {client_name},\n\nA new report has been uploaded for your project {project_number}.\n\nPlease log in to your client portal to download it.\n{portal_url}\n\nBest regards,\n{company_name}",
+        'email_message_to_consultant'  => 'yes',
+        'email_message_to_consultant_subject' => 'New Client Message - {project_number}',
+        'email_message_to_consultant_body'   => "Dear Consultant,\n\n{sender_name} sent a message on project {project_number}:\n\n---\n{message}\n---\n\nPlease respond in the Consultant Dashboard:\n{dashboard_url}\n\nBest regards,\n{company_name} System",
+        'email_message_to_client'     => 'yes',
+        'email_message_to_client_subject' => 'New Message from {sender_name} - {project_number}',
+        'email_message_to_client_body'   => "Dear {client_name},\n\nYou have a new message from {sender_name} regarding project {project_number}:\n\n---\n{message}\n---\n\nPlease log in to your client portal to reply:\n{portal_url}\n\nBest regards,\n{company_name}",
 
         // WooCommerce
         'wc_auto_create_project'    => 'yes',
@@ -169,6 +175,12 @@ class BV_Settings {
         }
         if ( isset( $input['email_report_ready_body'] ) ) {
             $sanitized['email_report_ready_body'] = sanitize_textarea_field( $input['email_report_ready_body'] );
+        }
+        if ( isset( $input['email_message_to_consultant_body'] ) ) {
+            $sanitized['email_message_to_consultant_body'] = sanitize_textarea_field( $input['email_message_to_consultant_body'] );
+        }
+        if ( isset( $input['email_message_to_client_body'] ) ) {
+            $sanitized['email_message_to_client_body'] = sanitize_textarea_field( $input['email_message_to_client_body'] );
         }
         if ( isset( $input['physical_address'] ) ) {
             $sanitized['physical_address'] = sanitize_textarea_field( $input['physical_address'] );
@@ -878,6 +890,84 @@ class BV_Settings {
                         <textarea id="bv_email_report_ready_body"
                                   name="bv_settings[email_report_ready_body]"
                                   rows="6" class="large-text"><?php echo esc_textarea( $settings['email_report_ready_body'] ); ?></textarea>
+                    </td>
+                </tr>
+            </table>
+
+            <h3><?php esc_html_e( 'Client → Consultant Message Notification', 'businessvance-services-manager' ); ?></h3>
+            <p class="description" style="margin-bottom:10px;"><?php esc_html_e( 'Email sent to the consultant when a client sends a message. Placeholders: {sender_name}, {project_number}, {message}, {dashboard_url}, {company_name}', 'businessvance-services-manager' ); ?></p>
+            <table class="form-table">
+                <tr>
+                    <th scope="row">
+                        <label><?php esc_html_e( 'Enable', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <label class="bv-toggle">
+                            <input type="checkbox" name="bv_settings[email_message_to_consultant]"
+                                   value="yes" <?php checked( $settings['email_message_to_consultant'], 'yes' ); ?> />
+                            <span class="bv-toggle-slider"></span>
+                            <span class="bv-toggle-label"><?php esc_html_e( 'Notify consultant when client sends a message', 'businessvance-services-manager' ); ?></span>
+                        </label>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_email_msg_to_consultant_subject"><?php esc_html_e( 'Subject', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <input type="text" id="bv_email_msg_to_consultant_subject"
+                               name="bv_settings[email_message_to_consultant_subject]"
+                               value="<?php echo esc_attr( $settings['email_message_to_consultant_subject'] ); ?>"
+                               class="large-text" />
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_email_msg_to_consultant_body"><?php esc_html_e( 'Body', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <textarea id="bv_email_msg_to_consultant_body"
+                                  name="bv_settings[email_message_to_consultant_body]"
+                                  rows="6" class="large-text"><?php echo esc_textarea( $settings['email_message_to_consultant_body'] ); ?></textarea>
+                    </td>
+                </tr>
+            </table>
+
+            <h3><?php esc_html_e( 'Consultant → Client Message Notification', 'businessvance-services-manager' ); ?></h3>
+            <p class="description" style="margin-bottom:10px;"><?php esc_html_e( 'Email sent to the client when the consultant sends a message. Placeholders: {client_name}, {sender_name}, {project_number}, {message}, {portal_url}, {company_name}', 'businessvance-services-manager' ); ?></p>
+            <table class="form-table">
+                <tr>
+                    <th scope="row">
+                        <label><?php esc_html_e( 'Enable', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <label class="bv-toggle">
+                            <input type="checkbox" name="bv_settings[email_message_to_client]"
+                                   value="yes" <?php checked( $settings['email_message_to_client'], 'yes' ); ?> />
+                            <span class="bv-toggle-slider"></span>
+                            <span class="bv-toggle-label"><?php esc_html_e( 'Notify client when consultant sends a message', 'businessvance-services-manager' ); ?></span>
+                        </label>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_email_msg_to_client_subject"><?php esc_html_e( 'Subject', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <input type="text" id="bv_email_msg_to_client_subject"
+                               name="bv_settings[email_message_to_client_subject]"
+                               value="<?php echo esc_attr( $settings['email_message_to_client_subject'] ); ?>"
+                               class="large-text" />
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_email_msg_to_client_body"><?php esc_html_e( 'Body', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <textarea id="bv_email_msg_to_client_body"
+                                  name="bv_settings[email_message_to_client_body]"
+                                  rows="6" class="large-text"><?php echo esc_textarea( $settings['email_message_to_client_body'] ); ?></textarea>
                     </td>
                 </tr>
             </table>
