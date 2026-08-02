@@ -1820,31 +1820,21 @@ class BV_Client_Portal {
     .bv-q-heading h4 { margin: 0; color: ' . $portal_hdr . '; font-size: 15px; font-weight: 700; }
     .bv-q-paragraph p { margin: 8px 0; color: #6b7280; font-size: 14px; line-height: 1.6; background: #f8f9fb; padding: 12px 16px; border-radius: 8px; border-left: 3px solid ' . $portal_acnt . '; }
 
-    /* Radio Group */
-    .bv-q-radio-group { display: flex; flex-wrap: wrap; gap: 0; border: 1.5px solid #d1d5db; border-radius: 10px; overflow: hidden; background: #fff; }
-    .bv-q-radio { display: flex; align-items: center; gap: 8px; padding: 10px 16px; font-size: 14px; color: #374151; cursor: pointer; transition: background 0.15s ease; border-right: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; flex: 1 1 auto; min-width: 180px; }
-    .bv-q-radio:last-child { border-right: none; }
-    .bv-q-radio:nth-last-child(-n+2):first-child { border-bottom: none; }
-    .bv-q-radio:nth-last-child(-n+2):nth-child(2) { border-bottom: none; }
-    .bv-q-radio:nth-last-child(-n+3):nth-child(1) { border-bottom: none; }
-    .bv-q-radio:nth-last-child(-n+3):nth-child(2) { border-bottom: none; }
-    .bv-q-radio:nth-last-child(-n+3):nth-child(3) { border-bottom: none; }
-    .bv-q-radio:hover { background: #f0f4f8; }
-    .bv-q-radio input[type="radio"] { accent-color: ' . $portal_hdr . '; width: 16px; height: 16px; cursor: pointer; flex-shrink: 0; }
+    /* Radio Group — pill/tag style with clean wrapping */
+    .bv-q-radio-group { display: flex; flex-wrap: wrap; gap: 8px; }
+    .bv-q-radio { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; font-size: 14px; color: #374151; cursor: pointer; transition: all 0.15s ease; background: #f3f4f6; border: 1.5px solid #e5e7eb; border-radius: 8px; user-select: none; }
+    .bv-q-radio:hover { background: #e8edf2; border-color: #c8cdd3; }
+    .bv-q-radio input[type="radio"] { accent-color: ' . $portal_hdr . '; width: 15px; height: 15px; cursor: pointer; flex-shrink: 0; margin: 0; }
     .bv-q-radio input[type="radio"]:checked + span { color: ' . $portal_hdr . '; font-weight: 600; }
+    .bv-q-radio:has(input:checked) { background: #e0ecf8; border-color: ' . $portal_hdr . '; }
 
-    /* Checkbox Group */
-    .bv-q-checkbox-group { display: flex; flex-wrap: wrap; gap: 0; border: 1.5px solid #d1d5db; border-radius: 10px; overflow: hidden; background: #fff; }
-    .bv-q-checkbox { display: flex; align-items: center; gap: 8px; padding: 10px 16px; font-size: 14px; color: #374151; cursor: pointer; transition: background 0.15s ease; border-right: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; flex: 1 1 auto; min-width: 180px; }
-    .bv-q-checkbox:last-child { border-right: none; }
-    .bv-q-checkbox:nth-last-child(-n+2):first-child { border-bottom: none; }
-    .bv-q-checkbox:nth-last-child(-n+2):nth-child(2) { border-bottom: none; }
-    .bv-q-checkbox:nth-last-child(-n+3):nth-child(1) { border-bottom: none; }
-    .bv-q-checkbox:nth-last-child(-n+3):nth-child(2) { border-bottom: none; }
-    .bv-q-checkbox:nth-last-child(-n+3):nth-child(3) { border-bottom: none; }
-    .bv-q-checkbox:hover { background: #f0f4f8; }
-    .bv-q-checkbox input[type="checkbox"] { accent-color: ' . $portal_hdr . '; width: 16px; height: 16px; cursor: pointer; flex-shrink: 0; }
+    /* Checkbox Group — pill/tag style with clean wrapping */
+    .bv-q-checkbox-group { display: flex; flex-wrap: wrap; gap: 8px; }
+    .bv-q-checkbox { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; font-size: 14px; color: #374151; cursor: pointer; transition: all 0.15s ease; background: #f3f4f6; border: 1.5px solid #e5e7eb; border-radius: 8px; user-select: none; }
+    .bv-q-checkbox:hover { background: #e8edf2; border-color: #c8cdd3; }
+    .bv-q-checkbox input[type="checkbox"] { accent-color: ' . $portal_hdr . '; width: 15px; height: 15px; cursor: pointer; flex-shrink: 0; margin: 0; }
     .bv-q-checkbox input[type="checkbox"]:checked + span { color: ' . $portal_hdr . '; font-weight: 600; }
+    .bv-q-checkbox:has(input:checked) { background: #e0ecf8; border-color: ' . $portal_hdr . '; }
 
     /* File Upload */
     .bv-q-file-area { position: relative; border: 2px dashed #d1d5db; border-radius: 10px; padding: 20px; text-align: center; background: #f9fafb; cursor: pointer; transition: all 0.2s ease; }
@@ -1866,7 +1856,7 @@ class BV_Client_Portal {
         .bv-q-section-header { flex-direction: column; gap: 10px; padding: 16px 18px 12px; }
         .bv-q-section-num { width: 30px; height: 30px; font-size: 13px; }
         .bv-q-section-body { padding: 16px 18px 20px; }
-        .bv-q-radio, .bv-q-checkbox { min-width: 100%; }
+        .bv-q-radio, .bv-q-checkbox { padding: 8px 14px; font-size: 13px; }
         .bv-q-actions { flex-direction: column; align-items: stretch; }
         .bv-q-actions .bv-btn { width: 100%; text-align: center; }
         .bv-questionnaire-section { max-width: 100%; }
