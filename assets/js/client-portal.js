@@ -144,18 +144,25 @@
                 }
             }
         });
-        $('#bv-q-status').html('<em>Saving...</em>');
+        $('#bv-q-status').html('<span class="bv-q-saving">Saving...</span>');
+        var $btn = $(this).find('.bv-btn');
+        var origText = $btn.text();
+        $btn.text('Saving...').prop('disabled', true);
         $.post(bv_portal.ajax_url, {
             action: 'bv_portal_submit_questionnaire',
             nonce: bv_portal.nonce,
             project_id: projectId,
             responses: responses
         }, function(r) {
+            $btn.text(origText).prop('disabled', false);
             if (r.success) {
-                $('#bv-q-status').html('<span style="color:#27AE60;">✓ ' + (r.data || 'Saved') + '</span>');
+                $('#bv-q-status').html('<span class="bv-q-saved">&#10003; ' + (r.data || 'Saved') + '</span>');
             } else {
-                $('#bv-q-status').html('<span style="color:#DC3545;">' + (r.data || 'Error saving') + '</span>');
+                $('#bv-q-status').html('<span class="bv-q-error">' + (r.data || 'Error saving') + '</span>');
             }
+        }).fail(function() {
+            $btn.text(origText).prop('disabled', false);
+            $('#bv-q-status').html('<span class="bv-q-error">Network error. Please try again.</span>');
         });
     });
 

@@ -812,42 +812,57 @@ class BV_Client_Portal {
         ob_start();
         ?>
         <div class="bv-questionnaire-section">
-            <h2><?php echo esc_html__( 'Client Questionnaire', 'businessvance-services-manager' ); ?></h2>
-            <p><?php echo esc_html__( 'Please complete all required fields so we can prepare your report.', 'businessvance-services-manager' ); ?></p>
+            <div class="bv-q-intro">
+                <h2><?php echo esc_html__( 'Client Questionnaire', 'businessvance-services-manager' ); ?></h2>
+                <p><?php echo esc_html__( 'Please complete all required fields so we can prepare your report.', 'businessvance-services-manager' ); ?></p>
+            </div>
             <?php if ( empty( $sections ) ) : ?>
                 <div class="bv-empty-state"><?php echo esc_html__( 'No questionnaire available for this project yet.', 'businessvance-services-manager' ); ?></div>
             <?php else : ?>
             <form id="bv-questionnaire-form" data-project-id="<?php echo $project->id; ?>">
-                <?php foreach ( $sections as $section ) : ?>
-                <div class="bv-q-section">
-                    <h3><?php echo esc_html( $section->title ); ?></h3>
-                    <?php if ( ! empty( $section->template_name ) ) : ?>
-                    <p class="bv-q-source"><?php echo esc_html__( 'Source:', 'businessvance-services-manager' ); ?> <em><?php echo esc_html( $section->template_name ); ?></em></p>
-                    <?php endif; ?>
-                    <?php if ( $section->description ) : ?>
-                    <p class="bv-q-desc"><?php echo esc_html( $section->description ); ?></p>
-                    <?php endif; ?>
+                <?php $section_num = 0; foreach ( $sections as $section ) : $section_num++; ?>
+                <div class="bv-q-section" id="bv-q-section-<?php echo $section_num; ?>">
+                    <div class="bv-q-section-header">
+                        <div class="bv-q-section-num"><?php echo $section_num; ?></div>
+                        <div class="bv-q-section-info">
+                            <h3><?php echo esc_html( $section->title ); ?></h3>
+                            <?php if ( ! empty( $section->template_name ) ) : ?>
+                            <span class="bv-q-source"><?php echo esc_html__( 'Source:', 'businessvance-services-manager' ); ?> <em><?php echo esc_html( $section->template_name ); ?></em></span>
+                            <?php endif; ?>
+                            <?php if ( $section->description ) : ?>
+                            <p class="bv-q-desc"><?php echo esc_html( $section->description ); ?></p>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <div class="bv-q-section-body">
                     <?php foreach ( $section->questions as $q ) : ?>
-                    <div class="bv-q-field">
-                        <label><?php echo esc_html( $q->label ); ?><?php if ( $q->is_required ) echo ' <span class="bv-required">*</span>'; ?></label>
-                        <?php if ( ! empty( $q->help_text ) ) : ?>
-                        <small class="bv-q-help"><?php echo esc_html( $q->help_text ); ?></small>
-                        <?php endif; ?>
-
-                        <?php
+                    <?php
                         $options = json_decode( $q->options, true );
                         $val = $q->response_value ? $q->response_value : '';
                         $qid = esc_attr( $q->id );
                         $req = $q->is_required ? 'required' : '';
 
                         if ( $q->type === 'heading' ) : ?>
+                        <div class="bv-q-field bv-q-heading">
                             <h4><?php echo esc_html( $q->label ); ?></h4>
-                        <?php elseif ( $q->type === 'paragraph' ) : ?>
+                        </div>
+                    <?php elseif ( $q->type === 'paragraph' ) : ?>
+                        <div class="bv-q-field bv-q-paragraph">
                             <p><?php echo esc_html( $q->label ); ?></p>
-                        <?php elseif ( $q->type === 'textarea' ) : ?>
-                            <textarea name="q_<?php echo $qid; ?>" <?php echo $req; ?> placeholder="<?php echo esc_attr( $q->placeholder ); ?>"><?php echo esc_textarea( $val ); ?></textarea>
+                        </div>
+                    <?php else : ?>
+                    <div class="bv-q-field">
+                        <?php if ( $q->type !== 'heading' && $q->type !== 'paragraph' ) : ?>
+                        <label for="q_<?php echo $qid; ?>"><?php echo esc_html( $q->label ); ?><?php if ( $q->is_required ) echo ' <span class="bv-required">*</span>'; ?></label>
+                        <?php endif; ?>
+                        <?php if ( ! empty( $q->help_text ) ) : ?>
+                        <small class="bv-q-help"><?php echo esc_html( $q->help_text ); ?></small>
+                        <?php endif; ?>
+
+                        <?php if ( $q->type === 'textarea' ) : ?>
+                            <textarea id="q_<?php echo $qid; ?>" name="q_<?php echo $qid; ?>" <?php echo $req; ?> placeholder="<?php echo esc_attr( $q->placeholder ); ?>" rows="4"><?php echo esc_textarea( $val ); ?></textarea>
                         <?php elseif ( $q->type === 'select' && is_array( $options ) ) : ?>
-                            <select name="q_<?php echo $qid; ?>" <?php echo $req; ?>>
+                            <select id="q_<?php echo $qid; ?>" name="q_<?php echo $qid; ?>" <?php echo $req; ?>>
                                 <option value=""><?php echo esc_html__( '— Select —', 'businessvance-services-manager' ); ?></option>
                                 <?php foreach ( $options as $opt ) : ?>
                                 <option value="<?php echo esc_attr( is_array($opt) ? $opt['value'] ?? $opt[0] : $opt ); ?>" <?php selected( $val, is_array($opt) ? $opt['value'] ?? $opt[0] : $opt ); ?>>
@@ -858,31 +873,35 @@ class BV_Client_Portal {
                         <?php elseif ( $q->type === 'radio' && is_array( $options ) ) : ?>
                             <div class="bv-q-radio-group">
                                 <?php foreach ( $options as $i => $opt ) : ?>
-                                <label class="bv-q-radio"><input type="radio" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( is_array($opt) ? $opt['value'] ?? $opt[0] : $opt ); ?>" <?php checked( $val, is_array($opt) ? $opt['value'] ?? $opt[0] : $opt ); ?> <?php echo $req; ?> /> <?php echo esc_html( is_array($opt) ? $opt['label'] ?? $opt[1] : $opt ); ?></label>
+                                <label class="bv-q-radio"><input type="radio" id="q_<?php echo $qid; ?>_<?php echo $i; ?>" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( is_array($opt) ? $opt['value'] ?? $opt[0] : $opt ); ?>" <?php checked( $val, is_array($opt) ? $opt['value'] ?? $opt[0] : $opt ); ?> <?php echo $req; ?> /><span><?php echo esc_html( is_array($opt) ? $opt['label'] ?? $opt[1] : $opt ); ?></span></label>
                                 <?php endforeach; ?>
                             </div>
                         <?php elseif ( $q->type === 'checkbox' && is_array( $options ) ) : ?>
                             <div class="bv-q-checkbox-group">
                                 <?php $saved = json_decode( $val, true ) ?: array(); foreach ( $options as $opt ) : $ov = is_array($opt) ? $opt['value'] ?? $opt[0] : $opt; ?>
-                                <label class="bv-q-checkbox"><input type="checkbox" name="q_<?php echo $qid; ?>[]" value="<?php echo esc_attr( $ov ); ?>" <?php echo in_array( $ov, $saved ) ? 'checked' : ''; ?> /> <?php echo esc_html( is_array($opt) ? $opt['label'] ?? $opt[1] : $opt ); ?></label>
+                                <label class="bv-q-checkbox"><input type="checkbox" id="q_<?php echo $qid; ?>_<?php echo esc_attr( $ov ); ?>" name="q_<?php echo $qid; ?>[]" value="<?php echo esc_attr( $ov ); ?>" <?php echo in_array( $ov, $saved ) ? 'checked' : ''; ?> /><span><?php echo esc_html( is_array($opt) ? $opt['label'] ?? $opt[1] : $opt ); ?></span></label>
                                 <?php endforeach; ?>
                             </div>
                         <?php elseif ( $q->type === 'file' ) : ?>
-                            <input type="file" name="q_<?php echo $qid; ?>" class="bv-q-file" data-question-id="<?php echo $qid; ?>" />
-                            <?php if ( $val ) : ?><span class="bv-q-file-saved">✓ <?php echo esc_html__( 'File uploaded', 'businessvance-services-manager' ); ?></span><?php endif; ?>
+                            <div class="bv-q-file-area">
+                                <input type="file" id="q_<?php echo $qid; ?>" name="q_<?php echo $qid; ?>" class="bv-q-file" data-question-id="<?php echo $qid; ?>" />
+                                <?php if ( $val ) : ?><span class="bv-q-file-saved">&#10003; <?php echo esc_html__( 'File uploaded', 'businessvance-services-manager' ); ?></span><?php endif; ?>
+                            </div>
                         <?php elseif ( $q->type === 'number' ) : ?>
-                            <input type="number" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( $val ); ?>" placeholder="<?php echo esc_attr( $q->placeholder ); ?>" <?php echo $req; ?> />
+                            <input type="number" id="q_<?php echo $qid; ?>" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( $val ); ?>" placeholder="<?php echo esc_attr( $q->placeholder ); ?>" <?php echo $req; ?> />
                         <?php elseif ( $q->type === 'email' ) : ?>
-                            <input type="email" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( $val ); ?>" placeholder="<?php echo esc_attr( $q->placeholder ); ?>" <?php echo $req; ?> />
+                            <input type="email" id="q_<?php echo $qid; ?>" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( $val ); ?>" placeholder="<?php echo esc_attr( $q->placeholder ); ?>" <?php echo $req; ?> />
                         <?php elseif ( $q->type === 'phone' ) : ?>
-                            <input type="tel" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( $val ); ?>" placeholder="<?php echo esc_attr( $q->placeholder ); ?>" <?php echo $req; ?> />
+                            <input type="tel" id="q_<?php echo $qid; ?>" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( $val ); ?>" placeholder="<?php echo esc_attr( $q->placeholder ); ?>" <?php echo $req; ?> />
                         <?php elseif ( $q->type === 'date' ) : ?>
-                            <input type="date" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( $val ); ?>" <?php echo $req; ?> />
+                            <input type="date" id="q_<?php echo $qid; ?>" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( $val ); ?>" <?php echo $req; ?> />
                         <?php else : ?>
-                            <input type="text" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( $val ); ?>" placeholder="<?php echo esc_attr( $q->placeholder ); ?>" <?php echo $req; ?> />
+                            <input type="text" id="q_<?php echo $qid; ?>" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( $val ); ?>" placeholder="<?php echo esc_attr( $q->placeholder ); ?>" <?php echo $req; ?> />
                         <?php endif; ?>
                     </div>
+                    <?php endif; ?>
                     <?php endforeach; ?>
+                    </div>
                 </div>
                 <?php endforeach; ?>
                 <div class="bv-q-actions">
@@ -1758,8 +1777,100 @@ class BV_Client_Portal {
     .bv-upload-area:hover, .bv-upload-area.dragover { border-color: ' . $portal_hdr . '; background: rgba(0,43,92,0.03); }
     .bv-upload-icon { font-size: 40px; margin-bottom: 12px; }
 
-    /* Questionnaire source label */
-    .bv-q-source { font-size: 12px; color: #9CA3AF; margin: 0 0 8px; font-style: italic; }
+    /* ============================================
+       Questionnaire
+       ============================================ */
+    .bv-questionnaire-section { max-width: 860px; }
+    .bv-q-intro { margin-bottom: 28px; }
+    .bv-q-intro h2 { margin: 0 0 6px; color: ' . $portal_hdr . '; font-size: 24px; font-weight: 700; }
+    .bv-q-intro p { margin: 0; color: #6b7280; font-size: 15px; line-height: 1.5; }
+
+    /* Section Card */
+    .bv-q-section { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; margin-bottom: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); overflow: hidden; transition: box-shadow 0.2s ease; }
+    .bv-q-section:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.07); }
+
+    /* Section Header */
+    .bv-q-section-header { display: flex; align-items: flex-start; gap: 16px; padding: 20px 24px 16px; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 1px solid #e5e7eb; }
+    .bv-q-section-num { flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%; background: ' . $portal_hdr . '; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; box-shadow: 0 2px 8px rgba(0,43,92,0.2); }
+    .bv-q-section-info { flex: 1; min-width: 0; }
+    .bv-q-section-info h3 { margin: 0 0 4px; color: ' . $portal_hdr . '; font-size: 18px; font-weight: 700; line-height: 1.3; }
+    .bv-q-source { display: inline-block; font-size: 12px; color: #9CA3AF; font-style: italic; margin: 0 0 4px; padding: 2px 10px; background: #f3f4f6; border-radius: 12px; }
+    .bv-q-desc { margin: 6px 0 0; color: #6b7280; font-size: 13px; line-height: 1.5; }
+
+    /* Section Body */
+    .bv-q-section-body { padding: 20px 24px 24px; }
+
+    /* Field */
+    .bv-q-field { margin-bottom: 22px; }
+    .bv-q-field:last-child { margin-bottom: 0; }
+    .bv-q-field label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; color: #374151; line-height: 1.4; }
+    .bv-q-field input[type="text"], .bv-q-field input[type="number"], .bv-q-field input[type="email"], .bv-q-field input[type="tel"], .bv-q-field input[type="date"], .bv-q-field input[type="url"], .bv-q-field input[type="file"], .bv-q-field select, .bv-q-field textarea { width: 100%; padding: 11px 14px; border: 1.5px solid #d1d5db; border-radius: 8px; font-size: 14px; box-sizing: border-box; transition: all 0.2s ease; background: #fff; color: #1a1a2e; font-family: inherit; }
+    .bv-q-field input:focus, .bv-q-field select:focus, .bv-q-field textarea:focus { outline: none; border-color: ' . $portal_hdr . '; box-shadow: 0 0 0 3px rgba(0,43,92,0.1); }
+    .bv-q-field textarea { min-height: 80px; resize: vertical; line-height: 1.6; }
+    .bv-q-field select { appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 12 12\'%3E%3Cpath fill=\'%236b7280\' d=\'M6 8.825L1.175 4 2.238 2.938 6 6.7 9.763 2.938 10.825 4z\'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; cursor: pointer; }
+    .bv-q-field input[type="date"] { cursor: text; }
+    .bv-q-field input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; opacity: 0.6; }
+    .bv-q-field input[type="date"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+
+    /* Help Text */
+    .bv-q-help { display: block; margin: 4px 0 8px; font-size: 12px; color: #9CA3AF; line-height: 1.4; font-style: italic; }
+
+    /* Headings & Paragraphs */
+    .bv-q-heading { padding: 12px 0 6px; margin-bottom: 10px; border-bottom: 1px solid #f0f0f1; }
+    .bv-q-heading h4 { margin: 0; color: ' . $portal_hdr . '; font-size: 15px; font-weight: 700; }
+    .bv-q-paragraph p { margin: 8px 0; color: #6b7280; font-size: 14px; line-height: 1.6; background: #f8f9fb; padding: 12px 16px; border-radius: 8px; border-left: 3px solid ' . $portal_acnt . '; }
+
+    /* Radio Group */
+    .bv-q-radio-group { display: flex; flex-wrap: wrap; gap: 0; border: 1.5px solid #d1d5db; border-radius: 10px; overflow: hidden; background: #fff; }
+    .bv-q-radio { display: flex; align-items: center; gap: 8px; padding: 10px 16px; font-size: 14px; color: #374151; cursor: pointer; transition: background 0.15s ease; border-right: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; flex: 1 1 auto; min-width: 180px; }
+    .bv-q-radio:last-child { border-right: none; }
+    .bv-q-radio:nth-last-child(-n+2):first-child { border-bottom: none; }
+    .bv-q-radio:nth-last-child(-n+2):nth-child(2) { border-bottom: none; }
+    .bv-q-radio:nth-last-child(-n+3):nth-child(1) { border-bottom: none; }
+    .bv-q-radio:nth-last-child(-n+3):nth-child(2) { border-bottom: none; }
+    .bv-q-radio:nth-last-child(-n+3):nth-child(3) { border-bottom: none; }
+    .bv-q-radio:hover { background: #f0f4f8; }
+    .bv-q-radio input[type="radio"] { accent-color: ' . $portal_hdr . '; width: 16px; height: 16px; cursor: pointer; flex-shrink: 0; }
+    .bv-q-radio input[type="radio"]:checked + span { color: ' . $portal_hdr . '; font-weight: 600; }
+
+    /* Checkbox Group */
+    .bv-q-checkbox-group { display: flex; flex-wrap: wrap; gap: 0; border: 1.5px solid #d1d5db; border-radius: 10px; overflow: hidden; background: #fff; }
+    .bv-q-checkbox { display: flex; align-items: center; gap: 8px; padding: 10px 16px; font-size: 14px; color: #374151; cursor: pointer; transition: background 0.15s ease; border-right: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; flex: 1 1 auto; min-width: 180px; }
+    .bv-q-checkbox:last-child { border-right: none; }
+    .bv-q-checkbox:nth-last-child(-n+2):first-child { border-bottom: none; }
+    .bv-q-checkbox:nth-last-child(-n+2):nth-child(2) { border-bottom: none; }
+    .bv-q-checkbox:nth-last-child(-n+3):nth-child(1) { border-bottom: none; }
+    .bv-q-checkbox:nth-last-child(-n+3):nth-child(2) { border-bottom: none; }
+    .bv-q-checkbox:nth-last-child(-n+3):nth-child(3) { border-bottom: none; }
+    .bv-q-checkbox:hover { background: #f0f4f8; }
+    .bv-q-checkbox input[type="checkbox"] { accent-color: ' . $portal_hdr . '; width: 16px; height: 16px; cursor: pointer; flex-shrink: 0; }
+    .bv-q-checkbox input[type="checkbox"]:checked + span { color: ' . $portal_hdr . '; font-weight: 600; }
+
+    /* File Upload */
+    .bv-q-file-area { position: relative; border: 2px dashed #d1d5db; border-radius: 10px; padding: 20px; text-align: center; background: #f9fafb; cursor: pointer; transition: all 0.2s ease; }
+    .bv-q-file-area:hover { border-color: ' . $portal_hdr . '; background: rgba(0,43,92,0.02); }
+    .bv-q-file-area input[type="file"] { width: 100%; cursor: pointer; }
+    .bv-q-file-saved { display: inline-block; margin-top: 8px; padding: 4px 12px; background: #D1FAE5; color: #065F46; border-radius: 6px; font-size: 13px; font-weight: 600; }
+
+    /* Actions */
+    .bv-q-actions { display: flex; align-items: center; gap: 16px; margin-top: 28px; padding-top: 24px; border-top: 2px solid #e5e7eb; }
+    .bv-q-actions .bv-btn { padding: 14px 32px; font-size: 15px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .bv-q-actions .bv-btn:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.15); transform: translateY(-1px); }
+    .bv-q-actions .bv-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    .bv-q-saving { color: #6b7280; font-size: 14px; font-style: italic; }
+    .bv-q-saved { color: #059669; font-size: 14px; font-weight: 600; }
+    .bv-q-error { color: #DC2626; font-size: 14px; font-weight: 600; }
+
+    /* Questionnaire Responsive */
+    @media (max-width: 768px) {
+        .bv-q-section-header { flex-direction: column; gap: 10px; padding: 16px 18px 12px; }
+        .bv-q-section-num { width: 30px; height: 30px; font-size: 13px; }
+        .bv-q-section-body { padding: 16px 18px 20px; }
+        .bv-q-radio, .bv-q-checkbox { min-width: 100%; }
+        .bv-q-actions { flex-direction: column; align-items: stretch; }
+        .bv-q-actions .bv-btn { width: 100%; text-align: center; }
+        .bv-questionnaire-section { max-width: 100%; }
+    }
 
     /* Messages */
     .bv-messages-list { display: flex; flex-direction: column; gap: 12px; }
