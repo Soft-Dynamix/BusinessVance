@@ -455,6 +455,24 @@ class BV_Activator {
 
                 dbDelta( $sql_service_documents );
 
+                // -------------------------------------------------------
+                // 23. bv_custom_icons
+                // -------------------------------------------------------
+                $table_custom_icons = $wpdb->prefix . 'bv_custom_icons';
+
+                $sql_custom_icons = "CREATE TABLE {$table_custom_icons} (
+                        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+                        name varchar(100) NOT NULL DEFAULT '',
+                        label varchar(200) NOT NULL DEFAULT '',
+                        svg_inner TEXT NOT NULL,
+                        source varchar(50) NOT NULL DEFAULT 'upload',
+                        created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY  (id),
+                        UNIQUE KEY name (name)
+                ) {$charset_collate};";
+
+                dbDelta( $sql_custom_icons );
+
                 // Add new columns to existing bv_services table if they don't exist
                 $services_columns = $wpdb->get_results( "SHOW COLUMNS FROM {$table_services}" );
                 $existing_cols = array();

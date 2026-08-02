@@ -507,10 +507,13 @@ class BV_Admin {
                             <div class="bv-icon-picker-wrap">
                                 <input type="text" class="bv-icon-search-input" placeholder="<?php esc_attr_e( 'Search icons...', 'businessvance-services-manager' ); ?>">
                                 <div class="bv-icon-picker-grid" id="bv-icon-picker-grid">
-                                    <?php foreach ( $this->icons as $icon ) : ?>
-                                        <button type="button" class="bv-icon-pick-btn" data-icon="<?php echo esc_attr( $icon ); ?>" title="<?php echo esc_attr( $icon ); ?>">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><?php echo $this->get_icon_svg_path( $icon ); ?></svg>
-                                            <span class="bv-icon-pick-label"><?php echo esc_html( $icon ); ?></span>
+                                    <?php
+                                    $picker_icons = class_exists( 'BV_Icon_Manager' ) ? BV_Icon_Manager::get_all_icons_for_picker() : array();
+                                    foreach ( $picker_icons as $icon ) :
+                                    ?>
+                                        <button type="button" class="bv-icon-pick-btn<?php echo $icon['type'] === 'custom' ? ' bv-icon-pick-custom' : ''; ?>" data-icon="<?php echo esc_attr( $icon['name'] ); ?>" title="<?php echo esc_attr( $icon['label'] ); ?>" data-type="<?php echo esc_attr( $icon['type'] ); ?>">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><?php echo $icon['svg_inner']; ?></svg>
+                                            <span class="bv-icon-pick-label"><?php echo esc_html( $icon['label'] ); ?></span>
                                         </button>
                                     <?php endforeach; ?>
                                 </div>
@@ -519,6 +522,9 @@ class BV_Admin {
                                     <div id="bv-icon-preview" class="bv-icon-preview-box"></div>
                                     <input type="hidden" id="svc-icon" name="icon" value="briefcase">
                                 </div>
+                                <p class="description" style="margin-top:6px;">
+                                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=businessvance-icons' ) ); ?>" target="_blank"><?php esc_html_e( 'Manage Icons →', 'businessvance-services-manager' ); ?></a>
+                                </p>
                             </div>
                         </div>
 

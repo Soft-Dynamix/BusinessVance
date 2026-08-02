@@ -61,6 +61,11 @@ if ( $delete_all_data === 'yes' ) {
         $prefix . 'bv_services',
         $prefix . 'bv_categories',
         $prefix . 'bv_agreement_templates',
+        $prefix . 'bv_service_agreements',
+        $prefix . 'bv_document_requirements',
+        $prefix . 'bv_service_documents',
+        $prefix . 'bv_service_questionnaires',
+        $prefix . 'bv_custom_icons',
     );
 
     foreach ( $tables as $table ) {

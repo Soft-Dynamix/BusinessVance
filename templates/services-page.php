@@ -71,7 +71,11 @@ function bv_format_price( $price, $symbol, $pos ) {
                     <tr data-category-id="<?php echo esc_attr( $svc->category_id ); ?>">
                         <td class="bv-col-service">
                             <div class="bv-service-name">
-                                <span class="bv-icon bv-icon-<?php echo esc_attr( strtolower( $svc->icon ) ); ?>"></span>
+                                <?php if ( class_exists( 'BV_Icon_Manager' ) ) : ?>
+                                    <span class="bv-service-icon"><?php echo BV_Icon_Manager::get_icon_svg( $svc->icon, 20 ); ?></span>
+                                <?php else : ?>
+                                    <span class="bv-icon bv-icon-<?php echo esc_attr( strtolower( $svc->icon ) ); ?>"></span>
+                                <?php endif; ?>
                                 <?php echo esc_html( $svc->name ); ?>
                                 <?php if ( $svc->featured ) : ?>
                                     <span class="bv-featured-badge">Featured</span>

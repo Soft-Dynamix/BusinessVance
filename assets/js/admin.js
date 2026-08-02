@@ -530,12 +530,13 @@
         $('#bv-icon-preview').html(svg);
     });
 
-    // Icon search filter
+    // Icon search filter — searches by both icon name and label (title attribute)
     $(document).on('input', '.bv-icon-search-input', function() {
         var term = $(this).val().toLowerCase();
         $(this).next('.bv-icon-picker-grid').find('.bv-icon-pick-btn').each(function() {
             var name = $(this).data('icon');
-            $(this).toggle(name.indexOf(term) !== -1);
+            var label = $(this).attr('title') || '';
+            $(this).toggle(name.indexOf(term) !== -1 || label.toLowerCase().indexOf(term) !== -1);
         });
     });
 

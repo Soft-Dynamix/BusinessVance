@@ -134,9 +134,13 @@ class BV_Shortcodes {
     }
 
     /**
-     * Get icon SVG markup
+     * Get icon SVG markup — delegates to BV_Icon_Manager if available,
+     * otherwise falls back to the local hardcoded paths.
      */
     private function get_icon_svg( $icon_name, $size = 24 ) {
+        if ( class_exists( 'BV_Icon_Manager' ) ) {
+            return BV_Icon_Manager::get_icon_svg( $icon_name, $size );
+        }
         if ( isset( $this->icon_paths[ $icon_name ] ) ) {
             return '<svg xmlns="http://www.w3.org/2000/svg" width="' . $size . '" height="' . $size . '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' . $this->icon_paths[ $icon_name ] . '</svg>';
         }

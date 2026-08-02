@@ -625,6 +625,15 @@
     color: #2271b1;
     box-shadow: 0 0 0 2px rgba(34,113,177,0.2);
 }
+.bv-icon-pick-btn.bv-icon-pick-custom {
+    border-color: #008080;
+}
+.bv-icon-pick-btn.bv-icon-pick-custom.selected {
+    border-color: #008080;
+    background: #e6f5f5;
+    color: #008080;
+    box-shadow: 0 0 0 2px rgba(0,128,128,0.2);
+}
 .bv-icon-pick-btn svg {
     flex-shrink: 0;
 }
