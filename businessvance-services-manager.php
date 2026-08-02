@@ -3,7 +3,7 @@
  * Plugin Name: BusinessVance Services Manager
  * Plugin URI: https://www.studyvance.co.za
  * Description: Dynamically manage BusinessVance Consulting services, subscription plans, and categories. Includes Client Portal for WooCommerce customers, Consultant Dashboard for project management, questionnaire system, agreement signing, document exchange, and report delivery.
- * Version: 2.4.0
+ * Version: 2.5.0
  * Author: BusinessVance Consulting
  * Author URI: https://www.studyvance.co.za
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'BV_VERSION', '2.4.0' );
+define( 'BV_VERSION', '2.5.0' );
 define( 'BV_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'BV_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'BV_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -204,6 +204,7 @@ final class BusinessVance_Services_Manager {
         require_once BV_PLUGIN_DIR . 'includes/class-bv-consultant-dashboard.php';
         require_once BV_PLUGIN_DIR . 'includes/class-bv-questionnaire-admin.php';
         require_once BV_PLUGIN_DIR . 'includes/class-bv-agreement-manager.php';
+        require_once BV_PLUGIN_DIR . 'includes/class-bv-document-requirements.php';
         // Import class loaded on-demand only when import is triggered (see ajax_import_questionnaires)
         require_once BV_PLUGIN_DIR . 'includes/class-bv-woocommerce.php';
     }
@@ -216,6 +217,7 @@ final class BusinessVance_Services_Manager {
         $this->settings             = new BV_Settings();
         $this->questionnaire_admin   = new BV_Questionnaire_Admin();
         new BV_Agreement_Manager();
+        new BV_Document_Requirements();
         BV_WooCommerce::init();
     }
 

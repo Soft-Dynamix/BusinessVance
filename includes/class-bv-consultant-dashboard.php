@@ -31,6 +31,7 @@ class BV_Consultant_Dashboard {
         add_action( 'wp_ajax_bv_cd_download_document', array( $this, 'ajax_download_document' ) );
         add_action( 'wp_ajax_bv_cd_create_project', array( $this, 'ajax_create_project' ) );
         add_action( 'wp_ajax_bv_cd_download_report', array( $this, 'ajax_download_report' ) );
+        add_action( 'wp_ajax_bv_cd_download_questionnaire', array( $this, 'ajax_download_questionnaire' ) );
     }
 
     public function add_menu_page() {
@@ -397,11 +398,16 @@ class BV_Consultant_Dashboard {
         </div>
 
         <div id="bv-cd-panel-questionnaire" class="bv-cd-panel" style="<?php echo $active_tab === 'questionnaire' ? '' : 'display:none'; ?>">
+            <?php if ( ! empty( $responses ) ) : ?>
+            <div style="margin-bottom:12px;">
+                <button type="button" class="button button-secondary" onclick="bv_cd_download_questionnaire(<?php echo $project_id; ?>)">⬇ <?php echo esc_html__( 'Download Responses (CSV)', 'businessvance-services-manager' ); ?></button>
+            </div>
+            <?php endif; ?>
             <?php if (empty($responses)) : ?>
-            <div class="bv-cd-card"><p>No questionnaire responses submitted yet.</p></div>
+            <div class="bv-cd-card"><p><?php echo esc_html__( 'No questionnaire responses submitted yet.', 'businessvance-services-manager' ); ?></p></div>
             <?php else : ?>
             <table class="widefat striped bv-cd-table">
-                <thead><tr><th>Section</th><th>Question</th><th>Response</th></tr></thead>
+                <thead><tr><th><?php echo esc_html__( 'Section', 'businessvance-services-manager' ); ?></th><th><?php echo esc_html__( 'Question', 'businessvance-services-manager' ); ?></th><th><?php echo esc_html__( 'Response', 'businessvance-services-manager' ); ?></th></tr></thead>
                 <tbody>
                 <?php foreach ($responses as $r) : ?>
                 <tr>
@@ -686,6 +692,68 @@ class BV_Consultant_Dashboard {
         ), array( '%s','%d','%s','%s','%s','%s','%d','%s','%d','%s' ) );
 
         wp_send_json_success( array( 'project_id' => $wpdb->insert_id, 'project_number' => $project_number ) );
+    }
+
+    /**
+     * Download questionnaire responses as CSV.
+     *
+     * @since 2.5.0
+     * @return void
+     */
+    public function ajax_download_questionnaire() {
+        check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) wp_die( esc_html__( 'Access denied', 'businessvance-services-manager' ) );
+
+        $project_id = absint( $_GET['project_id'] ?? $_POST['project_id'] ?? 0 );
+        if ( ! $project_id ) wp_die( esc_html__( 'Invalid project', 'businessvance-services-manager' ) );
+
+        global $wpdb;
+        $project = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}bv_projects WHERE id = %d",
+            $project_id
+        ) );
+        if ( ! $project ) wp_die( esc_html__( 'Project not found', 'businessvance-services-manager' ) );
+
+        // Get all responses with section/question info
+        $responses = $wpdb->get_results( $wpdb->prepare(
+            "SELECT r.response_value, q.label, q.type, qs.title as section_title, qs.display_order as section_order, q.display_order as question_order
+             FROM {$wpdb->prefix}bv_questionnaire_responses r
+             JOIN {$wpdb->prefix}bv_questionnaire_questions q ON r.question_id = q.id
+             JOIN {$wpdb->prefix}bv_questionnaire_sections qs ON q.section_id = qs.id
+             WHERE r.project_id = %d
+             ORDER BY qs.display_order, q.display_order",
+            $project_id
+        ) );
+
+        // Build CSV
+        $filename = sanitize_file_name( $project->project_number . '_' . sanitize_file_name( $project->client_name ) . '_questionnaire.csv' );
+        $csv_rows = array();
+        $csv_rows[] = array( 'Section', 'Question', 'Type', 'Client Response' );
+
+        foreach ( $responses as $r ) {
+            $csv_rows[] = array(
+                $r->section_title,
+                $r->label,
+                $r->type,
+                $r->response_value,
+            );
+        }
+
+        // Output CSV
+        header( 'Content-Type: text/csv; charset=utf-8' );
+        header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+        header( 'Cache-Control: no-cache, no-store, must-revalidate' );
+        header( 'Pragma: no-cache' );
+        header( 'Expires: 0' );
+
+        $output = fopen( 'php://output', 'w' );
+        // BOM for Excel UTF-8 compatibility
+        fprintf( $output, "\xEF\xBB\xBF" );
+        foreach ( $csv_rows as $row ) {
+            fputcsv( $output, $row );
+        }
+        fclose( $output );
+        exit;
     }
 
     private function get_inline_css() {

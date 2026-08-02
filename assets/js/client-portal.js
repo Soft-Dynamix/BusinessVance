@@ -1,12 +1,13 @@
 /**
  * BusinessVance Client Portal - Frontend JavaScript
+ * @since 2.0.0  Updated 2.5.0 for document requirements, questionnaire fixes
  */
 (function($) {
     'use strict';
 
     window.bv_sign_agreement = function(projectId) {
         var name = $('#bv-sign-name').val();
-        if (!name) { alert('Please enter your full legal name.'); return; }
+        if (!name) { alert(bv_portal.i18n?.enter_name || 'Please enter your full legal name.'); return; }
         $('#bv-agreement-status').html('<em>Signing...</em>');
         $.post(bv_portal.ajax_url, {
             action: 'bv_portal_sign_agreement',
@@ -23,10 +24,52 @@
         });
     };
 
+    /**
+     * Upload a document for a specific document requirement.
+     * @since 2.5.0
+     */
+    window.bv_upload_document_for_requirement = function(projectId, requirementId) {
+        var fileInput = $('#bv-doc-file-' + requirementId)[0];
+        if (!fileInput || !fileInput.files.length) { alert('Please select a file.'); return; }
+        var statusEl = $('#bv-doc-status-' + requirementId);
+        if (statusEl) statusEl.html('<em>Uploading...</em>');
+
+        var fd = new FormData();
+        fd.append('file', fileInput.files[0]);
+        fd.append('action', 'bv_portal_upload_document');
+        fd.append('nonce', bv_portal.nonce);
+        fd.append('project_id', projectId);
+        fd.append('document_requirement_id', requirementId);
+        fd.append('name', fileInput.files[0].name);
+        fd.append('category', 'requirement');
+
+        $.ajax({
+            url: bv_portal.ajax_url,
+            type: 'POST',
+            data: fd,
+            processData: false,
+            contentType: false,
+            success: function(r) {
+                if (r.success) {
+                    if (statusEl) statusEl.html('<span style="color:#27AE60;">✓ ' + (r.data || 'Uploaded') + '</span>');
+                    setTimeout(function() { location.reload(); }, 1000);
+                } else {
+                    if (statusEl) statusEl.html('<span style="color:#DC3545;">' + (r.data || 'Error uploading') + '</span>');
+                }
+            },
+            error: function() {
+                if (statusEl) statusEl.html('<span style="color:#DC3545;">Upload failed. Please try again.</span>');
+            }
+        });
+    };
+
+    /**
+     * Legacy upload function (backward compatibility for old category-based uploads).
+     */
     window.bv_upload_document = function(projectId) {
         var fileInput = $('#bv-doc-file')[0];
         var category = $('#bv-doc-category').val();
-        if (!fileInput.files.length) { alert('Please select a file.'); return; }
+        if (!fileInput || !fileInput.files.length) { alert('Please select a file.'); return; }
         $('#bv-doc-status').html('<em>Uploading...</em>');
         var fd = new FormData();
         fd.append('file', fileInput.files[0]);
@@ -109,7 +152,7 @@
             responses: responses
         }, function(r) {
             if (r.success) {
-                $('#bv-q-status').html('<span style="color:#27AE60;">✓ ' + r.data + '</span>');
+                $('#bv-q-status').html('<span style="color:#27AE60;">✓ ' + (r.data || 'Saved') + '</span>');
             } else {
                 $('#bv-q-status').html('<span style="color:#DC3545;">' + (r.data || 'Error saving') + '</span>');
             }

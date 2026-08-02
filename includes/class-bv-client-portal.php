@@ -27,6 +27,25 @@ class BV_Client_Portal {
         add_action( 'wp_ajax_bv_portal_sign_agreement', array( $this, 'ajax_sign_agreement' ) );
         add_action( 'wp_ajax_bv_portal_send_message', array( $this, 'ajax_send_message' ) );
         add_action( 'wp_ajax_bv_portal_download_report', array( $this, 'ajax_download_report' ) );
+
+        // Ensure bv_project_documents has document_requirement_id column
+        add_action( 'init', array( $this, 'maybe_add_document_requirement_column' ), 99 );
+    }
+
+    /**
+     * Add document_requirement_id column to bv_project_documents if missing.
+     * This supports the new document requirements system.
+     *
+     * @since 2.5.0
+     * @return void
+     */
+    public function maybe_add_document_requirement_column() {
+        global $wpdb;
+        $table = $wpdb->prefix . 'bv_project_documents';
+        $col   = $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'document_requirement_id'" );
+        if ( empty( $col ) ) {
+            $wpdb->query( "ALTER TABLE {$table} ADD COLUMN document_requirement_id bigint(20) UNSIGNED NOT NULL DEFAULT 0 AFTER service_id" );
+        }
     }
 
     public function enqueue_assets() {
@@ -52,9 +71,250 @@ class BV_Client_Portal {
         return $project ? $project : false;
     }
 
+    /**
+     * Determine which tabs to show based on service assignments.
+     *
+     * @since 2.5.0
+     * @param int   $project_id The project ID.
+     * @param array $services   Services linked to the project.
+     * @param array $portal_settings Portal settings.
+     * @return array Associative array of tab_id => label for visible tabs.
+     */
+    private function get_visible_tabs( $project_id, $services, $portal_settings ) {
+        global $wpdb;
+        $service_ids = array();
+        foreach ( $services as $svc ) {
+            $service_ids[] = absint( $svc->id );
+        }
+
+        $all_tabs = array( 'overview' => 'Overview', 'agreement' => 'Agreement', 'questionnaire' => 'Questionnaire', 'documents' => 'Documents', 'reports' => 'Reports', 'messages' => 'Messages' );
+
+        // Apply section visibility from settings
+        if ( $portal_settings['portal_show_overview'] !== 'yes' ) {
+            unset( $all_tabs['overview'] );
+        }
+        if ( $portal_settings['portal_show_questionnaire'] !== 'yes' ) {
+            unset( $all_tabs['questionnaire'] );
+        }
+        if ( $portal_settings['portal_show_messages'] !== 'yes' ) {
+            unset( $all_tabs['messages'] );
+        }
+        if ( $portal_settings['portal_show_reports'] !== 'yes' ) {
+            unset( $all_tabs['reports'] );
+        }
+        if ( $portal_settings['portal_show_documents'] !== 'yes' ) {
+            unset( $all_tabs['documents'] );
+        }
+
+        // --- Agreement tab skip logic ---
+        if ( ! empty( $service_ids ) ) {
+            $placeholders = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
+            $has_agreements = $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_service_agreements WHERE service_id IN ($placeholders)",
+                ...$service_ids
+            ) );
+            if ( ! $has_agreements ) {
+                unset( $all_tabs['agreement'] );
+            }
+        } else {
+            unset( $all_tabs['agreement'] );
+        }
+
+        // --- Questionnaire tab skip logic ---
+        if ( ! empty( $service_ids ) ) {
+            // Check junction table first
+            $has_questionnaires = $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_service_questionnaires WHERE service_id IN ($placeholders)",
+                ...$service_ids
+            ) );
+            // Fallback: check legacy column
+            if ( ! $has_questionnaires ) {
+                $has_questionnaires = $wpdb->get_var( $wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$wpdb->prefix}bv_services WHERE id IN ($placeholders) AND questionnaire_template_id > 0",
+                    ...$service_ids
+                ) );
+            }
+            if ( ! $has_questionnaires ) {
+                unset( $all_tabs['questionnaire'] );
+            }
+        } else {
+            unset( $all_tabs['questionnaire'] );
+        }
+
+        // --- Documents tab skip logic ---
+        if ( ! empty( $service_ids ) ) {
+            $has_doc_requirements = $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_service_documents WHERE service_id IN ($placeholders)",
+                ...$service_ids
+            ) );
+            // If no document requirements from junction, tab stays only if setting forces it
+            if ( ! $has_doc_requirements ) {
+                // Don't re-add if settings already removed it
+                if ( ! isset( $all_tabs['documents'] ) ) {
+                    // Already removed by settings, keep removed
+                }
+                // If still present (setting is 'yes'), remove it since no requirements
+                else {
+                    unset( $all_tabs['documents'] );
+                }
+            } else {
+                // Document requirements exist — always show the tab
+                $all_tabs['documents'] = 'Documents';
+            }
+        } else {
+            unset( $all_tabs['documents'] );
+        }
+
+        // Ensure at least overview exists as fallback
+        if ( empty( $all_tabs ) ) {
+            $all_tabs['overview'] = 'Overview';
+        }
+
+        return $all_tabs;
+    }
+
+    /**
+     * Check if ALL project services have nda_only = 1.
+     *
+     * @since 2.5.0
+     * @param array $services Services linked to the project.
+     * @return bool
+     */
+    private function all_services_nda_only( $services ) {
+        if ( empty( $services ) ) return false;
+        foreach ( $services as $svc ) {
+            if ( empty( $svc->nda_only ) ) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Determine the next project status after agreement is signed.
+     *
+     * @since 2.5.0
+     * @param int   $project_id The project ID.
+     * @param array $services   Services linked to the project.
+     * @return string Next status.
+     */
+    private function get_next_status_after_agreement( $project_id, $services ) {
+        global $wpdb;
+        $service_ids = array();
+        foreach ( $services as $svc ) {
+            $service_ids[] = absint( $svc->id );
+        }
+
+        $has_questionnaires = false;
+        $has_documents      = false;
+
+        if ( ! empty( $service_ids ) ) {
+            $placeholders = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
+
+            // Check questionnaires
+            $has_questionnaires = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_service_questionnaires WHERE service_id IN ($placeholders)",
+                ...$service_ids
+            ) );
+            if ( ! $has_questionnaires ) {
+                $has_questionnaires = (bool) $wpdb->get_var( $wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$wpdb->prefix}bv_services WHERE id IN ($placeholders) AND questionnaire_template_id > 0",
+                    ...$service_ids
+                ) );
+            }
+
+            // Check documents
+            $has_documents = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_service_documents WHERE service_id IN ($placeholders)",
+                ...$service_ids
+            ) );
+        }
+
+        if ( $has_questionnaires ) {
+            return 'awaiting-questionnaire';
+        } elseif ( $has_documents ) {
+            return 'awaiting-documents';
+        } else {
+            return 'in-progress';
+        }
+    }
+
+    /**
+     * Determine the next project status after questionnaire is completed.
+     *
+     * @since 2.5.0
+     * @param int   $project_id The project ID.
+     * @param array $services   Services linked to the project.
+     * @return string Next status.
+     */
+    private function get_next_status_after_questionnaire( $project_id, $services ) {
+        global $wpdb;
+        $service_ids = array();
+        foreach ( $services as $svc ) {
+            $service_ids[] = absint( $svc->id );
+        }
+
+        if ( ! empty( $service_ids ) ) {
+            $placeholders = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
+            $has_documents = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_service_documents WHERE service_id IN ($placeholders)",
+                ...$service_ids
+            ) );
+            if ( $has_documents ) {
+                return 'awaiting-documents';
+            }
+        }
+
+        return 'in-progress';
+    }
+
+    /**
+     * Check if all required document requirements have been fulfilled.
+     *
+     * @since 2.5.0
+     * @param int   $project_id The project ID.
+     * @param array $services   Services linked to the project.
+     * @return bool
+     */
+    private function all_required_docs_uploaded( $project_id, $services ) {
+        global $wpdb;
+        $service_ids = array();
+        foreach ( $services as $svc ) {
+            $service_ids[] = absint( $svc->id );
+        }
+        if ( empty( $service_ids ) ) return true;
+
+        $placeholders = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
+
+        // Get all required document requirement IDs for these services
+        $required_dr_ids = $wpdb->get_col( $wpdb->prepare(
+            "SELECT DISTINCT sd.document_requirement_id
+             FROM {$wpdb->prefix}bv_service_documents sd
+             JOIN {$wpdb->prefix}bv_document_requirements dr ON dr.id = sd.document_requirement_id
+             WHERE sd.service_id IN ($placeholders) AND dr.is_required = 1",
+            ...$service_ids
+        ) );
+
+        if ( empty( $required_dr_ids ) ) return true;
+
+        // Check that each required requirement has at least one uploaded document
+        foreach ( $required_dr_ids as $dr_id ) {
+            $uploaded = $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_project_documents
+                 WHERE project_id = %d AND document_requirement_id = %d",
+                $project_id, $dr_id
+            ) );
+            if ( ! $uploaded ) return false;
+        }
+
+        return true;
+    }
+
     public function render_portal( $atts ) {
         if ( ! is_user_logged_in() ) {
-            return '<div class="bv-portal-login-message"><p>Please <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">log in</a> to access your client portal.</p></div>';
+            return '<div class="bv-portal-login-message"><p>' . sprintf(
+                /* translators: %s: login URL */
+                esc_html__( 'Please <a href="%s">log in</a> to access your client portal.', 'businessvance-services-manager' ),
+                esc_url( wp_login_url( get_permalink() ) )
+            ) . '</p></div>';
         }
 
         global $wpdb;
@@ -103,11 +363,21 @@ class BV_Client_Portal {
         $wpdb->update( $wpdb->prefix . 'bv_project_messages',
             array( 'is_read' => 1 ),
             array( 'project_id' => $project_id, 'sender_type' => 'admin' ),
-            array( '%d', '%d' )
+            array( '%d' ), array( '%d', '%s' )
         );
 
         // Get questionnaire data
         $questionnaire = $this->get_questionnaire_data( $project_id );
+
+        // Determine visible tabs
+        $portal_settings = BV_Settings::get_settings();
+        $all_tabs = $this->get_visible_tabs( $project_id, $services, $portal_settings );
+
+        // If requested tab is not visible, redirect to first available tab
+        if ( ! isset( $all_tabs[ $tab ] ) ) {
+            $tab_keys = array_keys( $all_tabs );
+            $tab = $tab_keys[0];
+        }
 
         ob_start();
         ?>
@@ -134,7 +404,7 @@ class BV_Client_Portal {
             <div class="bv-portal-body">
                 <!-- Sidebar: Project List -->
                 <div class="bv-portal-sidebar">
-                    <h3>My Projects</h3>
+                    <h3><?php echo esc_html__( 'My Projects', 'businessvance-services-manager' ); ?></h3>
                     <div class="bv-portal-project-list">
                         <?php foreach ( $projects as $p ) : ?>
                         <a href="?project_id=<?php echo $p->id; ?>" class="bv-portal-project-item <?php echo $p->id == $project_id ? 'active' : ''; ?>">
@@ -152,46 +422,6 @@ class BV_Client_Portal {
                     <!-- Tabs -->
                     <div class="bv-portal-tabs">
                         <?php
-                        // Build tabs based on project status and admin settings
-                        $portal_settings = BV_Settings::get_settings();
-                        $all_tabs = array( 'overview' => 'Overview', 'agreement' => 'Agreement', 'questionnaire' => 'Questionnaire', 'documents' => 'Documents', 'reports' => 'Reports', 'messages' => 'Messages' );
-                        
-                        // Apply section visibility from settings
-                        if ( $portal_settings['portal_show_overview'] !== 'yes' ) {
-                            unset( $all_tabs['overview'] );
-                        }
-                        if ( $portal_settings['portal_show_questionnaire'] !== 'yes' ) {
-                            unset( $all_tabs['questionnaire'] );
-                        }
-                        if ( $portal_settings['portal_show_messages'] !== 'yes' ) {
-                            unset( $all_tabs['messages'] );
-                        }
-                        if ( $portal_settings['portal_show_reports'] !== 'yes' ) {
-                            unset( $all_tabs['reports'] );
-                        }
-                        if ( $portal_settings['portal_show_documents'] !== 'yes' ) {
-                            unset( $all_tabs['documents'] );
-                        }
-                        
-                        // Check if any service requires documents (override: show documents tab if required)
-                        $documents_required = false;
-                        foreach ( $services as $svc ) {
-                            $req_docs = json_decode( $svc->required_documents, true );
-                            if ( is_array( $req_docs ) && ! empty( $req_docs ) ) {
-                                $documents_required = true;
-                                break;
-                            }
-                        }
-                        // If documents are required by service, always show the tab
-                        if ( $documents_required ) {
-                            $all_tabs['documents'] = 'Documents';
-                        }
-                        
-                        // Ensure at least overview exists as fallback
-                        if ( empty( $all_tabs ) ) {
-                            $all_tabs['overview'] = 'Overview';
-                        }
-                        
                         foreach ( $all_tabs as $tab_id => $tab_label ) :
                             $active = ( $tab === $tab_id ) ? 'active' : '';
                             $count = '';
@@ -208,7 +438,7 @@ class BV_Client_Portal {
                                 $count = ' <span class="bv-count">' . count( $documents ) . '</span>';
                             }
                         ?>
-                        <a href="?project_id=<?php echo $project_id; ?>&tab=<?php echo $tab_id; ?>" class="bv-portal-tab <?php echo $active; ?>"><?php echo $tab_label . $count; ?></a>
+                        <a href="?project_id=<?php echo $project_id; ?>&tab=<?php echo $tab_id; ?>" class="bv-portal-tab <?php echo $active; ?>"><?php echo esc_html( $tab_label ) . $count; ?></a>
                         <?php endforeach; ?>
                     </div>
 
@@ -216,14 +446,10 @@ class BV_Client_Portal {
                         <?php
                         switch ( $tab ) {
                             case 'overview': echo $this->render_overview_tab( $active_project, $services ); break;
-                            case 'agreement': echo $this->render_agreement_tab( $active_project, $agreement ); break;
+                            case 'agreement': echo $this->render_agreement_tab( $active_project, $agreement, $services ); break;
                             case 'questionnaire': echo $this->render_questionnaire_tab( $active_project, $questionnaire ); break;
                             case 'documents':
-                                if ( isset( $all_tabs['documents'] ) ) {
-                                    echo $this->render_documents_tab( $active_project, $documents, $services );
-                                } else {
-                                    echo $this->render_overview_tab( $active_project, $services );
-                                }
+                                echo $this->render_documents_tab( $active_project, $documents, $services );
                                 break;
                             case 'reports': echo $this->render_reports_tab( $active_project, $reports ); break;
                             case 'messages': echo $this->render_messages_tab( $active_project, $messages ); break;
@@ -261,9 +487,9 @@ class BV_Client_Portal {
             <div class="bv-portal-body">
                 <div class="bv-portal-empty-state">
                     <div class="bv-portal-empty-icon">📋</div>
-                    <h2>No Active Projects</h2>
-                    <p>Your projects will appear here after you purchase a service from our <a href="/services/">services page</a>.</p>
-                    <p>Once you complete a purchase through our shop, a project will be automatically created and you can track its progress here.</p>
+                    <h2><?php echo esc_html__( 'No Active Projects', 'businessvance-services-manager' ); ?></h2>
+                    <p><?php echo esc_html__( 'Your projects will appear here after you purchase a service from our services page.', 'businessvance-services-manager' ); ?></p>
+                    <p><?php echo esc_html__( 'Once you complete a purchase through our shop, a project will be automatically created and you can track its progress here.', 'businessvance-services-manager' ); ?></p>
                 </div>
             </div>
         </div>
@@ -279,7 +505,7 @@ class BV_Client_Portal {
             <div class="bv-overview-header">
                 <div>
                     <h2><?php echo esc_html( $project->project_number ); ?></h2>
-                    <p class="bv-subtitle">Created <?php echo esc_html( date( 'd M Y H:i', strtotime( $project->created_at ) ) ); ?></p>
+                    <p class="bv-subtitle"><?php echo esc_html__( 'Created', 'businessvance-services-manager' ); ?> <?php echo esc_html( date( 'd M Y H:i', strtotime( $project->created_at ) ) ); ?></p>
                 </div>
                 <span class="bv-portal-project-status-badge bv-status-<?php echo esc_attr( $project->status ); ?>">
                     <?php echo esc_html( $this->status_label( $project->status ) ); ?>
@@ -288,7 +514,7 @@ class BV_Client_Portal {
 
             <div class="bv-progress-section">
                 <div class="bv-progress-header">
-                    <span>Project Progress</span>
+                    <span><?php echo esc_html__( 'Project Progress', 'businessvance-services-manager' ); ?></span>
                     <span class="bv-progress-percent"><?php echo $progress; ?>%</span>
                 </div>
                 <div class="bv-progress-bar">
@@ -298,20 +524,20 @@ class BV_Client_Portal {
 
             <div class="bv-info-grid">
                 <div class="bv-info-card">
-                    <h4>Client Details</h4>
-                    <p><strong>Name:</strong> <?php echo esc_html( $project->client_name ); ?></p>
-                    <p><strong>Email:</strong> <?php echo esc_html( $project->client_email ); ?></p>
+                    <h4><?php echo esc_html__( 'Client Details', 'businessvance-services-manager' ); ?></h4>
+                    <p><strong><?php echo esc_html__( 'Name:', 'businessvance-services-manager' ); ?></strong> <?php echo esc_html( $project->client_name ); ?></p>
+                    <p><strong><?php echo esc_html__( 'Email:', 'businessvance-services-manager' ); ?></strong> <?php echo esc_html( $project->client_email ); ?></p>
                     <?php if ( $project->client_phone ) : ?>
-                    <p><strong>Phone:</strong> <?php echo esc_html( $project->client_phone ); ?></p>
+                    <p><strong><?php echo esc_html__( 'Phone:', 'businessvance-services-manager' ); ?></strong> <?php echo esc_html( $project->client_phone ); ?></p>
                     <?php endif; ?>
                     <?php if ( $project->client_company ) : ?>
-                    <p><strong>Company:</strong> <?php echo esc_html( $project->client_company ); ?></p>
+                    <p><strong><?php echo esc_html__( 'Company:', 'businessvance-services-manager' ); ?></strong> <?php echo esc_html( $project->client_company ); ?></p>
                     <?php endif; ?>
                 </div>
                 <div class="bv-info-card">
-                    <h4>Services</h4>
+                    <h4><?php echo esc_html__( 'Services', 'businessvance-services-manager' ); ?></h4>
                     <?php if ( empty( $services ) ) : ?>
-                    <p>No services linked</p>
+                    <p><?php echo esc_html__( 'No services linked', 'businessvance-services-manager' ); ?></p>
                     <?php else : ?>
                     <ul class="bv-service-list">
                         <?php foreach ( $services as $svc ) : ?>
@@ -324,7 +550,7 @@ class BV_Client_Portal {
 
             <?php if ( $project->notes ) : ?>
             <div class="bv-notes-section">
-                <h4>Notes from Consultant</h4>
+                <h4><?php echo esc_html__( 'Notes from Consultant', 'businessvance-services-manager' ); ?></h4>
                 <div class="bv-notes-content"><?php echo nl2br( esc_html( $project->notes ) ); ?></div>
             </div>
             <?php endif; ?>
@@ -333,117 +559,99 @@ class BV_Client_Portal {
         return ob_get_clean();
     }
 
-    private function render_agreement_tab( $project, $agreement ) {
+    /**
+     * Render the agreement tab.
+     * Only shows templates assigned via bv_service_agreements junction table.
+     * Removed all global/default fallback logic per v2.5.0.
+     *
+     * @since 2.0.0
+     * @param object     $project  The project object.
+     * @param object|null $agreement Signed agreement record or null.
+     * @param array      $services  Services linked to the project.
+     * @return string
+     */
+    private function render_agreement_tab( $project, $agreement, $services = array() ) {
         global $wpdb;
-        
-        // Determine agreement template(s) to use
-        $template = '';
-        
-        // Check if any service has custom agreement templates via junction table
-        $project_services = $wpdb->get_results( $wpdb->prepare(
-            "SELECT ps.service_id, s.name, s.nda_only
-             FROM {$wpdb->prefix}bv_project_services ps
-             JOIN {$wpdb->prefix}bv_services s ON ps.service_id = s.id
-             WHERE ps.project_id = %d",
-            $project->id
-        ) );
-        
+
+        // Collect service IDs
+        $service_ids = array();
+        foreach ( $services as $svc ) {
+            $service_ids[] = absint( $svc->id );
+        }
+
         $custom_templates = array();
-        $has_nda_only = false;
-        foreach ( $project_services as $ps ) {
-            // Get agreement templates from junction table
-            $agreement_tids = $wpdb->get_col( $wpdb->prepare(
-                "SELECT sa.agreement_template_id 
+        $has_nda_only      = $this->all_services_nda_only( $services );
+
+        if ( ! empty( $service_ids ) ) {
+            $placeholders = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
+
+            // Get agreement template IDs from junction table for all project services
+            $junction_rows = $wpdb->get_results( $wpdb->prepare(
+                "SELECT sa.service_id, sa.agreement_template_id, s.name as service_name
                  FROM {$wpdb->prefix}bv_service_agreements sa
-                 JOIN {$wpdb->prefix}bv_agreement_templates t ON t.id = sa.agreement_template_id
-                 WHERE sa.service_id = %d 
-                 ORDER BY sa.display_order ASC",
-                $ps->service_id
+                 JOIN {$wpdb->prefix}bv_services s ON s.id = sa.service_id
+                 WHERE sa.service_id IN ($placeholders)
+                 ORDER BY sa.service_id, sa.display_order ASC",
+                ...$service_ids
             ) );
-            
-            // Fallback to legacy column if junction is empty
-            if ( empty( $agreement_tids ) ) {
-                $legacy_id = $wpdb->get_var( $wpdb->prepare(
-                    "SELECT agreement_template_id FROM {$wpdb->prefix}bv_services WHERE id = %d",
-                    $ps->service_id
-                ) );
-                if ( $legacy_id > 0 ) {
-                    $agreement_tids = array( $legacy_id );
-                }
-            }
-            
-            foreach ( $agreement_tids as $tid ) {
+
+            foreach ( $junction_rows as $jr ) {
                 $tpl = $wpdb->get_row( $wpdb->prepare(
                     "SELECT * FROM {$wpdb->prefix}bv_agreement_templates WHERE id = %d",
-                    $tid
+                    $jr->agreement_template_id
                 ) );
                 if ( $tpl ) {
-                    $custom_templates[] = array( 'service' => $ps->name, 'template' => $tpl );
-                }
-            }
-            
-            if ( $ps->nda_only ) {
-                $has_nda_only = true;
-            }
-        }
-        
-        // If no custom templates, use the global agreement template
-        if ( empty( $custom_templates ) ) {
-            $template = get_option( 'bv_agreement_template', '' );
-            // Fallback to default NDA if no global template
-            if ( empty( $template ) ) {
-                $default_nda = $wpdb->get_row( "SELECT * FROM {$wpdb->prefix}bv_agreement_templates WHERE is_default = 1 ORDER BY id ASC LIMIT 1" );
-                if ( $default_nda ) {
-                    $template = $default_nda->content;
+                    // If ALL services are NDA-only, only show NDA/confidentiality type agreements
+                    if ( $has_nda_only && ! in_array( $tpl->type, array( 'nda', 'confidentiality' ), true ) ) {
+                        continue;
+                    }
+                    $custom_templates[] = array(
+                        'service'  => $jr->service_name,
+                        'template' => $tpl,
+                    );
                 }
             }
         }
-        
+
         $has_signed = $agreement && ! empty( $agreement->agreed_at );
         ob_start();
         ?>
         <div class="bv-agreement-section">
-            <h2>Agreement</h2>
+            <h2><?php echo esc_html__( 'Agreement', 'businessvance-services-manager' ); ?></h2>
             <?php if ( $has_signed ) : ?>
                 <div class="bv-agreement-signed">
                     <div class="bv-check-icon">✓</div>
-                    <h3>Agreement Signed</h3>
-                    <p>Signed by <strong><?php echo esc_html( $agreement->full_name ); ?></strong> on <strong><?php echo esc_html( date( 'd M Y \a\t H:i', strtotime( $agreement->agreed_at ) ) ); ?></strong></p>
+                    <h3><?php echo esc_html__( 'Agreement Signed', 'businessvance-services-manager' ); ?></h3>
+                    <p><?php echo esc_html__( 'Signed by', 'businessvance-services-manager' ); ?> <strong><?php echo esc_html( $agreement->full_name ); ?></strong> <?php echo esc_html__( 'on', 'businessvance-services-manager' ); ?> <strong><?php echo esc_html( date( 'd M Y \a\t H:i', strtotime( $agreement->agreed_at ) ) ); ?></strong></p>
                 </div>
                 <div class="bv-agreement-content">
                     <?php echo wp_kses_post( $agreement->template_content ); ?>
                 </div>
+            <?php elseif ( empty( $custom_templates ) ) : ?>
+                <div class="bv-empty-state">
+                    <p><?php echo esc_html__( 'No agreement is required for this project.', 'businessvance-services-manager' ); ?></p>
+                </div>
             <?php else : ?>
                 <div class="bv-agreement-warning">
-                    <p>⚠️ Please read and sign the agreement(s) below to proceed with your project.</p>
+                    <p>⚠️ <?php echo esc_html__( 'Please read and sign the agreement(s) below to proceed with your project.', 'businessvance-services-manager' ); ?></p>
                 </div>
-                
-                <?php if ( ! empty( $custom_templates ) ) : ?>
-                    <?php foreach ( $custom_templates as $ct ) : ?>
-                    <div class="bv-agreement-content" style="margin-bottom: 20px;">
-                        <h3 style="margin-top:0;"><?php echo esc_html( $ct['service'] ); ?> — <?php echo esc_html( $ct['template']->name ); ?></h3>
-                        <?php echo wp_kses_post( $ct['template']->content ); ?>
-                    </div>
-                    <?php endforeach; ?>
-                <?php elseif ( ! empty( $template ) ) : ?>
-                    <div class="bv-agreement-content">
-                        <?php echo wp_kses_post( $template ); ?>
-                    </div>
-                <?php else : ?>
-                    <div class="bv-empty-state">
-                        <p>No agreement template has been configured for this project yet.</p>
-                    </div>
-                <?php endif; ?>
-                
+
+                <?php foreach ( $custom_templates as $ct ) : ?>
+                <div class="bv-agreement-content" style="margin-bottom: 20px;">
+                    <h3 style="margin-top:0;"><?php echo esc_html( $ct['service'] ); ?> — <?php echo esc_html( $ct['template']->name ); ?></h3>
+                    <?php echo wp_kses_post( $ct['template']->content ); ?>
+                </div>
+                <?php endforeach; ?>
+
                 <div class="bv-agreement-sign-form">
-                    <h3>Sign the Agreement</h3>
-                    <p>By signing below, you confirm that you have read and agree to the terms above.</p>
+                    <h3><?php echo esc_html__( 'Sign the Agreement', 'businessvance-services-manager' ); ?></h3>
+                    <p><?php echo esc_html__( 'By signing below, you confirm that you have read and agree to the terms above.', 'businessvance-services-manager' ); ?></p>
                     <div class="bv-form-group">
-                        <label>Full Legal Name</label>
+                        <label><?php echo esc_html__( 'Full Legal Name', 'businessvance-services-manager' ); ?></label>
                         <input type="text" id="bv-sign-name" value="<?php echo esc_attr( $project->client_name ); ?>" required />
                     </div>
                     <button type="button" class="bv-btn bv-btn-primary" onclick="bv_sign_agreement(<?php echo $project->id; ?>)">
-                        ✓ I Agree — Sign Agreement
+                        ✓ <?php echo esc_html__( 'I Agree — Sign Agreement', 'businessvance-services-manager' ); ?>
                     </button>
                     <div id="bv-agreement-status"></div>
                 </div>
@@ -453,6 +661,14 @@ class BV_Client_Portal {
         return ob_get_clean();
     }
 
+    /**
+     * Get questionnaire data for a project using junction table with legacy fallback.
+     * Deduplicates by label|type|options composite key.
+     *
+     * @since 2.0.0  Updated 2.5.0 for multi-questionnaire + improved dedup.
+     * @param int $project_id The project ID.
+     * @return array Array of section objects with questions.
+     */
     private function get_questionnaire_data( $project_id ) {
         global $wpdb;
 
@@ -466,19 +682,51 @@ class BV_Client_Portal {
             $service_ids[] = absint( $ps->service_id );
         }
 
-        // If no services linked, return empty
         if ( empty( $service_ids ) ) {
             return array();
         }
 
-        // Get unique questionnaire template IDs from the linked services
+        // Collect all unique questionnaire template IDs
+        // Primary: from bv_service_questionnaires junction table
+        // Fallback: from legacy bv_services.questionnaire_template_id column
         $placeholders = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
-        $template_ids = $wpdb->get_col( $wpdb->prepare(
-            "SELECT DISTINCT questionnaire_template_id FROM {$wpdb->prefix}bv_services
-             WHERE id IN ($placeholders) AND questionnaire_template_id > 0",
+
+        $junction_tids = $wpdb->get_results( $wpdb->prepare(
+            "SELECT sq.service_id, sq.questionnaire_template_id
+             FROM {$wpdb->prefix}bv_service_questionnaires sq
+             WHERE sq.service_id IN ($placeholders)
+             ORDER BY sq.service_id, sq.display_order ASC",
             ...$service_ids
         ) );
 
+        $template_ids = array();
+        $service_template_map = array(); // service_id => [template_ids]
+
+        if ( ! empty( $junction_tids ) ) {
+            foreach ( $junction_tids as $jt ) {
+                $template_ids[] = absint( $jt->questionnaire_template_id );
+                if ( ! isset( $service_template_map[ $jt->service_id ] ) ) {
+                    $service_template_map[ $jt->service_id ] = array();
+                }
+                $service_template_map[ $jt->service_id ][] = absint( $jt->questionnaire_template_id );
+            }
+        }
+
+        // Fallback for services with no junction entries: check legacy column
+        foreach ( $service_ids as $sid ) {
+            if ( ! isset( $service_template_map[ $sid ] ) ) {
+                $legacy_tid = $wpdb->get_var( $wpdb->prepare(
+                    "SELECT questionnaire_template_id FROM {$wpdb->prefix}bv_services WHERE id = %d AND questionnaire_template_id > 0",
+                    $sid
+                ) );
+                if ( $legacy_tid ) {
+                    $template_ids[] = absint( $legacy_tid );
+                    $service_template_map[ $sid ] = array( absint( $legacy_tid ) );
+                }
+            }
+        }
+
+        $template_ids = array_unique( $template_ids );
         if ( empty( $template_ids ) ) {
             return array();
         }
@@ -494,9 +742,22 @@ class BV_Client_Portal {
             ...$template_ids
         ) );
 
-        // Collect unique question IDs across all sections (for deduplication)
-        $seen_question_keys = array(); // keyed by "label|type" to deduplicate
+        // Deduplicate questions by label|type|options composite key
+        // Track which questions came from which template for display
+        $seen_question_keys = array();
+        $question_service_map = array(); // question_id => service_id
         $all_sections = array();
+
+        // Build reverse map: template_id => service_ids
+        $template_service_map = array();
+        foreach ( $service_template_map as $sid => $tids ) {
+            foreach ( $tids as $tid ) {
+                if ( ! isset( $template_service_map[ $tid ] ) ) {
+                    $template_service_map[ $tid ] = array();
+                }
+                $template_service_map[ $tid ][] = $sid;
+            }
+        }
 
         foreach ( $sections as $section ) {
             $questions = $wpdb->get_results( $wpdb->prepare(
@@ -509,47 +770,67 @@ class BV_Client_Portal {
                 $project_id, $section->id
             ) );
 
-            // Deduplicate questions by label+type — skip if already seen
+            // Deduplicate by label|type|options composite key
             $unique_questions = array();
             foreach ( $questions as $q ) {
-                $key = $q->label . '|' . $q->type;
+                $key = $q->label . '|' . $q->type . '|' . $q->options;
                 if ( isset( $seen_question_keys[ $key ] ) ) {
-                    continue; // Skip duplicate question
+                    continue;
                 }
                 $seen_question_keys[ $key ] = true;
                 $unique_questions[] = $q;
+
+                // Track which service this question belongs to
+                $tpl_id = absint( $section->template_id );
+                if ( isset( $template_service_map[ $tpl_id ] ) ) {
+                    $question_service_map[ $q->id ] = $template_service_map[ $tpl_id ][0];
+                }
             }
 
-            // Only include section if it has unique questions
             if ( ! empty( $unique_questions ) ) {
-                $section->questions = $unique_questions;
-                $all_sections[] = $section;
+                $section->questions   = $unique_questions;
+                $section->template_name = $section->template_name;
+                $all_sections[]        = $section;
             }
         }
+
+        // Store the question-service map for use in AJAX handler
+        $this->_question_service_map = $question_service_map;
 
         return $all_sections;
     }
 
+    /**
+     * Render the questionnaire tab with multi-questionnaire support.
+     *
+     * @since 2.0.0  Updated 2.5.0
+     * @param object $project  The project object.
+     * @param array  $sections Array of section objects.
+     * @return string
+     */
     private function render_questionnaire_tab( $project, $sections ) {
         ob_start();
         ?>
         <div class="bv-questionnaire-section">
-            <h2>Client Questionnaire</h2>
-            <p>Please complete all required fields so we can prepare your report.</p>
+            <h2><?php echo esc_html__( 'Client Questionnaire', 'businessvance-services-manager' ); ?></h2>
+            <p><?php echo esc_html__( 'Please complete all required fields so we can prepare your report.', 'businessvance-services-manager' ); ?></p>
             <?php if ( empty( $sections ) ) : ?>
-                <div class="bv-empty-state">No questionnaire available for this project yet.</div>
+                <div class="bv-empty-state"><?php echo esc_html__( 'No questionnaire available for this project yet.', 'businessvance-services-manager' ); ?></div>
             <?php else : ?>
             <form id="bv-questionnaire-form" data-project-id="<?php echo $project->id; ?>">
                 <?php foreach ( $sections as $section ) : ?>
                 <div class="bv-q-section">
                     <h3><?php echo esc_html( $section->title ); ?></h3>
+                    <?php if ( ! empty( $section->template_name ) ) : ?>
+                    <p class="bv-q-source"><?php echo esc_html__( 'Source:', 'businessvance-services-manager' ); ?> <em><?php echo esc_html( $section->template_name ); ?></em></p>
+                    <?php endif; ?>
                     <?php if ( $section->description ) : ?>
                     <p class="bv-q-desc"><?php echo esc_html( $section->description ); ?></p>
                     <?php endif; ?>
                     <?php foreach ( $section->questions as $q ) : ?>
                     <div class="bv-q-field">
                         <label><?php echo esc_html( $q->label ); ?><?php if ( $q->is_required ) echo ' <span class="bv-required">*</span>'; ?></label>
-                        <?php if ( $q->help_text ) : ?>
+                        <?php if ( ! empty( $q->help_text ) ) : ?>
                         <small class="bv-q-help"><?php echo esc_html( $q->help_text ); ?></small>
                         <?php endif; ?>
 
@@ -567,7 +848,7 @@ class BV_Client_Portal {
                             <textarea name="q_<?php echo $qid; ?>" <?php echo $req; ?> placeholder="<?php echo esc_attr( $q->placeholder ); ?>"><?php echo esc_textarea( $val ); ?></textarea>
                         <?php elseif ( $q->type === 'select' && is_array( $options ) ) : ?>
                             <select name="q_<?php echo $qid; ?>" <?php echo $req; ?>>
-                                <option value="">— Select —</option>
+                                <option value=""><?php echo esc_html__( '— Select —', 'businessvance-services-manager' ); ?></option>
                                 <?php foreach ( $options as $opt ) : ?>
                                 <option value="<?php echo esc_attr( is_array($opt) ? $opt['value'] ?? $opt[0] : $opt ); ?>" <?php selected( $val, is_array($opt) ? $opt['value'] ?? $opt[0] : $opt ); ?>>
                                     <?php echo esc_html( is_array($opt) ? $opt['label'] ?? $opt[1] : $opt ); ?>
@@ -588,7 +869,7 @@ class BV_Client_Portal {
                             </div>
                         <?php elseif ( $q->type === 'file' ) : ?>
                             <input type="file" name="q_<?php echo $qid; ?>" class="bv-q-file" data-question-id="<?php echo $qid; ?>" />
-                            <?php if ( $val ) : ?><span class="bv-q-file-saved">✓ File uploaded</span><?php endif; ?>
+                            <?php if ( $val ) : ?><span class="bv-q-file-saved">✓ <?php echo esc_html__( 'File uploaded', 'businessvance-services-manager' ); ?></span><?php endif; ?>
                         <?php elseif ( $q->type === 'number' ) : ?>
                             <input type="number" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( $val ); ?>" placeholder="<?php echo esc_attr( $q->placeholder ); ?>" <?php echo $req; ?> />
                         <?php elseif ( $q->type === 'email' ) : ?>
@@ -605,7 +886,7 @@ class BV_Client_Portal {
                 </div>
                 <?php endforeach; ?>
                 <div class="bv-q-actions">
-                    <button type="submit" class="bv-btn bv-btn-primary">Save Questionnaire</button>
+                    <button type="submit" class="bv-btn bv-btn-primary"><?php echo esc_html__( 'Save Questionnaire', 'businessvance-services-manager' ); ?></button>
                     <span id="bv-q-status"></span>
                 </div>
             </form>
@@ -615,64 +896,144 @@ class BV_Client_Portal {
         return ob_get_clean();
     }
 
+    /**
+     * Render the documents tab using bv_service_documents + bv_document_requirements.
+     * Removed old json_decode(required_documents) logic per v2.5.0.
+     *
+     * @since 2.0.0  Updated 2.5.0
+     * @param object $project   The project object.
+     * @param array  $documents Uploaded documents for the project.
+     * @param array  $services  Services linked to the project.
+     * @return string
+     */
     private function render_documents_tab( $project, $documents, $services = array() ) {
+        global $wpdb;
+
+        // Collect service IDs
+        $service_ids = array();
+        foreach ( $services as $svc ) {
+            $service_ids[] = absint( $svc->id );
+        }
+
+        // Get document requirements for all project services
+        $requirements = array();
+        if ( ! empty( $service_ids ) ) {
+            $placeholders = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
+            $requirements = $wpdb->get_results( $wpdb->prepare(
+                "SELECT dr.*, sd.service_id, s.name as service_name
+                 FROM {$wpdb->prefix}bv_service_documents sd
+                 JOIN {$wpdb->prefix}bv_document_requirements dr ON dr.id = sd.document_requirement_id
+                 JOIN {$wpdb->prefix}bv_services s ON s.id = sd.service_id
+                 WHERE sd.service_id IN ($placeholders)
+                 ORDER BY s.name, sd.display_order ASC, dr.display_order ASC",
+                ...$service_ids
+            ) );
+        }
+
+        // Build a map: requirement_id => uploaded documents count
+        $doc_map = array();
+        $doc_list_by_req = array();
+        foreach ( $documents as $doc ) {
+            $dr_id = absint( $doc->document_requirement_id );
+            if ( $dr_id > 0 ) {
+                $doc_map[ $dr_id ] = ( $doc_map[ $dr_id ] ?? 0 ) + 1;
+                $doc_list_by_req[ $dr_id ][] = $doc;
+            }
+        }
+
+        // Check if all required docs are uploaded
+        $all_required_done = true;
+        $has_any_required  = false;
+        foreach ( $requirements as $req ) {
+            if ( $req->is_required ) {
+                $has_any_required = true;
+                if ( empty( $doc_map[ $req->id ] ) ) {
+                    $all_required_done = false;
+                }
+            }
+        }
+
         ob_start();
         ?>
         <div class="bv-documents-section">
-            <h2>Documents</h2>
-            <p>Upload documents required for your project. Accepted formats: PDF, DOC, DOCX, JPG, PNG.</p>
-            <?php if ( ! empty( $services ) ) : ?>
-            <div style="background:#FFF3CD;border:1px solid #FFC107;border-radius:8px;padding:16px;margin-bottom:20px;">
-                <h4 style="margin:0 0 8px;color:#856404;">📋 Required Documents</h4>
-                <ul style="margin:0;padding-left:20px;color:#856404;">
-                <?php foreach ( $services as $svc ) : ?>
-                    <?php $req_docs = json_decode( $svc->required_documents, true ); ?>
-                    <?php if ( is_array( $req_docs ) && ! empty( $req_docs ) ) : ?>
-                    <li><strong><?php echo esc_html( $svc->name ); ?>:</strong> <?php echo esc_html( implode( ', ', $req_docs ) ); ?></li>
+            <h2><?php echo esc_html__( 'Documents', 'businessvance-services-manager' ); ?></h2>
+
+            <?php if ( empty( $requirements ) ) : ?>
+                <div class="bv-empty-state"><?php echo esc_html__( 'No documents are required for this project.', 'businessvance-services-manager' ); ?></div>
+            <?php else : ?>
+
+                <?php if ( $has_any_required ) : ?>
+                <div class="bv-doc-completion-bar" style="margin-bottom:20px;">
+                    <?php if ( $all_required_done ) : ?>
+                        <div class="bv-doc-completion-done" style="background:#D1FAE5;border:1px solid #6EE7B7;border-radius:8px;padding:14px 20px;color:#065F46;font-weight:600;">✓ <?php echo esc_html__( 'All required documents have been uploaded.', 'businessvance-services-manager' ); ?></div>
+                    <?php else : ?>
+                        <div class="bv-doc-completion-pending" style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:14px 20px;color:#92400E;font-weight:600;">⚠️ <?php echo esc_html__( 'Some required documents are still missing. Please upload them below.', 'businessvance-services-manager' ); ?></div>
                     <?php endif; ?>
-                <?php endforeach; ?>
-                </ul>
-                <?php if ( empty( array_filter( array_map( function($s) { return json_decode( $s->required_documents, true ); }, $services ) ) ) ) : ?>
-                <p style="margin:4px 0 0;">No specific documents are required. Upload any supporting documents you'd like to share.</p>
+                </div>
                 <?php endif; ?>
-            </div>
+
+                <div class="bv-doc-requirements-list">
+                <?php foreach ( $requirements as $req ) :
+                    $is_fulfilled = ! empty( $doc_map[ $req->id ] );
+                    $allowed_exts = ! empty( $req->allowed_types ) ? explode( ',', $req->allowed_types ) : array();
+                    $accept_str   = ! empty( $allowed_exts ) ? '.' . implode( ',.', array_map( 'trim', $allowed_exts ) ) : '';
+                ?>
+                    <div class="bv-doc-requirement-card" id="bv-doc-req-<?php echo $req->id; ?>" style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,0.04);<?php if ( $is_fulfilled && $req->is_required ) echo 'border-left:4px solid #059669;'; ?>">
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+                            <div>
+                                <h4 style="margin:0 0 4px;"><?php echo esc_html( $req->name ); ?><?php if ( $req->is_required ) echo ' <span class="bv-required" style="color:#DC2626;">*</span>'; ?></h4>
+                                <?php if ( $req->description ) : ?>
+                                <p style="margin:0;color:#6b7280;font-size:13px;"><?php echo esc_html( $req->description ); ?></p>
+                                <?php endif; ?>
+                            </div>
+                            <?php if ( $is_fulfilled ) : ?>
+                                <span style="background:#D1FAE5;color:#065F46;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;">✓ <?php echo esc_html__( 'Uploaded', 'businessvance-services-manager' ); ?></span>
+                            <?php endif; ?>
+                        </div>
+                        <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:#9CA3AF;margin-bottom:14px;">
+                            <span><?php echo esc_html__( 'Service:', 'businessvance-services-manager' ); ?> <?php echo esc_html( $req->service_name ); ?></span>
+                            <?php if ( ! empty( $allowed_exts ) ) : ?>
+                            <span><?php echo esc_html__( 'Accepted:', 'businessvance-services-manager' ); ?> <?php echo esc_html( strtoupper( implode( ', ', array_map( 'trim', $allowed_exts ) ) ) ); ?></span>
+                            <?php endif; ?>
+                            <?php if ( $req->max_size_mb > 0 ) : ?>
+                            <span><?php echo esc_html__( 'Max size:', 'businessvance-services-manager' ); ?> <?php echo esc_html( $req->max_size_mb ); ?>MB</span>
+                            <?php endif; ?>
+                        </div>
+
+                        <?php if ( ! empty( $doc_list_by_req[ $req->id ] ) ) : ?>
+                        <div style="margin-bottom:14px;">
+                            <strong style="font-size:13px;color:#374151;"><?php echo esc_html__( 'Uploaded files:', 'businessvance-services-manager' ); ?></strong>
+                            <ul style="margin:6px 0 0;padding-left:20px;font-size:13px;color:#4b5563;">
+                                <?php foreach ( $doc_list_by_req[ $req->id ] as $d ) : ?>
+                                <li><?php echo esc_html( $d->name ); ?> <span style="color:#9CA3AF;"><?php echo esc_html( size_format( $d->filesize ) ); ?></span></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                        <?php endif; ?>
+
+                        <div class="bv-doc-upload-row" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                            <input type="file" id="bv-doc-file-<?php echo $req->id; ?>" accept="<?php echo esc_attr( $accept_str ); ?>" style="font-size:13px;" />
+                            <button type="button" class="bv-btn bv-btn-primary bv-btn-sm" onclick="bv_upload_document_for_requirement(<?php echo $project->id; ?>, <?php echo $req->id; ?>)">
+                                <?php echo esc_html__( 'Upload', 'businessvance-services-manager' ); ?>
+                            </button>
+                            <span class="bv-doc-upload-status" id="bv-doc-status-<?php echo $req->id; ?>"></span>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+                </div>
             <?php endif; ?>
 
-            <div class="bv-upload-form">
-                <h4>Upload Document</h4>
-                <div class="bv-form-group">
-                    <label>Document Category</label>
-                    <select id="bv-doc-category">
-                        <option value="company-registration">Company Registration</option>
-                        <option value="id">ID / Passport</option>
-                        <option value="financial">Financial Statements</option>
-                        <option value="logo">Logo / Branding</option>
-                        <option value="branding">Branding Assets</option>
-                        <option value="other">Other</option>
-                    </select>
-                </div>
-                <div class="bv-form-group">
-                    <label>File</label>
-                    <input type="file" id="bv-doc-file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" />
-                </div>
-                <button type="button" class="bv-btn bv-btn-primary" onclick="bv_upload_document(<?php echo $project->id; ?>)">
-                    Upload Document
-                </button>
-                <div id="bv-doc-status"></div>
-            </div>
-
             <?php if ( ! empty( $documents ) ) : ?>
-            <div class="bv-documents-list">
-                <h4>Uploaded Documents</h4>
+            <div class="bv-documents-list" style="margin-top:28px;">
+                <h4><?php echo esc_html__( 'All Uploaded Documents', 'businessvance-services-manager' ); ?></h4>
                 <table class="bv-table">
                     <thead>
-                        <tr><th>Document</th><th>Category</th><th>Uploaded</th><th>Size</th></tr>
+                        <tr><th><?php echo esc_html__( 'Document', 'businessvance-services-manager' ); ?></th><th><?php echo esc_html__( 'Uploaded', 'businessvance-services-manager' ); ?></th><th><?php echo esc_html__( 'Size', 'businessvance-services-manager' ); ?></th></tr>
                     </thead>
                     <tbody>
                         <?php foreach ( $documents as $doc ) : ?>
                         <tr>
                             <td><?php echo esc_html( $doc->name ); ?></td>
-                            <td><span class="bv-doc-cat"><?php echo esc_html( ucfirst( str_replace( '-', ' ', $doc->category ) ) ); ?></span></td>
                             <td><?php echo esc_html( date( 'd M Y H:i', strtotime( $doc->created_at ) ) ); ?></td>
                             <td><?php echo esc_html( size_format( $doc->filesize ) ); ?></td>
                         </tr>
@@ -680,8 +1041,6 @@ class BV_Client_Portal {
                     </tbody>
                 </table>
             </div>
-            <?php else : ?>
-            <div class="bv-empty-state">No documents uploaded yet.</div>
             <?php endif; ?>
         </div>
         <?php
@@ -693,19 +1052,19 @@ class BV_Client_Portal {
         ob_start();
         ?>
         <div class="bv-reports-section">
-            <h2>Reports</h2>
+            <h2><?php echo esc_html__( 'Reports', 'businessvance-services-manager' ); ?></h2>
 
             <?php if ( ! empty( $delivered ) ) : ?>
             <div class="bv-reports-delivered">
-                <h4>Available Reports</h4>
+                <h4><?php echo esc_html__( 'Available Reports', 'businessvance-services-manager' ); ?></h4>
                 <div class="bv-reports-grid">
                     <?php foreach ( $delivered as $rpt ) : ?>
                     <div class="bv-report-card">
                         <div class="bv-report-icon">📄</div>
                         <h5><?php echo esc_html( $rpt->title ); ?></h5>
-                        <p class="bv-report-meta">Version <?php echo esc_html( $rpt->version ); ?> — Delivered <?php echo esc_html( date( 'd M Y', strtotime( $rpt->delivered_at ) ) ); ?></p>
+                        <p class="bv-report-meta"><?php echo esc_html__( 'Version', 'businessvance-services-manager' ); ?> <?php echo esc_html( $rpt->version ); ?> — <?php echo esc_html__( 'Delivered', 'businessvance-services-manager' ); ?> <?php echo esc_html( date( 'd M Y', strtotime( $rpt->delivered_at ) ) ); ?></p>
                         <button type="button" class="bv-btn bv-btn-primary" onclick="bv_download_report(<?php echo $rpt->id; ?>)">
-                            ⬇ Download Report
+                            ⬇ <?php echo esc_html__( 'Download Report', 'businessvance-services-manager' ); ?>
                         </button>
                     </div>
                     <?php endforeach; ?>
@@ -716,8 +1075,8 @@ class BV_Client_Portal {
             <?php if ( empty( $delivered ) ) : ?>
             <div class="bv-empty-state">
                 <div class="bv-empty-icon">📄</div>
-                <h3>No Reports Available Yet</h3>
-                <p>Your reports will appear here once they are completed and delivered by your consultant.</p>
+                <h3><?php echo esc_html__( 'No Reports Available Yet', 'businessvance-services-manager' ); ?></h3>
+                <p><?php echo esc_html__( 'Your reports will appear here once they are completed and delivered by your consultant.', 'businessvance-services-manager' ); ?></p>
             </div>
             <?php endif; ?>
         </div>
@@ -729,11 +1088,11 @@ class BV_Client_Portal {
         ob_start();
         ?>
         <div class="bv-messages-section">
-            <h2>Messages</h2>
+            <h2><?php echo esc_html__( 'Messages', 'businessvance-services-manager' ); ?></h2>
 
             <div class="bv-messages-thread" id="bv-messages-thread">
                 <?php if ( empty( $messages ) ) : ?>
-                <div class="bv-empty-state">No messages yet. Start a conversation below.</div>
+                <div class="bv-empty-state"><?php echo esc_html__( 'No messages yet. Start a conversation below.', 'businessvance-services-manager' ); ?></div>
                 <?php else : ?>
                 <?php foreach ( $messages as $msg ) : ?>
                 <div class="bv-message bv-message-<?php echo esc_attr( $msg->sender_type ); ?>">
@@ -748,9 +1107,9 @@ class BV_Client_Portal {
             </div>
 
             <div class="bv-message-form">
-                <textarea id="bv-message-text" placeholder="Type your message..." rows="3"></textarea>
+                <textarea id="bv-message-text" placeholder="<?php echo esc_attr__( 'Type your message...', 'businessvance-services-manager' ); ?>" rows="3"></textarea>
                 <button type="button" class="bv-btn bv-btn-primary" onclick="bv_send_message(<?php echo $project->id; ?>)">
-                    Send Message
+                    <?php echo esc_html__( 'Send Message', 'businessvance-services-manager' ); ?>
                 </button>
                 <span id="bv-msg-status"></span>
             </div>
@@ -763,75 +1122,195 @@ class BV_Client_Portal {
     // AJAX Handlers
     // ============================
 
+    /**
+     * Handle document upload with requirement validation.
+     *
+     * @since 2.0.0  Updated 2.5.0 for document requirements
+     * @return void
+     */
     public function ajax_upload_document() {
         check_ajax_referer( 'bv_portal_action', 'nonce' );
-        if ( ! is_user_logged_in() ) wp_send_json_error( 'Not logged in' );
+        if ( ! is_user_logged_in() ) wp_send_json_error( esc_html__( 'Not logged in', 'businessvance-services-manager' ) );
 
         $project_id = absint( $_POST['project_id'] );
         $project = $this->verify_project_access( $project_id );
-        if ( ! $project ) wp_send_json_error( 'Project not found or access denied' );
+        if ( ! $project ) wp_send_json_error( esc_html__( 'Project not found or access denied', 'businessvance-services-manager' ) );
 
-        if ( empty( $_FILES['file'] ) ) wp_send_json_error( 'No file uploaded' );
+        if ( empty( $_FILES['file'] ) ) wp_send_json_error( esc_html__( 'No file uploaded', 'businessvance-services-manager' ) );
 
         $file = $_FILES['file'];
-        $allowed = array( 'pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png' );
-        $ext = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
-        if ( ! in_array( $ext, $allowed ) ) wp_send_json_error( 'File type not allowed' );
+        $ext  = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
 
-        $filename = $project_id . '_' . time() . '_' . sanitize_file_name( $file['name'] );
+        // If a document_requirement_id is provided, validate against it
+        $dr_id = absint( $_POST['document_requirement_id'] ?? 0 );
+        if ( $dr_id > 0 ) {
+            global $wpdb;
+            $requirement = $wpdb->get_row( $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}bv_document_requirements WHERE id = %d",
+                $dr_id
+            ) );
+            if ( ! $requirement ) {
+                wp_send_json_error( esc_html__( 'Document requirement not found', 'businessvance-services-manager' ) );
+            }
+
+            // Validate file type
+            if ( ! empty( $requirement->allowed_types ) ) {
+                $allowed = array_map( 'trim', explode( ',', strtolower( $requirement->allowed_types ) ) );
+                if ( ! in_array( $ext, $allowed, true ) ) {
+                    wp_send_json_error( sprintf(
+                        /* translators: %s: allowed file types */
+                        esc_html__( 'File type not allowed. Accepted types: %s', 'businessvance-services-manager' ),
+                        strtoupper( implode( ', ', $allowed ) )
+                    ) );
+                }
+            } else {
+                // Default allowed types if requirement doesn't specify
+                $allowed = array( 'pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png' );
+                if ( ! in_array( $ext, $allowed, true ) ) {
+                    wp_send_json_error( esc_html__( 'File type not allowed', 'businessvance-services-manager' ) );
+                }
+            }
+
+            // Validate file size
+            if ( $requirement->max_size_mb > 0 ) {
+                $max_bytes = $requirement->max_size_mb * 1024 * 1024;
+                if ( $file['size'] > $max_bytes ) {
+                    wp_send_json_error( sprintf(
+                        /* translators: %d: max size in MB */
+                        esc_html__( 'File exceeds maximum size of %d MB', 'businessvance-services-manager' ),
+                        $requirement->max_size_mb
+                    ) );
+                }
+            }
+        } else {
+            // No specific requirement — use default validation
+            $allowed = array( 'pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png' );
+            if ( ! in_array( $ext, $allowed, true ) ) {
+                wp_send_json_error( esc_html__( 'File type not allowed', 'businessvance-services-manager' ) );
+            }
+        }
+
+        $filename   = $project_id . '_' . time() . '_' . sanitize_file_name( $file['name'] );
         $upload_path = BV_UPLOAD_DIR . '/' . $filename;
 
         if ( ! move_uploaded_file( $file['tmp_name'], $upload_path ) ) {
-            wp_send_json_error( 'Upload failed' );
+            wp_send_json_error( esc_html__( 'Upload failed', 'businessvance-services-manager' ) );
         }
 
         global $wpdb;
+
+        // Determine service_id from the requirement if possible
+        $service_id = 0;
+        if ( $dr_id > 0 ) {
+            $service_id = $wpdb->get_var( $wpdb->prepare(
+                "SELECT service_id FROM {$wpdb->prefix}bv_service_documents WHERE document_requirement_id = %d LIMIT 1",
+                $dr_id
+            ) );
+            $service_id = absint( $service_id );
+        }
+
         $wpdb->insert( $wpdb->prefix . 'bv_project_documents', array(
-            'project_id'  => $project_id,
-            'service_id'  => 0,
-            'name'        => sanitize_text_field( $_POST['name'] ?? $file['name'] ),
-            'filename'    => $filename,
-            'filepath'    => $upload_path,
-            'filesize'    => $file['size'],
-            'mime_type'   => $file['type'],
-            'category'    => sanitize_text_field( $_POST['category'] ?? 'other' ),
-            'uploaded_by' => 'client',
-        ), array( '%d', '%d', '%s', '%s', '%s', '%d', '%s', '%s', '%s' ) );
+            'project_id'            => $project_id,
+            'service_id'            => $service_id,
+            'document_requirement_id' => $dr_id,
+            'name'                  => sanitize_text_field( $_POST['name'] ?? $file['name'] ),
+            'filename'              => $filename,
+            'filepath'              => $upload_path,
+            'filesize'              => $file['size'],
+            'mime_type'             => $file['type'],
+            'category'              => $dr_id > 0 ? 'requirement' : sanitize_text_field( $_POST['category'] ?? 'other' ),
+            'uploaded_by'           => 'client',
+        ), array( '%d', '%d', '%d', '%s', '%s', '%s', '%d', '%s', '%s', '%s' ) );
 
         $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array(
             'project_id'  => $project_id,
             'entity_type' => 'document',
             'entity_id'   => $wpdb->insert_id,
             'action'      => 'uploaded',
-            'description' => 'Client uploaded document: ' . sanitize_text_field( $_POST['name'] ?? $file['name'] ),
+            'description' => esc_html__( 'Client uploaded document: ', 'businessvance-services-manager' ) . sanitize_text_field( $_POST['name'] ?? $file['name'] ),
             'user_id'     => get_current_user_id(),
         ), array( '%d', '%s', '%d', '%s', '%s', '%d' ) );
 
-        $this->notify_consultant( $project_id, 'Document Uploaded', "Client uploaded document: " . sanitize_text_field( $_POST['name'] ?? $file['name'] ) );
-        wp_send_json_success( 'Document uploaded successfully' );
+        $this->notify_consultant( $project_id, esc_html__( 'Document Uploaded', 'businessvance-services-manager' ), esc_html__( 'Client uploaded document: ', 'businessvance-services-manager' ) . sanitize_text_field( $_POST['name'] ?? $file['name'] ) );
+
+        // Check if all required documents are now uploaded and advance status
+        $services = $wpdb->get_results( $wpdb->prepare(
+            "SELECT s.* FROM {$wpdb->prefix}bv_project_services ps JOIN {$wpdb->prefix}bv_services s ON ps.service_id = s.id WHERE ps.project_id = %d", $project_id ) );
+        if ( $project->status === 'awaiting-documents' && $this->all_required_docs_uploaded( $project_id, $services ) ) {
+            $wpdb->update( $wpdb->prefix . 'bv_projects',
+                array( 'status' => 'in-progress', 'progress_percent' => 40 ),
+                array( 'id' => $project_id ),
+                array( '%s', '%d' ), array( '%d' )
+            );
+        }
+
+        wp_send_json_success( esc_html__( 'Document uploaded successfully', 'businessvance-services-manager' ) );
     }
 
+    /**
+     * Handle questionnaire submission with correct service_id mapping.
+     *
+     * @since 2.0.0  Updated 2.5.0 for service_id fix + smart status transitions
+     * @return void
+     */
     public function ajax_submit_questionnaire() {
         check_ajax_referer( 'bv_portal_action', 'nonce' );
-        if ( ! is_user_logged_in() ) wp_send_json_error( 'Not logged in' );
+        if ( ! is_user_logged_in() ) wp_send_json_error( esc_html__( 'Not logged in', 'businessvance-services-manager' ) );
 
         $project_id = absint( $_POST['project_id'] );
         $project = $this->verify_project_access( $project_id );
-        if ( ! $project ) wp_send_json_error( 'Project not found or access denied' );
+        if ( ! $project ) wp_send_json_error( esc_html__( 'Project not found or access denied', 'businessvance-services-manager' ) );
 
         global $wpdb;
         $responses_table = $wpdb->prefix . 'bv_questionnaire_responses';
 
+        // Build question-service map if not already available (recompute for AJAX context)
+        $question_service_map = $this->_question_service_map ?? array();
+
         foreach ( $_POST['responses'] as $question_id => $value ) {
             if ( is_array( $value ) ) $value = wp_json_encode( $value );
             $q_id = absint( $question_id );
+
+            // Determine the correct service_id for this question
+            $service_id = isset( $question_service_map[ $q_id ] ) ? absint( $question_service_map[ $q_id ] ) : 0;
+
+            // Fallback: look up which service's template contains this question
+            if ( ! $service_id ) {
+                $service_id = $wpdb->get_var( $wpdb->prepare(
+                    "SELECT sq.service_id
+                     FROM {$wpdb->prefix}bv_questionnaire_questions q
+                     JOIN {$wpdb->prefix}bv_questionnaire_sections qs ON qs.id = q.section_id
+                     JOIN {$wpdb->prefix}bv_service_questionnaires sq ON sq.questionnaire_template_id = qs.template_id
+                     JOIN {$wpdb->prefix}bv_project_services ps ON ps.service_id = sq.service_id
+                     WHERE q.id = %d AND ps.project_id = %d
+                     LIMIT 1",
+                    $q_id, $project_id
+                ) );
+                $service_id = absint( $service_id );
+            }
+
+            // Second fallback: legacy column
+            if ( ! $service_id ) {
+                $service_id = $wpdb->get_var( $wpdb->prepare(
+                    "SELECT ps.service_id
+                     FROM {$wpdb->prefix}bv_questionnaire_questions q
+                     JOIN {$wpdb->prefix}bv_questionnaire_sections qs ON qs.id = q.section_id
+                     JOIN {$wpdb->prefix}bv_services s ON s.questionnaire_template_id = qs.template_id
+                     JOIN {$wpdb->prefix}bv_project_services ps ON ps.service_id = s.id
+                     WHERE q.id = %d AND ps.project_id = %d
+                     LIMIT 1",
+                    $q_id, $project_id
+                ) );
+                $service_id = absint( $service_id );
+            }
+
             $existing = $wpdb->get_var( $wpdb->prepare(
                 "SELECT id FROM {$responses_table} WHERE project_id = %d AND question_id = %d",
                 $project_id, $q_id
             ) );
             $data = array(
                 'project_id'     => $project_id,
-                'service_id'     => 0,
+                'service_id'     => $service_id,
                 'question_id'    => $q_id,
                 'response_value' => sanitize_text_field( $value ),
             );
@@ -843,10 +1322,15 @@ class BV_Client_Portal {
             }
         }
 
-        // Update project status if still awaiting questionnaire
+        // Smart status transition after questionnaire submission
         if ( $project->status === 'awaiting-questionnaire' ) {
+            $services = $wpdb->get_results( $wpdb->prepare(
+                "SELECT s.* FROM {$wpdb->prefix}bv_project_services ps JOIN {$wpdb->prefix}bv_services s ON ps.service_id = s.id WHERE ps.project_id = %d",
+                $project_id
+            ) );
+            $next_status = $this->get_next_status_after_questionnaire( $project_id, $services );
             $wpdb->update( $wpdb->prefix . 'bv_projects',
-                array( 'status' => 'awaiting-documents', 'progress_percent' => 25 ),
+                array( 'status' => $next_status, 'progress_percent' => 25 ),
                 array( 'id' => $project_id ),
                 array( '%s', '%d' ), array( '%d' )
             );
@@ -854,76 +1338,82 @@ class BV_Client_Portal {
 
         $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array(
             'project_id' => $project_id, 'entity_type' => 'questionnaire', 'entity_id' => $project_id,
-            'action' => 'submitted', 'description' => 'Client submitted questionnaire responses', 'user_id' => get_current_user_id(),
+            'action' => 'submitted', 'description' => esc_html__( 'Client submitted questionnaire responses', 'businessvance-services-manager' ), 'user_id' => get_current_user_id(),
         ), array( '%d', '%s', '%d', '%s', '%s', '%d' ) );
 
-        $this->notify_consultant( $project_id, 'Questionnaire Submitted', "Client submitted questionnaire responses for project {$project->project_number}." );
-        wp_send_json_success( 'Questionnaire saved successfully' );
+        $this->notify_consultant( $project_id, esc_html__( 'Questionnaire Submitted', 'businessvance-services-manager' ), sprintf(
+            /* translators: %s: project number */
+            esc_html__( 'Client submitted questionnaire responses for project %s.', 'businessvance-services-manager' ),
+            $project->project_number
+        ) );
+        wp_send_json_success( esc_html__( 'Questionnaire saved successfully', 'businessvance-services-manager' ) );
     }
 
+    /**
+     * Handle agreement signing with smart status transitions.
+     * Removed all global/default fallback logic per v2.5.0.
+     *
+     * @since 2.0.0  Updated 2.5.0
+     * @return void
+     */
     public function ajax_sign_agreement() {
         check_ajax_referer( 'bv_portal_action', 'nonce' );
-        if ( ! is_user_logged_in() ) wp_send_json_error( 'Not logged in' );
+        if ( ! is_user_logged_in() ) wp_send_json_error( esc_html__( 'Not logged in', 'businessvance-services-manager' ) );
 
         $project_id = absint( $_POST['project_id'] );
         $project = $this->verify_project_access( $project_id );
-        if ( ! $project ) wp_send_json_error( 'Project not found or access denied' );
+        if ( ! $project ) wp_send_json_error( esc_html__( 'Project not found or access denied', 'businessvance-services-manager' ) );
 
         $full_name = sanitize_text_field( $_POST['full_name'] );
-        if ( empty( $full_name ) ) wp_send_json_error( 'Please enter your full name' );
+        if ( empty( $full_name ) ) wp_send_json_error( esc_html__( 'Please enter your full name', 'businessvance-services-manager' ) );
 
-        // Build template content for the signed record
         global $wpdb;
-        $project_services = $wpdb->get_results( $wpdb->prepare(
-            "SELECT ps.service_id, ps.service_id as sid
+
+        // Get project services
+        $services = $wpdb->get_results( $wpdb->prepare(
+            "SELECT ps.service_id, s.name, s.nda_only
              FROM {$wpdb->prefix}bv_project_services ps
+             JOIN {$wpdb->prefix}bv_services s ON s.id = ps.service_id
              WHERE ps.project_id = %d",
             $project_id
         ) );
+
+        $service_ids = array();
+        foreach ( $services as $svc ) {
+            $service_ids[] = absint( $svc->service_id );
+        }
+
+        $has_nda_only = $this->all_services_nda_only( $services );
+
+        // Build template content from junction table ONLY
         $template_parts = array();
-        foreach ( $project_services as $ps ) {
-            // Get agreement templates from junction table
-            $agreement_tids = $wpdb->get_col( $wpdb->prepare(
-                "SELECT agreement_template_id 
-                 FROM {$wpdb->prefix}bv_service_agreements 
-                 WHERE service_id = %d 
-                 ORDER BY display_order ASC",
-                $ps->service_id
+        if ( ! empty( $service_ids ) ) {
+            $placeholders = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
+            $junction_rows = $wpdb->get_results( $wpdb->prepare(
+                "SELECT sa.service_id, sa.agreement_template_id, s.name as service_name
+                 FROM {$wpdb->prefix}bv_service_agreements sa
+                 JOIN {$wpdb->prefix}bv_services s ON s.id = sa.service_id
+                 WHERE sa.service_id IN ($placeholders)
+                 ORDER BY sa.service_id, sa.display_order ASC",
+                ...$service_ids
             ) );
-            
-            // Fallback to legacy column
-            if ( empty( $agreement_tids ) ) {
-                $legacy_id = $wpdb->get_var( $wpdb->prepare(
-                    "SELECT agreement_template_id FROM {$wpdb->prefix}bv_services WHERE id = %d",
-                    $ps->service_id
-                ) );
-                if ( $legacy_id > 0 ) {
-                    $agreement_tids = array( $legacy_id );
-                }
-            }
-            
-            foreach ( $agreement_tids as $tid ) {
+
+            foreach ( $junction_rows as $jr ) {
                 $tpl = $wpdb->get_row( $wpdb->prepare(
                     "SELECT * FROM {$wpdb->prefix}bv_agreement_templates WHERE id = %d",
-                    $tid
+                    $jr->agreement_template_id
                 ) );
                 if ( $tpl ) {
-                    $svc = $wpdb->get_var( $wpdb->prepare( "SELECT name FROM {$wpdb->prefix}bv_services WHERE id = %d", $ps->service_id ) );
-                    $template_parts[] = '<h3>' . esc_html( $svc ) . ' — ' . esc_html( $tpl->name ) . '</h3>' . $tpl->content;
+                    // If NDA-only, filter out non-NDA types
+                    if ( $has_nda_only && ! in_array( $tpl->type, array( 'nda', 'confidentiality' ), true ) ) {
+                        continue;
+                    }
+                    $template_parts[] = '<h3>' . esc_html( $jr->service_name ) . ' — ' . esc_html( $tpl->name ) . '</h3>' . $tpl->content;
                 }
             }
         }
-        if ( empty( $template_parts ) ) {
-            $template = get_option( 'bv_agreement_template', '' );
-            if ( empty( $template ) ) {
-                $default_nda = $wpdb->get_row( "SELECT * FROM {$wpdb->prefix}bv_agreement_templates WHERE is_default = 1 ORDER BY id ASC LIMIT 1" );
-                if ( $default_nda ) {
-                    $template = $default_nda->content;
-                }
-            }
-        } else {
-            $template = implode( '<hr style="margin:20px 0;">', $template_parts );
-        }
+
+        $template = implode( '<hr style="margin:20px 0;">', $template_parts );
 
         $wpdb->insert( $wpdb->prefix . 'bv_project_agreements', array(
             'project_id'      => $project_id,
@@ -934,32 +1424,42 @@ class BV_Client_Portal {
             'agreed_at'       => current_time( 'mysql' ),
         ), array( '%d', '%s', '%s', '%s', '%s', '%s' ) );
 
-        // Update project status
+        // Smart status transition
+        $next_status = $this->get_next_status_after_agreement( $project_id, $services );
         $wpdb->update( $wpdb->prefix . 'bv_projects',
-            array( 'status' => 'awaiting-questionnaire', 'progress_percent' => 10 ),
+            array( 'status' => $next_status, 'progress_percent' => 10 ),
             array( 'id' => $project_id ),
             array( '%s', '%d' ), array( '%d' )
         );
 
         $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array(
             'project_id' => $project_id, 'entity_type' => 'agreement', 'entity_id' => $wpdb->insert_id,
-            'action' => 'signed', 'description' => "Agreement signed by {$full_name}", 'user_id' => get_current_user_id(),
+            'action' => 'signed', 'description' => sprintf(
+                /* translators: %s: signer full name */
+                esc_html__( 'Agreement signed by %s', 'businessvance-services-manager' ),
+                $full_name
+            ), 'user_id' => get_current_user_id(),
         ), array( '%d', '%s', '%d', '%s', '%s', '%d' ) );
 
-        $this->notify_consultant( $project_id, 'Agreement Signed', "Client {$full_name} signed the service agreement for project {$project->project_number}." );
-        wp_send_json_success( 'Agreement signed successfully' );
+        $this->notify_consultant( $project_id, esc_html__( 'Agreement Signed', 'businessvance-services-manager' ), sprintf(
+            /* translators: %1$s: client name, %2$s: project number */
+            esc_html__( 'Client %1$s signed the service agreement for project %2$s.', 'businessvance-services-manager' ),
+            $full_name,
+            $project->project_number
+        ) );
+        wp_send_json_success( esc_html__( 'Agreement signed successfully', 'businessvance-services-manager' ) );
     }
 
     public function ajax_send_message() {
         check_ajax_referer( 'bv_portal_action', 'nonce' );
-        if ( ! is_user_logged_in() ) wp_send_json_error( 'Not logged in' );
+        if ( ! is_user_logged_in() ) wp_send_json_error( esc_html__( 'Not logged in', 'businessvance-services-manager' ) );
 
         $project_id = absint( $_POST['project_id'] );
         $project = $this->verify_project_access( $project_id );
-        if ( ! $project ) wp_send_json_error( 'Project not found or access denied' );
+        if ( ! $project ) wp_send_json_error( esc_html__( 'Project not found or access denied', 'businessvance-services-manager' ) );
 
         $message = sanitize_textarea_field( $_POST['message'] );
-        if ( empty( $message ) ) wp_send_json_error( 'Message cannot be empty' );
+        if ( empty( $message ) ) wp_send_json_error( esc_html__( 'Message cannot be empty', 'businessvance-services-manager' ) );
 
         $user = wp_get_current_user();
 
@@ -983,10 +1483,10 @@ class BV_Client_Portal {
 
     public function ajax_download_report() {
         check_ajax_referer( 'bv_portal_action', 'nonce' );
-        if ( ! is_user_logged_in() ) die( 'Not logged in' );
+        if ( ! is_user_logged_in() ) die( esc_html__( 'Not logged in', 'businessvance-services-manager' ) );
 
         $report_id = absint( $_GET['report_id'] ?? $_POST['report_id'] ?? 0 );
-        if ( ! $report_id ) die( 'Invalid report' );
+        if ( ! $report_id ) die( esc_html__( 'Invalid report', 'businessvance-services-manager' ) );
 
         global $wpdb;
         $report = $wpdb->get_row( $wpdb->prepare(
@@ -996,7 +1496,7 @@ class BV_Client_Portal {
             $report_id, get_current_user_id()
         ) );
         if ( ! $report || ! file_exists( $report->filepath ) ) {
-            wp_die( 'Report not found' );
+            wp_die( esc_html__( 'Report not found', 'businessvance-services-manager' ) );
         }
 
         header( 'Content-Type: ' . $report->mime_type );
@@ -1008,16 +1508,16 @@ class BV_Client_Portal {
 
     private function status_label( $status ) {
         $labels = array(
-            'awaiting-agreement' => 'Awaiting Agreement',
-            'awaiting-questionnaire' => 'Awaiting Questionnaire',
-            'awaiting-documents' => 'Awaiting Documents',
-            'in-progress' => 'In Progress',
-            'quality-check' => 'Quality Check',
-            'completed' => 'Completed',
-            'delivered' => 'Delivered',
-            'archived' => 'Archived',
+            'awaiting-agreement'     => esc_html__( 'Awaiting Agreement', 'businessvance-services-manager' ),
+            'awaiting-questionnaire' => esc_html__( 'Awaiting Questionnaire', 'businessvance-services-manager' ),
+            'awaiting-documents'     => esc_html__( 'Awaiting Documents', 'businessvance-services-manager' ),
+            'in-progress'            => esc_html__( 'In Progress', 'businessvance-services-manager' ),
+            'quality-check'          => esc_html__( 'Quality Check', 'businessvance-services-manager' ),
+            'completed'              => esc_html__( 'Completed', 'businessvance-services-manager' ),
+            'delivered'              => esc_html__( 'Delivered', 'businessvance-services-manager' ),
+            'archived'               => esc_html__( 'Archived', 'businessvance-services-manager' ),
         );
-        return $labels[ $status ] ?? ucfirst( str_replace( '-', ' ', $status ) );
+        return isset( $labels[ $status ] ) ? $labels[ $status ] : ucfirst( str_replace( '-', ' ', $status ) );
     }
 
     private function notify_consultant( $project_id, $action, $description ) {
@@ -1200,6 +1700,9 @@ class BV_Client_Portal {
     .bv-upload-area:hover, .bv-upload-area.dragover { border-color: ' . $portal_hdr . '; background: rgba(0,43,92,0.03); }
     .bv-upload-icon { font-size: 40px; margin-bottom: 12px; }
 
+    /* Questionnaire source label */
+    .bv-q-source { font-size: 12px; color: #9CA3AF; margin: 0 0 8px; font-style: italic; }
+
     /* Messages */
     .bv-messages-list { display: flex; flex-direction: column; gap: 12px; }
     .bv-message-bubble { padding: 14px 18px; border-radius: 12px; max-width: 80%; font-size: 14px; line-height: 1.6; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
@@ -1224,6 +1727,9 @@ class BV_Client_Portal {
     .bv-portal-empty-state h2 { color: ' . $portal_hdr . '; font-size: 24px; margin-bottom: 8px; }
     .bv-portal-empty-state p { color: #6b7280; font-size: 15px; line-height: 1.6; max-width: 460px; margin: 0 auto 16px; }
     .bv-portal-empty-state a { color: ' . $portal_hdr . '; font-weight: 600; }
+
+    /* Required asterisk */
+    .bv-required { color: #DC2626; font-weight: 600; }
 
     /* Responsive */
     @media (max-width: 768px) {

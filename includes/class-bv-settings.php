@@ -157,10 +157,7 @@ class BV_Settings {
             }
         }
 
-        // Allow longer text for agreement and email bodies
-        if ( isset( $input['agreement_text'] ) ) {
-            $sanitized['agreement_text'] = wp_kses_post( $input['agreement_text'] );
-        }
+        // Allow longer text for email bodies
         if ( isset( $input['portal_welcome_message'] ) ) {
             $sanitized['portal_welcome_message'] = sanitize_textarea_field( $input['portal_welcome_message'] );
         }
@@ -723,79 +720,22 @@ class BV_Settings {
     private function render_agreement_tab( $settings ) {
         ?>
         <div class="bv-settings-section">
-            <h2><?php esc_html_e( 'Service Agreement', 'businessvance-services-manager' ); ?></h2>
-            <p><?php esc_html_e( 'Configure the default client service agreement that clients sign in the portal.', 'businessvance-services-manager' ); ?></p>
+            <h2><?php esc_html_e( 'Agreement Templates', 'businessvance-services-manager' ); ?></h2>
+            <p><?php esc_html_e( 'Agreement templates are now managed through the Agreement Manager.', 'businessvance-services-manager' ); ?></p>
 
-            <div class="bv-settings-info-box" style="background:#EBF5FF;border:1px solid #93C5FD;border-radius:8px;padding:16px 20px;margin:16px 0;">
-                <p style="margin:0 0 8px;color:#1E40AF;font-weight:600;">
-                    <span class="dashicons dashicons-migrate" style="vertical-align:middle;margin-right:4px;"></span>
-                    <?php esc_html_e( 'Agreement Templates Manager', 'businessvance-services-manager' ); ?>
+            <div class="bv-settings-info-box" style="background:#f0f6fc;border:1px solid #c3daf5;border-radius:8px;padding:20px 24px;margin:20px 0;">
+                <p style="margin:0 0 10px;color:#1d2327;font-size:14px;font-weight:600;">
+                    <span class="dashicons dashicons-migrate" style="vertical-align:middle;margin-right:4px;color:#2271b1;"></span>
+                    <?php esc_html_e( 'Agreement management has moved', 'businessvance-services-manager' ); ?>
                 </p>
-                <p style="margin:0 0 12px;color:#1E3A8A;font-size:13px;">
-                    <?php esc_html_e( 'Create and manage multiple agreement templates (NDA, Service Agreement, Confidentiality, Custom). Each template can be assigned per-service in the Services editor.', 'businessvance-services-manager' ); ?>
+                <p style="margin:0 0 16px;color:#50575e;font-size:13px;line-height:1.6;">
+                    <?php esc_html_e( 'Agreement templates (NDA, Service Agreement, Confidentiality, Custom) are now created and managed in the dedicated Agreement Manager. Each template can be assigned per-service in the Services editor. The legacy global agreement settings have been deprecated.', 'businessvance-services-manager' ); ?>
                 </p>
-                <a href="<?php echo esc_url( admin_url( 'admin.php?page=businessvance-agreements' ) ); ?>" class="button button-primary" style="background:#002B5C;border-color:#002B5C;">
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=businessvance-agreements' ) ); ?>" class="button button-primary" style="background:#2271b1;border-color:#2271b1;">
                     <span class="dashicons dashicons-file-alt" style="vertical-align:middle;margin-right:4px;"></span>
                     <?php esc_html_e( 'Open Agreement Manager', 'businessvance-services-manager' ); ?>
                 </a>
             </div>
-
-            <table class="form-table">
-                <tr>
-                    <th scope="row">
-                        <label for="bv_agreement_enabled"><?php esc_html_e( 'Enable Agreement', 'businessvance-services-manager' ); ?></label>
-                    </th>
-                    <td>
-                        <label class="bv-toggle">
-                            <input type="checkbox" id="bv_agreement_enabled" name="bv_settings[agreement_enabled]"
-                                   value="yes" <?php checked( $settings['agreement_enabled'], 'yes' ); ?> />
-                            <span class="bv-toggle-slider"></span>
-                            <span class="bv-toggle-label"><?php esc_html_e( 'Require agreement signing before project starts', 'businessvance-services-manager' ); ?></span>
-                        </label>
-                    </td>
-                </tr>
-                <tr>
-                    <th scope="row">
-                        <label for="bv_agreement_title"><?php esc_html_e( 'Agreement Title', 'businessvance-services-manager' ); ?></label>
-                    </th>
-                    <td>
-                        <input type="text" id="bv_agreement_title" name="bv_settings[agreement_title]"
-                               value="<?php echo esc_attr( $settings['agreement_title'] ); ?>"
-                               class="large-text" />
-                    </td>
-                </tr>
-                <tr>
-                    <th scope="row">
-                        <label for="bv_agreement_text"><?php esc_html_e( 'Agreement Text', 'businessvance-services-manager' ); ?></label>
-                    </th>
-                    <td>
-                        <?php
-                        wp_editor( $settings['agreement_text'], 'bv_agreement_text', array(
-                            'textarea_name' => 'bv_settings[agreement_text]',
-                            'textarea_rows' => 15,
-                            'media_buttons' => false,
-                            'teeny'         => false,
-                            'quicktags'     => true,
-                        ) );
-                        ?>
-                        <p class="description"><?php esc_html_e( 'You can use HTML for formatting. This is displayed to clients for review and signature.', 'businessvance-services-manager' ); ?></p>
-                    </td>
-                </tr>
-                <tr>
-                    <th scope="row">
-                        <label for="bv_agreement_signature_required"><?php esc_html_e( 'Require Signature', 'businessvance-services-manager' ); ?></label>
-                    </th>
-                    <td>
-                        <label class="bv-toggle">
-                            <input type="checkbox" id="bv_agreement_signature_required"
-                                   name="bv_settings[agreement_signature_required]"
-                                   value="yes" <?php checked( $settings['agreement_signature_required'], 'yes' ); ?> />
-                            <span class="bv-toggle-slider"></span>
-                            <span class="bv-toggle-label"><?php esc_html_e( 'Clients must type their full name as signature', 'businessvance-services-manager' ); ?></span>
-                        </label>
-                    </td>
-                </tr>
-            </table>
         </div>
         <?php
     }

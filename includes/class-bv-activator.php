@@ -399,6 +399,62 @@ class BV_Activator {
 
                 dbDelta( $sql_service_agreements );
 
+                // -------------------------------------------------------
+                // 20. bv_document_requirements
+                // -------------------------------------------------------
+                $table_document_requirements = $wpdb->prefix . 'bv_document_requirements';
+
+                $sql_document_requirements = "CREATE TABLE {$table_document_requirements} (
+                        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+                        name varchar(255) NOT NULL DEFAULT '',
+                        slug varchar(255) NOT NULL DEFAULT '',
+                        description text NOT NULL,
+                        allowed_types varchar(500) NOT NULL DEFAULT 'pdf,doc,docx,jpg,jpeg,png',
+                        max_size_mb int(11) NOT NULL DEFAULT 10,
+                        is_required tinyint(1) NOT NULL DEFAULT 1,
+                        display_order int(11) NOT NULL DEFAULT 0,
+                        created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        PRIMARY KEY  (id),
+                        UNIQUE KEY slug (slug)
+                ) {$charset_collate};";
+
+                dbDelta( $sql_document_requirements );
+
+                // -------------------------------------------------------
+                // 21. bv_service_questionnaires (junction: services ↔ questionnaire_templates)
+                // -------------------------------------------------------
+                $table_service_questionnaires = $wpdb->prefix . 'bv_service_questionnaires';
+
+                $sql_service_questionnaires = "CREATE TABLE {$table_service_questionnaires} (
+                        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+                        service_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+                        questionnaire_template_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+                        display_order int(11) NOT NULL DEFAULT 0,
+                        PRIMARY KEY  (id),
+                        UNIQUE KEY service_questionnaire (service_id, questionnaire_template_id),
+                        KEY service_id (service_id)
+                ) {$charset_collate};";
+
+                dbDelta( $sql_service_questionnaires );
+
+                // -------------------------------------------------------
+                // 22. bv_service_documents (junction: services ↔ document_requirements)
+                // -------------------------------------------------------
+                $table_service_documents = $wpdb->prefix . 'bv_service_documents';
+
+                $sql_service_documents = "CREATE TABLE {$table_service_documents} (
+                        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+                        service_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+                        document_requirement_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+                        display_order int(11) NOT NULL DEFAULT 0,
+                        PRIMARY KEY  (id),
+                        UNIQUE KEY service_document (service_id, document_requirement_id),
+                        KEY service_id (service_id)
+                ) {$charset_collate};";
+
+                dbDelta( $sql_service_documents );
+
                 // Add new columns to existing bv_services table if they don't exist
                 $services_columns = $wpdb->get_results( "SHOW COLUMNS FROM {$table_services}" );
                 $existing_cols = array();
@@ -418,6 +474,9 @@ class BV_Activator {
 
                 // Migrate legacy single agreement_template_id to junction table
                 self::migrate_service_agreements();
+
+                // Migrate legacy single questionnaire_template_id to junction table
+                self::migrate_service_questionnaires();
 
                 // Store the current version for future update comparisons.
                 update_option( 'bv_services_manager_db_version', BV_VERSION, false );
@@ -471,6 +530,53 @@ class BV_Activator {
         }
 
         /**
+         * Migrate legacy single questionnaire_template_id from bv_services to the
+         * bv_service_questionnaires junction table. Runs only once (option-gated).
+         *
+         * @since 2.5.0
+         * @return void
+         */
+        private static function migrate_service_questionnaires() {
+                if ( get_option( 'bv_questionnaires_migrated', '0' ) === '1' ) {
+                        return;
+                }
+
+                global $wpdb;
+                $services_table    = $wpdb->prefix . 'bv_services';
+                $junction_table    = $wpdb->prefix . 'bv_service_questionnaires';
+
+                // Check that both tables exist
+                $table_exists = $wpdb->get_var( "SHOW TABLES LIKE '{$junction_table}'" );
+                if ( ! $table_exists ) {
+                        return;
+                }
+
+                // Find all services that have a legacy questionnaire_template_id > 0
+                $legacy_rows = $wpdb->get_results(
+                        "SELECT id, questionnaire_template_id FROM {$services_table} WHERE questionnaire_template_id > 0"
+                );
+
+                foreach ( $legacy_rows as $row ) {
+                        // Skip if already in junction
+                        $exists = $wpdb->get_var( $wpdb->prepare(
+                                "SELECT COUNT(*) FROM {$junction_table} WHERE service_id = %d AND questionnaire_template_id = %d",
+                                $row->id,
+                                $row->questionnaire_template_id
+                        ) );
+
+                        if ( ! $exists ) {
+                                $wpdb->insert( $junction_table, array(
+                                        'service_id'                => $row->id,
+                                        'questionnaire_template_id' => $row->questionnaire_template_id,
+                                        'display_order'             => 0,
+                                ), array( '%d', '%d', '%d' ) );
+                        }
+                }
+
+                update_option( 'bv_questionnaires_migrated', '1' );
+        }
+
+        /**
          * Seed demo data into the database.
          *
          * Checks if data already exists before inserting. Returns early
@@ -499,7 +605,7 @@ class BV_Activator {
                     'name'      => 'Client Confidentiality and Information Protection Undertaking',
                     'slug'      => 'client-confidentiality-undertaking',
                     'type'      => 'confidentiality',
-                    'content'   => self::get_default_agreement_template(),
+                    'content'   => self::seed_agreement_html(),
                     'is_default' => 1,
                 ), array( '%s', '%s', '%s', '%s', '%d' ) );
 
@@ -1074,27 +1180,18 @@ class BV_Activator {
                         );
                 }
 
-                // ----------------------------------------------------------------
-                // Store Default Agreement Template
-                // ----------------------------------------------------------------
-                $agreement_template_content = self::get_default_agreement_template();
-                update_option( 'bv_default_agreement_template', $agreement_template_content, false );
-
                 // Mark seeding as complete.
                 update_option( 'bv_services_manager_seeded', '1', false );
         }
 
         /**
-         * Return the default BusinessVance Client Confidentiality and Information
-         * Protection Undertaking as formatted HTML.
-         *
-         * This content is seeded into the bv_agreement_templates table on
-         * first activation and also stored as a WordPress option fallback.
+         * Return HTML for the seed agreement template.
+         * Used only during first-activation seeding into bv_agreement_templates.
          *
          * @since  1.0.0
          * @return string
          */
-        private static function get_default_agreement_template() {
+        private static function seed_agreement_html() {
                 return '<div style="font-family: Georgia, serif; line-height: 1.8; color: #333; max-width: 800px; margin: 0 auto;">
 
 <div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 3px double #D4AF37;">

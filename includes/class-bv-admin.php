@@ -166,6 +166,8 @@ class BV_Admin {
             'businessvance-categories',
             array( $this, 'render_categories' )
         );
+
+        // Document Requirements menu is handled by BV_Document_Requirements class
     }
 
     /**
@@ -621,18 +623,45 @@ class BV_Admin {
                             <?php endif; ?>
                         </div>
 
-                        <div class="bv-form-group">
-                            <label for="svc-questionnaire"><?php esc_html_e( 'Questionnaire Template', 'businessvance-services-manager' ); ?></label>
-                            <select id="svc-questionnaire" name="questionnaire_template_id">
-                                <option value="0"><?php esc_html_e( '-- None --', 'businessvance-services-manager' ); ?></option>
-                                <?php
-                                global $wpdb;
-                                $qt_templates = $wpdb->get_results( "SELECT id, name FROM {$wpdb->prefix}bv_questionnaire_templates ORDER BY name ASC" );
-                                foreach ( $qt_templates as $qt ) : ?>
-                                    <option value="<?php echo esc_attr( $qt->id ); ?>"><?php echo esc_html( $qt->name ); ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                            <p class="description"><?php esc_html_e( 'Link a questionnaire template. Clients will answer these questions in the portal.', 'businessvance-services-manager' ); ?></p>
+                        <div class="bv-form-group bv-form-full">
+                            <label><?php esc_html_e( 'Questionnaire Templates', 'businessvance-services-manager' ); ?></label>
+                            <div class="bv-multi-select-wrap">
+                                <div class="bv-multi-select-list" id="bv-svc-questionnaires-list">
+                                    <!-- Dynamically populated by JS -->
+                                </div>
+                                <div class="bv-multi-select-add">
+                                    <select id="bv-svc-add-questionnaire" class="regular-text" style="max-width:320px;">
+                                        <option value=""><?php esc_html_e( '+ Add questionnaire...', 'businessvance-services-manager' ); ?></option>
+                                        <?php
+                                        $all_qt_templates = $wpdb->get_results( "SELECT id, name, status FROM {$wpdb->prefix}bv_questionnaire_templates ORDER BY name ASC" );
+                                        $qt_status_groups = array();
+                                        foreach ( $all_qt_templates as $qt_tpl ) {
+                                            $qt_status_groups[ $qt_tpl->status ][] = $qt_tpl;
+                                        }
+                                        $qt_status_labels = array(
+                                            'published' => __( 'Published', 'businessvance-services-manager' ),
+                                            'draft'     => __( 'Draft', 'businessvance-services-manager' ),
+                                            'archived'  => __( 'Archived', 'businessvance-services-manager' ),
+                                        );
+                                        foreach ( $qt_status_groups as $qt_status => $qt_items ) :
+                                            $qt_label = isset( $qt_status_labels[ $qt_status ] ) ? $qt_status_labels[ $qt_status ] : $qt_status;
+                                        ?>
+                                            <optgroup label="<?php echo esc_attr( $qt_label ); ?>">
+                                                <?php foreach ( $qt_items as $qt_tpl ) : ?>
+                                                    <option value="<?php echo esc_attr( $qt_tpl->id ); ?>"><?php echo esc_html( $qt_tpl->name ); ?></option>
+                                                <?php endforeach; ?>
+                                            </optgroup>
+                                        <?php endforeach; ?>
+                                        <?php if ( empty( $all_qt_templates ) ) : ?>
+                                            <option value="" disabled><?php esc_html_e( 'No templates yet', 'businessvance-services-manager' ); ?></option>
+                                        <?php endif; ?>
+                                    </select>
+                                    <button type="button" class="button button-small" id="bv-svc-add-questionnaire-btn" title="<?php esc_attr_e( 'Add selected questionnaire template', 'businessvance-services-manager' ); ?>">+</button>
+                                </div>
+                                <p class="description"><?php esc_html_e( 'Select one or more questionnaire templates. Clients will answer these in the portal.', 'businessvance-services-manager' ); ?></p>
+                            </div>
+                            <!-- Hidden input stores comma-separated IDs for form submission -->
+                            <input type="hidden" id="svc-questionnaire-ids" name="questionnaire_ids" value="">
                         </div>
 
                         <div class="bv-form-group bv-form-full">
@@ -677,18 +706,31 @@ class BV_Admin {
                             <input type="hidden" id="svc-agreement-ids" name="agreement_ids" value="">
                         </div>
 
-                        <div class="bv-form-group">
-                            <label>
-                                <input type="checkbox" name="nda_only" value="1">
-                                <?php esc_html_e( 'NDA Only (skip service agreement)', 'businessvance-services-manager' ); ?>
-                            </label>
-                            <p class="description" style="margin-top:4px;"><?php esc_html_e( 'If checked, only a confidentiality/NDA is required — the full service agreement is skipped.', 'businessvance-services-manager' ); ?></p>
-                        </div>
-
                         <div class="bv-form-group bv-form-full">
-                            <label for="svc-required-docs"><?php esc_html_e( 'Required Documents', 'businessvance-services-manager' ); ?></label>
-                            <input type="text" id="svc-required-docs" name="required_documents" placeholder="<?php esc_attr_e( 'e.g. ID Copy, Proof of Address, Company Registration', 'businessvance-services-manager' ); ?>" class="large-text">
-                            <p class="description"><?php esc_html_e( 'Comma-separated list of documents the client must upload. Leave blank to skip document uploads for this service.', 'businessvance-services-manager' ); ?></p>
+                            <label><?php esc_html_e( 'Document Requirements', 'businessvance-services-manager' ); ?></label>
+                            <div class="bv-multi-select-wrap">
+                                <div class="bv-multi-select-list" id="bv-svc-doc-reqs-list">
+                                    <!-- Dynamically populated by JS -->
+                                </div>
+                                <div class="bv-multi-select-add">
+                                    <select id="bv-svc-add-doc-req" class="regular-text" style="max-width:320px;">
+                                        <option value=""><?php esc_html_e( '+ Add document requirement...', 'businessvance-services-manager' ); ?></option>
+                                        <?php
+                                        $all_doc_reqs = $wpdb->get_results( "SELECT id, name, is_required FROM {$wpdb->prefix}bv_document_requirements ORDER BY display_order ASC, name ASC" );
+                                        foreach ( $all_doc_reqs as $dr ) : ?>
+                                            <option value="<?php echo esc_attr( $dr->id ); ?>"><?php echo esc_html( $dr->name ); ?><?php if ( $dr->is_required ) : ?> *</option>
+                                        <?php endif; ?>
+                                        <?php endforeach; ?>
+                                        <?php if ( empty( $all_doc_reqs ) ) : ?>
+                                            <option value="" disabled><?php esc_html_e( 'No requirements yet', 'businessvance-services-manager' ); ?></option>
+                                        <?php endif; ?>
+                                    </select>
+                                    <button type="button" class="button button-small" id="bv-svc-add-doc-req-btn" title="<?php esc_attr_e( 'Add selected document requirement', 'businessvance-services-manager' ); ?>">+</button>
+                                </div>
+                                <p class="description"><?php esc_html_e( 'Select document requirements from the Document Requirements manager. Items marked * are required.', 'businessvance-services-manager' ); ?></p>
+                            </div>
+                            <!-- Hidden input stores comma-separated IDs for form submission -->
+                            <input type="hidden" id="svc-document-requirement-ids" name="document_requirement_ids" value="">
                         </div>
 
                         <div class="bv-form-group">
@@ -1141,6 +1183,23 @@ class BV_Admin {
             $service['agreement_ids'] = array( $service['agreement_template_id'] );
         }
 
+        // Get associated questionnaire template IDs from junction table
+        $service['questionnaire_ids'] = $wpdb->get_col( $wpdb->prepare(
+            "SELECT questionnaire_template_id FROM {$wpdb->prefix}bv_service_questionnaires WHERE service_id = %d ORDER BY display_order ASC",
+            $id
+        ) );
+
+        // Fallback: if junction is empty but legacy column has a value, use that
+        if ( empty( $service['questionnaire_ids'] ) && ! empty( $service['questionnaire_template_id'] ) ) {
+            $service['questionnaire_ids'] = array( $service['questionnaire_template_id'] );
+        }
+
+        // Get associated document requirement IDs from junction table
+        $service['document_requirement_ids'] = $wpdb->get_col( $wpdb->prepare(
+            "SELECT document_requirement_id FROM {$wpdb->prefix}bv_service_documents WHERE service_id = %d ORDER BY display_order ASC",
+            $id
+        ) );
+
         wp_send_json_success( $service );
     }
 
@@ -1176,20 +1235,22 @@ class BV_Admin {
         }
 
         // Parse agreement IDs from comma-separated string
-        $agreement_ids_raw = isset( $_POST['agreement_ids'] ) ? sanitize_text_field( $_POST['agreement_ids'] ) : '';
-        $agreement_ids = array();
-        if ( ! empty( $agreement_ids_raw ) ) {
-            $agreement_ids = array_map( 'intval', explode( ',', $agreement_ids_raw ) );
-            $agreement_ids = array_filter( $agreement_ids, function( $v ) { return $v > 0; } );
-            $agreement_ids = array_values( array_unique( $agreement_ids ) );
-        }
+        $agreement_ids = $this->parse_csv_ids( $_POST['agreement_ids'] ?? '' );
+
+        // Parse questionnaire IDs from comma-separated string
+        $questionnaire_ids = $this->parse_csv_ids( $_POST['questionnaire_ids'] ?? '' );
+
+        // Parse document requirement IDs from comma-separated string
+        $document_requirement_ids = $this->parse_csv_ids( $_POST['document_requirement_ids'] ?? '' );
 
         if ( $id > 0 ) {
             // Update
             $wpdb->update( $tables['services'], $data, array( 'id' => $id ), $format, array( '%d' ) );
 
-            // Sync agreement junction table
+            // Sync junction tables
             $this->sync_service_agreements( $id, $agreement_ids );
+            $this->sync_service_questionnaires( $id, $questionnaire_ids );
+            $this->sync_service_document_requirements( $id, $document_requirement_ids );
 
             wp_send_json_success( array( 'message' => __( 'Service updated.', 'businessvance-services-manager' ), 'id' => $id ) );
         } else {
@@ -1201,11 +1262,29 @@ class BV_Admin {
             $wpdb->insert( $tables['services'], $data, $format );
             $new_id = $wpdb->insert_id;
 
-            // Sync agreement junction table
+            // Sync junction tables
             $this->sync_service_agreements( $new_id, $agreement_ids );
+            $this->sync_service_questionnaires( $new_id, $questionnaire_ids );
+            $this->sync_service_document_requirements( $new_id, $document_requirement_ids );
 
             wp_send_json_success( array( 'message' => __( 'Service created.', 'businessvance-services-manager' ), 'id' => $new_id ) );
         }
+    }
+
+    /**
+     * Parse a comma-separated string of IDs into a clean array of positive integers.
+     *
+     * @param  string $raw Comma-separated IDs.
+     * @return array
+     */
+    private function parse_csv_ids( $raw ) {
+        $raw = sanitize_text_field( $raw );
+        if ( empty( $raw ) ) {
+            return array();
+        }
+        $ids = array_map( 'intval', explode( ',', $raw ) );
+        $ids = array_filter( $ids, function( $v ) { return $v > 0; } );
+        return array_values( array_unique( $ids ) );
     }
 
     /**
@@ -1240,6 +1319,64 @@ class BV_Admin {
             array( '%d' ),
             array( '%d' )
         );
+    }
+
+    /**
+     * Sync the bv_service_questionnaires junction table for a service.
+     * Deletes all existing rows then re-inserts.
+     *
+     * @param int   $service_id
+     * @param array $questionnaire_ids Array of questionnaire_template_id values
+     */
+    private function sync_service_questionnaires( $service_id, $questionnaire_ids ) {
+        global $wpdb;
+        $junction = $wpdb->prefix . 'bv_service_questionnaires';
+
+        // Delete existing
+        $wpdb->delete( $junction, array( 'service_id' => $service_id ), array( '%d' ) );
+
+        // Insert new
+        foreach ( $questionnaire_ids as $order => $tpl_id ) {
+            $wpdb->insert( $junction, array(
+                'service_id'                => $service_id,
+                'questionnaire_template_id' => intval( $tpl_id ),
+                'display_order'             => $order,
+            ), array( '%d', '%d', '%d' ) );
+        }
+
+        // Also update the legacy column for backward compat (first one)
+        $first_id = ! empty( $questionnaire_ids ) ? intval( $questionnaire_ids[0] ) : 0;
+        $wpdb->update(
+            $wpdb->prefix . 'bv_services',
+            array( 'questionnaire_template_id' => $first_id ),
+            array( 'id' => $service_id ),
+            array( '%d' ),
+            array( '%d' )
+        );
+    }
+
+    /**
+     * Sync the bv_service_documents junction table for a service.
+     * Deletes all existing rows then re-inserts.
+     *
+     * @param int   $service_id
+     * @param array $doc_req_ids Array of document_requirement_id values
+     */
+    private function sync_service_document_requirements( $service_id, $doc_req_ids ) {
+        global $wpdb;
+        $junction = $wpdb->prefix . 'bv_service_documents';
+
+        // Delete existing
+        $wpdb->delete( $junction, array( 'service_id' => $service_id ), array( '%d' ) );
+
+        // Insert new
+        foreach ( $doc_req_ids as $order => $req_id ) {
+            $wpdb->insert( $junction, array(
+                'service_id'              => $service_id,
+                'document_requirement_id' => intval( $req_id ),
+                'display_order'           => $order,
+            ), array( '%d', '%d', '%d' ) );
+        }
     }
 
     /**

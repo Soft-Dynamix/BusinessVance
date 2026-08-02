@@ -45,8 +45,10 @@
         // Reset new service fields
         $('#bv-svc-agreements-list').empty();
         $('#svc-agreement-ids').val('');
-        $('#bv-service-form input[name="nda_only"]').prop('checked', false);
-        $('#bv-service-form input[name="required_documents"]').val('');
+        $('#bv-svc-questionnaires-list').empty();
+        $('#svc-questionnaire-ids').val('');
+        $('#bv-svc-doc-reqs-list').empty();
+        $('#svc-document-requirement-ids').val('');
     }
 
     // Close modal on overlay click or X button
@@ -108,11 +110,10 @@
                 $('#bv-service-form input[name="button_label"]').val(svc.button_label);
                 $('#bv-service-form select[name="service_type"]').val(svc.service_type);
                 $('#bv-service-form select[name="woo_product_id"]').val(svc.woo_product_id || 0);
-                $('#bv-service-form select[name="questionnaire_template_id"]').val(svc.questionnaire_template_id || 0);
-                // Populate multi-agreement list
+                // Populate multi-select lists
                 bv_populate_agreements_list(svc.agreement_ids || []);
-                $('#bv-service-form input[name="nda_only"]').prop('checked', svc.nda_only == 1);
-                $('#bv-service-form input[name="required_documents"]').val(svc.required_documents || '');
+                bv_populate_questionnaires_list(svc.questionnaire_ids || []);
+                bv_populate_document_requirements_list(svc.document_requirement_ids || []);
                 $('#bv-service-form select[name="category_id"]').val(svc.category_id);
                 $('#bv-service-form input[name="is_visible"]').prop('checked', svc.is_visible == 1);
                 $('#bv-service-form input[name="is_featured"]').prop('checked', svc.is_featured == 1);
@@ -610,10 +611,143 @@
         $(this).next('#bv-svc-add-agreement-btn').trigger('click');
     });
 
-    // Remove agreement item
+    // Remove any multi-item and sync the appropriate hidden input
     $(document).on('click', '.bv-multi-item-remove', function() {
-        $(this).closest('.bv-multi-item').remove();
-        bv_sync_agreement_ids();
+        var $item = $(this).closest('.bv-multi-item');
+        var $list = $item.closest('.bv-multi-select-list');
+        $item.remove();
+        if ($list.attr('id') === 'bv-svc-agreements-list') {
+            bv_sync_agreement_ids();
+        } else if ($list.attr('id') === 'bv-svc-questionnaires-list') {
+            bv_sync_questionnaire_ids();
+        } else if ($list.attr('id') === 'bv-svc-doc-reqs-list') {
+            bv_sync_document_requirement_ids();
+        }
+    });
+
+    /* ============================================
+       MULTI-QUESTIONNAIRE SELECTOR
+       ============================================ */
+
+    // Build a lookup for questionnaire names from the dropdown options
+    function bv_get_questionnaire_name(id) {
+        var name = '';
+        $('#bv-svc-add-questionnaire option[value="' + id + '"]').each(function() {
+            if ($(this).parent().is('optgroup')) {
+                name = $(this).parent().attr('label') + ' › ' + $(this).text();
+            } else {
+                name = $(this).text();
+            }
+        });
+        return name || ('Questionnaire #' + id);
+    }
+
+    function bv_populate_questionnaires_list(ids) {
+        var $list = $('#bv-svc-questionnaires-list');
+        $list.empty();
+        if (!ids || ids.length === 0) {
+            $('#svc-questionnaire-ids').val('');
+            return;
+        }
+        ids.forEach(function(id) {
+            bv_add_questionnaire_item(id);
+        });
+        bv_sync_questionnaire_ids();
+    }
+
+    function bv_add_questionnaire_item(id) {
+        var $list = $('#bv-svc-questionnaires-list');
+        if ($list.find('input[data-tpl-id="' + id + '"]').length > 0) return;
+        var name = bv_get_questionnaire_name(id);
+        var $item = $(
+            '<div class="bv-multi-item" data-id="' + id + '">' +
+                '<input type="hidden" data-tpl-id="' + id + '" value="' + id + '">' +
+                '<span class="bv-multi-item-label">📋 ' + $('<span>').text(name).html() + '</span>' +
+                '<button type="button" class="bv-multi-item-remove" title="Remove">&times;</button>' +
+            '</div>'
+        );
+        $list.append($item);
+    }
+
+    function bv_sync_questionnaire_ids() {
+        var ids = [];
+        $('#bv-svc-questionnaires-list input[data-tpl-id]').each(function() {
+            ids.push($(this).val());
+        });
+        $('#svc-questionnaire-ids').val(ids.join(','));
+    }
+
+    $(document).on('click', '#bv-svc-add-questionnaire-btn', function() {
+        var $select = $('#bv-svc-add-questionnaire');
+        var id = parseInt($select.val()) || 0;
+        if (id <= 0) return;
+        bv_add_questionnaire_item(id);
+        bv_sync_questionnaire_ids();
+        $select.val('');
+    });
+
+    $(document).on('dblclick', '#bv-svc-add-questionnaire', function() {
+        $(this).next('#bv-svc-add-questionnaire-btn').trigger('click');
+    });
+
+    /* ============================================
+       MULTI-DOCUMENT-REQUIREMENTS SELECTOR
+       ============================================ */
+
+    function bv_get_document_requirement_name(id) {
+        var name = '';
+        $('#bv-svc-add-doc-req option[value="' + id + '"]').each(function() {
+            name = $(this).text();
+        });
+        return name || ('Document Requirement #' + id);
+    }
+
+    function bv_populate_document_requirements_list(ids) {
+        var $list = $('#bv-svc-doc-reqs-list');
+        $list.empty();
+        if (!ids || ids.length === 0) {
+            $('#svc-document-requirement-ids').val('');
+            return;
+        }
+        ids.forEach(function(id) {
+            bv_add_document_requirement_item(id);
+        });
+        bv_sync_document_requirement_ids();
+    }
+
+    function bv_add_document_requirement_item(id) {
+        var $list = $('#bv-svc-doc-reqs-list');
+        if ($list.find('input[data-tpl-id="' + id + '"]').length > 0) return;
+        var name = bv_get_document_requirement_name(id);
+        var $item = $(
+            '<div class="bv-multi-item" data-id="' + id + '">' +
+                '<input type="hidden" data-tpl-id="' + id + '" value="' + id + '">' +
+                '<span class="bv-multi-item-label">📄 ' + $('<span>').text(name).html() + '</span>' +
+                '<button type="button" class="bv-multi-item-remove" title="Remove">&times;</button>' +
+            '</div>'
+        );
+        $list.append($item);
+    }
+
+    function bv_sync_document_requirement_ids() {
+        var ids = [];
+        $('#bv-svc-doc-reqs-list input[data-tpl-id]').each(function() {
+            ids.push($(this).val());
+        });
+        $('#svc-document-requirement-ids').val(ids.join(','));
+    }
+
+    $(document).on('click', '#bv-svc-add-doc-req-btn', function() {
+        var $select = $('#bv-svc-add-doc-req');
+        var id = parseInt($select.val()) || 0;
+        if (id <= 0) return;
+        bv_add_document_requirement_item(id);
+        bv_sync_document_requirement_ids();
+        $select.val('');
+    });
+
+    $(document).on('dblclick', '#bv-svc-add-doc-req', function() {
+        $(this).next('#bv-svc-add-doc-req-btn').trigger('click');
     });
 
 })(jQuery);

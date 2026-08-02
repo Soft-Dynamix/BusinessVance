@@ -681,12 +681,21 @@
     min-height: 38px;
 }
 .bv-multi-select-list:empty::after {
-    content: "No agreements assigned — global default will be used";
+    content: "None assigned";
     display: block;
     padding: 8px 4px;
     color: #999;
     font-size: 12px;
     font-style: italic;
+}
+#bv-svc-agreements-list:empty::after {
+    content: "No agreements assigned — global default will be used";
+}
+#bv-svc-questionnaires-list:empty::after {
+    content: "No questionnaires assigned";
+}
+#bv-svc-doc-reqs-list:empty::after {
+    content: "No document requirements assigned";
 }
 .bv-multi-item {
     display: flex;
