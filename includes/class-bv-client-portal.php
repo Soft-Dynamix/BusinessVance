@@ -381,10 +381,8 @@ class BV_Client_Portal {
 
         ob_start();
         ?>
-        <div class="bv-portal" id="bv-portal-app">
+        <div class="bv-portal" id="bv-portal-app" data-tab-style="<?php echo esc_attr( $portal_settings['portal_tab_style'] ?? 'underline' ); ?>">
             <style><?php echo $this->get_inline_css(); ?></style>
-
-            <!-- Header -->
             <div class="bv-portal-header">
                 <div class="bv-portal-header-inner">
                     <div class="bv-portal-brand">
@@ -1542,30 +1540,76 @@ class BV_Client_Portal {
         return isset( $labels[ $status ] ) ? $labels[ $status ] : ucfirst( str_replace( '-', ' ', $status ) );
     }
 
+    /**
+     * Notify consultant of a client action (document uploaded, questionnaire submitted, agreement signed).
+     *
+     * Respects the cd_auto_notify_consultant setting and uses customizable subject/body templates
+     * from settings. Falls back to sensible defaults if no custom template is configured.
+     *
+     * @since 2.6.0
+     * @param int    $project_id
+     * @param string $action      Human-readable action label (e.g. "Document Uploaded").
+     * @param string $description Action details.
+     * @return void
+     */
     private function notify_consultant( $project_id, $action, $description ) {
         $settings = BV_Settings::get_settings();
+
+        // Respect the master "notify consultant" toggle.
+        if ( ( $settings['cd_auto_notify_consultant'] ?? 'yes' ) !== 'yes' ) {
+            return;
+        }
+
         $consultant_email = $settings['consultant_email'] ?? get_option( 'admin_email' );
-        if ( empty( $consultant_email ) ) return;
-        
+        if ( empty( $consultant_email ) ) {
+            return;
+        }
+
         global $wpdb;
         $project = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_projects WHERE id = %d", $project_id ) );
-        if ( ! $project ) return;
-        
-        $company_name = $settings['company_name'] ?? 'BusinessVance';
-        $portal_url = $settings['portal_url'] ?? site_url();
+        if ( ! $project ) {
+            return;
+        }
+
+        $company_name  = $settings['company_name'] ?? 'BusinessVance';
         $dashboard_url = admin_url( 'admin.php?page=bv-consultant-dashboard&project_id=' . $project_id );
-        
-        $subject = "Client Action on {$project->project_number} - {$action}";
-        $body = "Dear Consultant,\n\n";
-        $body .= "A client has completed an action on project {$project->project_number}:\n\n";
-        $body .= "Action: {$action}\n";
-        $body .= "Details: {$description}\n";
-        $body .= "Client: {$project->client_name} ({$project->client_email})\n\n";
-        $body .= "Please review and take necessary action in the Consultant Dashboard:\n";
-        $body .= "{$dashboard_url}\n\n";
-        $body .= "Best regards,\n{$company_name} System";
-        
-        $headers = array( 'Content-Type: text/plain; charset=UTF-8', 'From: ' . $company_name . ' <' . $consultant_email . '>' );
+
+        // Token map for template replacement.
+        $tokens = array(
+            '{project_number}' => $project->project_number,
+            '{action}'         => $action,
+            '{description}'    => $description,
+            '{client_name}'    => $project->client_name,
+            '{client_email}'   => $project->client_email,
+            '{dashboard_url}'  => $dashboard_url,
+            '{company_name}'   => $company_name,
+        );
+
+        // Build subject — use custom template or sensible default.
+        $subject_template = $settings['email_consultant_action_subject'] ?? 'Client Action on {project_number} — {action}';
+        $subject = str_replace( array_keys( $tokens ), array_values( $tokens ), $subject_template );
+
+        // Build body — use custom template or sensible default.
+        $body_template = $settings['email_consultant_action_body'] ?? '';
+        if ( empty( $body_template ) ) {
+            $body_template = "Dear Consultant,\n\n"
+                . "A client has completed an action on project {project_number}:\n\n"
+                . "Action: {action}\n"
+                . "Details: {description}\n"
+                . "Client: {client_name} ({client_email})\n\n"
+                . "Please review and take necessary action in the Consultant Dashboard:\n"
+                . "{dashboard_url}\n\n"
+                . "Best regards,\n{company_name} System";
+        }
+        $body = str_replace( array_keys( $tokens ), array_values( $tokens ), $body_template );
+
+        // Use the company's email address as the From header (not the consultant's own address).
+        $from_email = ! empty( $settings['email_address'] ) ? $settings['email_address'] : $consultant_email;
+        $headers    = array(
+            'Content-Type: text/plain; charset=UTF-8',
+            'From: ' . $company_name . ' <' . $from_email . '>',
+        );
+
         wp_mail( $consultant_email, $subject, $body, $headers );
     }
 
@@ -1610,7 +1654,8 @@ class BV_Client_Portal {
             $body
         );
 
-        $headers = array( 'Content-Type: text/plain; charset=UTF-8', 'From: ' . $company_name . ' <' . $consultant_email . '>' );
+        $from_email = ! empty( $settings['email_address'] ) ? $settings['email_address'] : $consultant_email;
+        $headers    = array( 'Content-Type: text/plain; charset=UTF-8', 'From: ' . $company_name . ' <' . $from_email . '>' );
         wp_mail( $consultant_email, $subject, $body, $headers );
 
         // Also log activity
@@ -1624,287 +1669,30 @@ class BV_Client_Portal {
         ), array( '%d', '%s', '%d', '%s', '%s', '%d' ) );
     }
 
+    /**
+     * Output a small inline <style> block that defines CSS custom properties
+     * from the user's color settings. The bulk of the CSS lives in the
+     * external client-portal.css file (browsable, cacheable, minifiable).
+     *
+     * @since 2.7.0
+     * @return string
+     */
     private function get_inline_css() {
-        $settings    = BV_Settings::get_settings();
-        $primary     = esc_attr( $settings['primary_color'] );
-        $secondary   = esc_attr( $settings['secondary_color'] );
-        $accent      = esc_attr( $settings['accent_color'] );
-        $portal_hdr  = esc_attr( $settings['portal_header_color'] ?? $primary );
-        $portal_acnt = esc_attr( $settings['portal_accent_color'] ?? $secondary );
-        $portal_btn  = esc_attr( $settings['portal_button_color'] ?? $accent );
-        $tab_style   = $settings['portal_tab_style'] ?? 'underline';
+        $settings   = BV_Settings::get_settings();
+        $primary    = esc_attr( $settings['primary_color'] );
+        $secondary  = esc_attr( $settings['secondary_color'] );
+        $accent     = esc_attr( $settings['accent_color'] );
+        $portal_hdr = esc_attr( $settings['portal_header_color'] ?? $primary );
+        $portal_acn = esc_attr( $settings['portal_accent_color'] ?? $secondary );
+        $portal_btn = esc_attr( $settings['portal_button_color'] ?? $accent );
 
-        $tab_active_css = 'border-bottom-color:' . $portal_hdr . ';color:' . $portal_hdr . ';font-weight:600;';
-        if ( $tab_style === 'pill' ) {
-            $tab_active_css = 'background:' . $portal_hdr . ';color:#fff;border-radius:8px 8px 0 0;border:none;';
-        }
-
-        return '
-    /* ============================================
-       BusinessVance Client Portal — Modern Theme
-       ============================================ */
-    .bv-portal { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: #1a1a2e; max-width: 1440px; margin: 0 auto; background: #ffffff; border-radius: 0; overflow-x: hidden; }
-    .bv-portal-login-message { padding: 60px 40px; text-align: center; background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%); border-radius: 12px; margin: 40px auto; max-width: 500px; border: 1px solid #e0e0e0; }
-    .bv-portal-login-message a { color: ' . $portal_hdr . '; font-weight: 600; }
-
-    /* Header */
-    .bv-portal-header { background: linear-gradient(135deg, ' . $portal_hdr . ' 0%, ' . $this->adjust_color($portal_hdr, 25) . ' 50%, ' . $portal_hdr . ' 100%); color: #fff; padding: 0; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 12px rgba(0,0,0,0.15); }
-    .bv-portal-header-inner { display: flex; justify-content: space-between; align-items: center; padding: 14px 28px; flex-wrap: wrap; gap: 12px; }
-    .bv-portal-brand { display: flex; align-items: center; gap: 12px; }
-    .bv-portal-brand h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
-    .bv-portal-logo { font-size: 28px; color: ' . $portal_btn . '; filter: drop-shadow(0 0 4px rgba(212,175,55,0.4)); }
-    .bv-portal-user-info { font-size: 14px; color: rgba(255,255,255,0.85); text-align: right; }
-    .bv-portal-user-info strong { color: #fff; }
-    .bv-portal-company { display: block; font-size: 12px; color: rgba(255,255,255,0.55); margin-top: 2px; }
-
-    /* Mobile hamburger */
-    .bv-portal-mobile-toggle { display: none; background: none; border: 2px solid rgba(255,255,255,0.3); border-radius: 6px; padding: 6px 10px; color: #fff; font-size: 18px; cursor: pointer; line-height: 1; }
-    .bv-portal-mobile-toggle:hover { border-color: ' . $portal_btn . '; }
-
-    /* Body */
-    .bv-portal-body { display: flex; min-height: calc(100vh - 120px); }
-
-    /* Sidebar */
-    .bv-portal-sidebar { width: 300px; background: linear-gradient(180deg, #f8f9fb 0%, #f0f2f5 100%); border-right: 1px solid #e5e7eb; padding: 24px 20px; flex-shrink: 0; overflow-y: auto; }
-    .bv-portal-sidebar h3 { margin: 0 0 16px; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: #6b7280; padding: 0 4px; }
-    .bv-portal-project-item { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; margin-bottom: 8px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; text-decoration: none; color: #1a1a2e; font-size: 14px; transition: all 0.25s ease; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
-    .bv-portal-project-item:hover { border-color: ' . $portal_hdr . '; background: #f0f4f8; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,43,92,0.1); }
-    .bv-portal-project-item.active { border-color: ' . $portal_hdr . '; background: linear-gradient(135deg, ' . $portal_hdr . ' 0%, ' . $this->adjust_color($portal_hdr, 25) . ' 100%); color: #fff; box-shadow: 0 4px 16px rgba(0,43,92,0.25); }
-    .bv-portal-project-item.active .bv-portal-project-num { color: #fff; }
-    .bv-portal-project-item.active .bv-portal-project-status-badge { background: rgba(255,255,255,0.2); color: #fff; }
-    .bv-portal-project-num { font-weight: 600; font-size: 13px; color: ' . $portal_hdr . '; }
-
-    /* Main Content */
-    .bv-portal-main { flex: 1; padding: 0; display: flex; flex-direction: column; }
-
-    /* Tabs */
-    .bv-portal-tabs { display: flex; border-bottom: 2px solid #e5e7eb; padding: 0 28px; overflow-x: auto; background: #fff; flex-shrink: 0; -webkit-overflow-scrolling: touch; }
-    .bv-portal-tab { padding: 14px 22px; text-decoration: none; color: #6b7280; font-size: 14px; font-weight: 500; border-bottom: 3px solid transparent; margin-bottom: -2px; white-space: nowrap; transition: all 0.2s ease; position: relative; }
-    .bv-portal-tab:hover { color: ' . $portal_hdr . '; background: rgba(0,43,92,0.03); }
-    .bv-portal-tab.active { ' . $tab_active_css . ' }
-
-    /* Content */
-    .bv-portal-content { padding: 28px; flex: 1; }
-
-    /* Status Badges */
-    .bv-portal-project-status-badge, .bv-status-badge { display: inline-flex; align-items: center; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-    .bv-status-awaiting-agreement { background: #FEF3C7; color: #92400E; }
-    .bv-status-awaiting-questionnaire { background: #FEF3C7; color: #92400E; }
-    .bv-status-awaiting-documents { background: #F3E8FF; color: #6B21A8; }
-    .bv-status-in-progress { background: #DBEAFE; color: #1E40AF; }
-    .bv-status-quality-check { background: #D1FAE5; color: #065F46; }
-    .bv-status-completed { background: #D1FAE5; color: #065F46; }
-    .bv-status-delivered { background: #059669; color: #fff; box-shadow: 0 2px 8px rgba(5,150,105,0.3); }
-    .bv-status-archived { background: #F3F4F6; color: #6B7280; }
-
-    /* Overview */
-    .bv-overview-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; flex-wrap: wrap; gap: 16px; }
-    .bv-overview-header h2 { margin: 0; color: ' . $portal_hdr . '; font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
-    .bv-subtitle { color: #6b7280; font-size: 14px; margin: 4px 0 0; }
-
-    /* Progress */
-    .bv-progress-section { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px 24px; margin-bottom: 28px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
-    .bv-progress-header { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 14px; font-weight: 600; color: #374151; }
-    .bv-progress-percent { color: ' . $portal_hdr . '; font-size: 16px; font-weight: 700; }
-    .bv-progress-bar { height: 10px; background: #e5e7eb; border-radius: 10px; overflow: hidden; }
-    .bv-progress-fill { height: 100%; background: linear-gradient(90deg, ' . $portal_acnt . ', ' . $portal_hdr . '); border-radius: 10px; transition: width 0.6s ease; position: relative; }
-    .bv-progress-fill::after { content: ""; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent); animation: shimmer 2s infinite; }
-    @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
-
-    /* Steps Indicator */
-    .bv-steps { display: flex; justify-content: space-between; margin-top: 20px; padding: 0 8px; }
-    .bv-step { display: flex; flex-direction: column; align-items: center; flex: 1; position: relative; }
-    .bv-step::before { content: ""; position: absolute; top: 16px; left: -50%; right: 50%; height: 2px; background: #e5e7eb; z-index: 0; }
-    .bv-step:first-child::before { display: none; }
-    .bv-step-dot { width: 32px; height: 32px; border-radius: 50%; background: #e5e7eb; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #9CA3AF; position: relative; z-index: 1; transition: all 0.3s ease; }
-    .bv-step-dot.done { background: #059669; color: #fff; box-shadow: 0 2px 8px rgba(5,150,105,0.3); }
-    .bv-step-dot.active { background: ' . $portal_hdr . '; color: #fff; box-shadow: 0 2px 8px rgba(0,43,92,0.3); }
-    .bv-step-label { font-size: 11px; color: #9CA3AF; margin-top: 8px; font-weight: 500; text-align: center; }
-    .bv-step-label.done { color: #059669; font-weight: 600; }
-    .bv-step-label.active { color: ' . $portal_hdr . '; font-weight: 600; }
-
-    /* Info Grid */
-    .bv-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px; }
-    .bv-info-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); transition: box-shadow 0.2s ease; }
-    .bv-info-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
-    .bv-info-card h4 { margin: 0 0 14px; color: ' . $portal_hdr . '; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-    .bv-info-card p { margin: 8px 0; font-size: 14px; color: #4b5563; line-height: 1.5; }
-    .bv-info-card p strong { color: #1a1a2e; }
-    .bv-service-list { margin: 0; padding-left: 20px; }
-    .bv-service-list li { margin: 6px 0; font-size: 14px; color: #4b5563; position: relative; }
-    .bv-service-list li::before { content: "\2022"; color: ' . $portal_acnt . '; font-weight: 700; margin-right: 8px; }
-
-    /* Notes */
-    .bv-notes-section { background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%); border: 1px solid #FDE68A; border-radius: 12px; padding: 20px 24px; }
-    .bv-notes-section h4 { margin: 0 0 10px; color: #92400E; font-size: 15px; font-weight: 600; }
-    .bv-notes-content { font-size: 14px; color: #78350F; line-height: 1.7; }
-
-    /* Agreement */
-    .bv-agreement-content { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 28px; margin: 20px 0; max-height: 500px; overflow-y: auto; font-size: 14px; line-height: 1.7; color: #374151; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
-    .bv-agreement-signed { text-align: center; padding: 32px; background: linear-gradient(135deg, #D1FAE5 0%, #A7F3D0 100%); border: 1px solid #6EE7B7; border-radius: 12px; margin-bottom: 20px; }
-    .bv-check-icon { font-size: 40px; color: #059669; display: inline-block; animation: checkPop 0.5s ease; }
-    @keyframes checkPop { 0% { transform: scale(0); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
-    .bv-agreement-signed h3 { margin: 12px 0 8px; color: #065F46; font-size: 20px; }
-    .bv-agreement-signed p { margin: 0; color: #047857; font-size: 15px; }
-    .bv-agreement-warning { padding: 14px 20px; background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); border: 1px solid #FCD34D; border-radius: 10px; margin-bottom: 20px; color: #92400E; font-size: 14px; }
-    .bv-agreement-sign-form { background: #f8f9fb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 28px; margin-top: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
-    .bv-agreement-sign-form h3 { margin: 0 0 8px; color: ' . $portal_hdr . '; }
-    .bv-agreement-sign-form > p { color: #6b7280; font-size: 14px; margin: 0 0 20px; }
-
-    /* Forms */
-    .bv-form-group { margin-bottom: 20px; }
-    .bv-form-group label { display: block; margin-bottom: 8px; font-weight: 600; font-size: 14px; color: #374151; }
-    .bv-form-group input, .bv-form-group select, .bv-form-group textarea { width: 100%; padding: 12px 16px; border: 1.5px solid #d1d5db; border-radius: 8px; font-size: 14px; box-sizing: border-box; transition: all 0.2s ease; background: #fff; color: #1a1a2e; }
-    .bv-form-group input:focus, .bv-form-group select:focus, .bv-form-group textarea:focus { outline: none; border-color: ' . $portal_hdr . '; box-shadow: 0 0 0 3px rgba(0,43,92,0.1); }
-    .bv-form-group .description { font-size: 12px; color: #9CA3AF; margin-top: 6px; }
-
-    /* Buttons */
-    .bv-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; text-decoration: none; border: none; cursor: pointer; transition: all 0.2s ease; }
-    .bv-btn-primary { background: ' . $portal_hdr . '; color: #fff; }
-    .bv-btn-primary:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-    .bv-btn-accent { background: ' . $portal_btn . '; color: ' . $portal_hdr . '; }
-    .bv-btn-accent:hover { opacity: 0.9; transform: translateY(-1px); }
-    .bv-btn-success { background: #059669; color: #fff; }
-    .bv-btn-success:hover { background: #047857; }
-    .bv-btn-outline { background: transparent; color: ' . $portal_hdr . '; border: 2px solid ' . $portal_hdr . '; }
-    .bv-btn-outline:hover { background: ' . $portal_hdr . '; color: #fff; }
-    .bv-btn-danger { background: #DC2626; color: #fff; }
-    .bv-btn-danger:hover { background: #B91C1C; }
-    .bv-btn-sm { padding: 6px 14px; font-size: 12px; }
-
-    /* Upload area */
-    .bv-upload-area { border: 2px dashed #d1d5db; border-radius: 12px; padding: 32px; text-align: center; background: #f9fafb; transition: all 0.2s ease; cursor: pointer; }
-    .bv-upload-area:hover, .bv-upload-area.dragover { border-color: ' . $portal_hdr . '; background: rgba(0,43,92,0.03); }
-    .bv-upload-icon { font-size: 40px; margin-bottom: 12px; }
-
-    /* ============================================
-       Questionnaire
-       ============================================ */
-    .bv-questionnaire-section { max-width: 860px; }
-    .bv-q-intro { margin-bottom: 28px; }
-    .bv-q-intro h2 { margin: 0 0 6px; color: ' . $portal_hdr . '; font-size: 24px; font-weight: 700; }
-    .bv-q-intro p { margin: 0; color: #6b7280; font-size: 15px; line-height: 1.5; }
-
-    /* Section Card */
-    .bv-q-section { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; margin-bottom: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); overflow: hidden; transition: box-shadow 0.2s ease; }
-    .bv-q-section:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.07); }
-
-    /* Section Header */
-    .bv-q-section-header { display: flex; align-items: flex-start; gap: 16px; padding: 20px 24px 16px; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 1px solid #e5e7eb; }
-    .bv-q-section-num { flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%; background: ' . $portal_hdr . '; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; box-shadow: 0 2px 8px rgba(0,43,92,0.2); }
-    .bv-q-section-info { flex: 1; min-width: 0; }
-    .bv-q-section-info h3 { margin: 0 0 4px; color: ' . $portal_hdr . '; font-size: 18px; font-weight: 700; line-height: 1.3; }
-    .bv-q-source { display: inline-block; font-size: 12px; color: #9CA3AF; font-style: italic; margin: 0 0 4px; padding: 2px 10px; background: #f3f4f6; border-radius: 12px; }
-    .bv-q-desc { margin: 6px 0 0; color: #6b7280; font-size: 13px; line-height: 1.5; }
-
-    /* Section Body */
-    .bv-q-section-body { padding: 20px 24px 24px; }
-
-    /* Field */
-    .bv-q-field { margin-bottom: 22px; }
-    .bv-q-field:last-child { margin-bottom: 0; }
-    .bv-q-field label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; color: #374151; line-height: 1.4; }
-    .bv-q-field input[type="text"], .bv-q-field input[type="number"], .bv-q-field input[type="email"], .bv-q-field input[type="tel"], .bv-q-field input[type="date"], .bv-q-field input[type="url"], .bv-q-field input[type="file"], .bv-q-field select, .bv-q-field textarea { width: 100%; padding: 11px 14px; border: 1.5px solid #d1d5db; border-radius: 8px; font-size: 14px; box-sizing: border-box; transition: all 0.2s ease; background: #fff; color: #1a1a2e; font-family: inherit; }
-    .bv-q-field input:focus, .bv-q-field select:focus, .bv-q-field textarea:focus { outline: none; border-color: ' . $portal_hdr . '; box-shadow: 0 0 0 3px rgba(0,43,92,0.1); }
-    .bv-q-field textarea { min-height: 80px; resize: vertical; line-height: 1.6; }
-    .bv-q-field select { appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 12 12\'%3E%3Cpath fill=\'%236b7280\' d=\'M6 8.825L1.175 4 2.238 2.938 6 6.7 9.763 2.938 10.825 4z\'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; cursor: pointer; }
-    .bv-q-field input[type="date"] { cursor: text; }
-    .bv-q-field input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; opacity: 0.6; }
-    .bv-q-field input[type="date"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
-
-    /* Help Text */
-    .bv-q-help { display: block; margin: 4px 0 8px; font-size: 12px; color: #9CA3AF; line-height: 1.4; font-style: italic; }
-
-    /* Headings & Paragraphs */
-    .bv-q-heading { padding: 12px 0 6px; margin-bottom: 10px; border-bottom: 1px solid #f0f0f1; }
-    .bv-q-heading h4 { margin: 0; color: ' . $portal_hdr . '; font-size: 15px; font-weight: 700; }
-    .bv-q-paragraph p { margin: 8px 0; color: #6b7280; font-size: 14px; line-height: 1.6; background: #f8f9fb; padding: 12px 16px; border-radius: 8px; border-left: 3px solid ' . $portal_acnt . '; }
-
-    /* Radio Group — pill/tag style with clean wrapping */
-    .bv-q-radio-group { display: flex; flex-wrap: wrap; gap: 8px; }
-    .bv-q-radio { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; font-size: 14px; color: #374151; cursor: pointer; transition: all 0.15s ease; background: #f3f4f6; border: 1.5px solid #e5e7eb; border-radius: 8px; user-select: none; }
-    .bv-q-radio:hover { background: #e8edf2; border-color: #c8cdd3; }
-    .bv-q-radio input[type="radio"] { accent-color: ' . $portal_hdr . '; width: 15px; height: 15px; cursor: pointer; flex-shrink: 0; margin: 0; }
-    .bv-q-radio input[type="radio"]:checked + span { color: ' . $portal_hdr . '; font-weight: 600; }
-    .bv-q-radio:has(input:checked) { background: #e0ecf8; border-color: ' . $portal_hdr . '; }
-
-    /* Checkbox Group — pill/tag style with clean wrapping */
-    .bv-q-checkbox-group { display: flex; flex-wrap: wrap; gap: 8px; }
-    .bv-q-checkbox { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; font-size: 14px; color: #374151; cursor: pointer; transition: all 0.15s ease; background: #f3f4f6; border: 1.5px solid #e5e7eb; border-radius: 8px; user-select: none; }
-    .bv-q-checkbox:hover { background: #e8edf2; border-color: #c8cdd3; }
-    .bv-q-checkbox input[type="checkbox"] { accent-color: ' . $portal_hdr . '; width: 15px; height: 15px; cursor: pointer; flex-shrink: 0; margin: 0; }
-    .bv-q-checkbox input[type="checkbox"]:checked + span { color: ' . $portal_hdr . '; font-weight: 600; }
-    .bv-q-checkbox:has(input:checked) { background: #e0ecf8; border-color: ' . $portal_hdr . '; }
-
-    /* File Upload */
-    .bv-q-file-area { position: relative; border: 2px dashed #d1d5db; border-radius: 10px; padding: 20px; text-align: center; background: #f9fafb; cursor: pointer; transition: all 0.2s ease; }
-    .bv-q-file-area:hover { border-color: ' . $portal_hdr . '; background: rgba(0,43,92,0.02); }
-    .bv-q-file-area input[type="file"] { width: 100%; cursor: pointer; }
-    .bv-q-file-saved { display: inline-block; margin-top: 8px; padding: 4px 12px; background: #D1FAE5; color: #065F46; border-radius: 6px; font-size: 13px; font-weight: 600; }
-
-    /* Actions */
-    .bv-q-actions { display: flex; align-items: center; gap: 16px; margin-top: 28px; padding-top: 24px; border-top: 2px solid #e5e7eb; }
-    .bv-q-actions .bv-btn { padding: 14px 32px; font-size: 15px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-    .bv-q-actions .bv-btn:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.15); transform: translateY(-1px); }
-    .bv-q-actions .bv-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
-    .bv-q-saving { color: #6b7280; font-size: 14px; font-style: italic; }
-    .bv-q-saved { color: #059669; font-size: 14px; font-weight: 600; }
-    .bv-q-error { color: #DC2626; font-size: 14px; font-weight: 600; }
-
-    /* Questionnaire Responsive */
-    @media (max-width: 768px) {
-        .bv-q-section-header { flex-direction: column; gap: 10px; padding: 16px 18px 12px; }
-        .bv-q-section-num { width: 30px; height: 30px; font-size: 13px; }
-        .bv-q-section-body { padding: 16px 18px 20px; }
-        .bv-q-radio, .bv-q-checkbox { padding: 8px 14px; font-size: 13px; }
-        .bv-q-actions { flex-direction: column; align-items: stretch; }
-        .bv-q-actions .bv-btn { width: 100%; text-align: center; }
-        .bv-questionnaire-section { max-width: 100%; }
-    }
-
-    /* Messages */
-    .bv-messages-list { display: flex; flex-direction: column; gap: 12px; }
-    .bv-message-bubble { padding: 14px 18px; border-radius: 12px; max-width: 80%; font-size: 14px; line-height: 1.6; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
-    .bv-message-sent { background: linear-gradient(135deg, ' . $portal_hdr . ', ' . $this->adjust_color($portal_hdr, 20) . '); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
-    .bv-message-received { background: #f3f4f6; color: #1a1a2e; align-self: flex-start; border-bottom-left-radius: 4px; }
-    .bv-message-meta { font-size: 11px; color: rgba(255,255,255,0.6); margin-top: 6px; }
-    .bv-message-received .bv-message-meta { color: #9CA3AF; }
-
-    /* Reports */
-    .bv-report-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; transition: box-shadow 0.2s; }
-    .bv-report-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-
-    /* Timeline */
-    .bv-timeline { position: relative; padding-left: 28px; }
-    .bv-timeline::before { content: ""; position: absolute; left: 10px; top: 0; bottom: 0; width: 2px; background: #e5e7eb; }
-    .bv-timeline-item { position: relative; margin-bottom: 20px; }
-    .bv-timeline-dot { position: absolute; left: -24px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: ' . $portal_acnt . '; border: 2px solid #fff; box-shadow: 0 0 0 2px #e5e7eb; }
-
-    /* Empty State */
-    .bv-portal-empty-state { text-align: center; padding: 60px 40px; }
-    .bv-portal-empty-icon { font-size: 56px; margin-bottom: 16px; }
-    .bv-portal-empty-state h2 { color: ' . $portal_hdr . '; font-size: 24px; margin-bottom: 8px; }
-    .bv-portal-empty-state p { color: #6b7280; font-size: 15px; line-height: 1.6; max-width: 460px; margin: 0 auto 16px; }
-    .bv-portal-empty-state a { color: ' . $portal_hdr . '; font-weight: 600; }
-
-    /* Required asterisk */
-    .bv-required { color: #DC2626; font-weight: 600; }
-
-    /* Responsive */
-    @media (max-width: 768px) {
-        .bv-portal-body { flex-direction: column; }
-        .bv-portal-sidebar { width: 100%; border-right: none; border-bottom: 1px solid #e5e7eb; padding: 16px; }
-        .bv-portal-sidebar h3 { display: none; }
-        .bv-portal-mobile-toggle { display: inline-block; }
-        .bv-portal-main { width: 100%; }
-        .bv-portal-tabs { padding: 0 16px; }
-        .bv-portal-tab { padding: 12px 16px; font-size: 13px; }
-        .bv-portal-content { padding: 20px 16px; }
-        .bv-info-grid { grid-template-columns: 1fr; }
-        .bv-overview-header { flex-direction: column; }
-        .bv-portal-header-inner { padding: 12px 16px; }
-    }
-    ';
+        return ':root{'
+            . '--bv-primary:' . $portal_hdr . ';'
+            . '--bv-secondary:' . $portal_acn . ';'
+            . '--bv-accent:' . $portal_btn . ';'
+            . '--bv-primary-light:' . $this->adjust_color( $portal_hdr, 25 ) . ';'
+            . '--bv-primary-light-20:' . $this->adjust_color( $portal_hdr, 20 ) . ';'
+            . '}';
     }
 
     /**

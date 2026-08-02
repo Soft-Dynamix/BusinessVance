@@ -171,13 +171,23 @@ class BV_Admin {
     }
 
     /**
-     * Enqueue admin assets
+     * Pages whose assets (and bvAdmin localization) are managed by other classes.
+     * We still enqueue the shared CSS/JS handles here, but we skip wp_localize_script
+     * so the owning class can set the correct bvAdmin.page value without a race condition.
+     *
+     * @var array
      */
+    private $delegated_pages = array(
+        'businessvance_page_businessvance-documents',
+        'businessvance_page_businessvance-agreements',
+    );
+
     public function enqueue_assets( $hook ) {
         if ( strpos( $hook, 'businessvance' ) === false ) {
             return;
         }
 
+        // Enqueue shared CSS/JS for all BusinessVance admin pages.
         wp_enqueue_style(
             'bv-admin-css',
             BV_PLUGIN_URL . 'assets/css/admin.css',
@@ -192,6 +202,12 @@ class BV_Admin {
             BV_VERSION,
             false
         );
+
+        // Only localize bvAdmin for pages owned by this class.
+        // Other classes (Documents, Agreements, etc.) handle their own localization.
+        if ( in_array( $hook, $this->delegated_pages, true ) ) {
+            return;
+        }
 
         wp_localize_script( 'bv-admin-js', 'bvAdmin', array(
             'ajax_url' => admin_url( 'admin-ajax.php' ),
