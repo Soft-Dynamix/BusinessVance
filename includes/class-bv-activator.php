@@ -496,10 +496,10 @@ class BV_Activator {
                 // Seed Agreement Templates
                 // ----------------------------------------------------------------
                 $wpdb->insert( $wpdb->prefix . 'bv_agreement_templates', array(
-                    'name'      => 'Standard Non-Disclosure Agreement',
-                    'slug'      => 'standard-nda',
-                    'type'      => 'nda',
-                    'content'   => "NON-DISCLOSURE AGREEMENT\n\nThis Non-Disclosure Agreement (\"Agreement\") is entered into as of the date of signing.\n\n1. DEFINITIONS\n\"Confidential Information\" means any and all non-public information, including but not limited to: business plans, financial data, customer lists, trade secrets, proprietary processes, technical data, and any other information designated as confidential.\n\n2. OBLIGATIONS\nThe receiving party agrees to: (a) hold all Confidential Information in strict confidence; (b) not disclose Confidential Information to any third party without prior written consent; (c) use Confidential Information solely for the purpose of evaluating or conducting business with the disclosing party.\n\n3. EXCLUSIONS\nThis Agreement does not apply to information that: (a) is or becomes publicly available through no fault of the receiving party; (b) was known to the receiving party prior to disclosure; (c) is independently developed by the receiving party.\n\n4. RETURN OF INFORMATION\nUpon request, the receiving party shall promptly return or destroy all Confidential Information.\n\n5. TERM\nThis Agreement shall remain in effect for the duration of the business relationship and for five (5) years thereafter.\n\n6. GOVERNING LAW\nThis Agreement shall be governed by the laws of the Republic of South Africa.",
+                    'name'      => 'Client Confidentiality and Information Protection Undertaking',
+                    'slug'      => 'client-confidentiality-undertaking',
+                    'type'      => 'confidentiality',
+                    'content'   => self::get_default_agreement_template(),
                     'is_default' => 1,
                 ), array( '%s', '%s', '%s', '%s', '%d' ) );
 
@@ -1085,10 +1085,11 @@ class BV_Activator {
         }
 
         /**
-         * Return the default engagement / confidentiality agreement template.
+         * Return the default BusinessVance Client Confidentiality and Information
+         * Protection Undertaking as formatted HTML.
          *
-         * This HTML content is stored as a WordPress option and cloned into
-         * bv_project_agreements rows when a client signs.
+         * This content is seeded into the bv_agreement_templates table on
+         * first activation and also stored as a WordPress option fallback.
          *
          * @since  1.0.0
          * @return string
