@@ -3,6 +3,7 @@
  * BusinessVance Agreement Manager
  *
  * Admin page for managing agreement and NDA templates.
+ * Supports creating, editing, deleting, and importing from PDF files.
  *
  * @package BusinessVance_Services_Manager
  * @since   2.0.0
@@ -25,6 +26,7 @@ class BV_Agreement_Manager {
         add_action( 'wp_ajax_bv_save_agreement_template', array( $this, 'ajax_save_template' ) );
         add_action( 'wp_ajax_bv_delete_agreement_template', array( $this, 'ajax_delete_template' ) );
         add_action( 'wp_ajax_bv_set_default_agreement', array( $this, 'ajax_set_default' ) );
+        add_action( 'wp_ajax_bv_import_agreement_pdf', array( $this, 'ajax_import_pdf' ) );
     }
 
     /**
@@ -49,6 +51,8 @@ class BV_Agreement_Manager {
             return;
         }
 
+        wp_enqueue_media();
+
         wp_enqueue_style(
             'bv-admin-css',
             BV_PLUGIN_URL . 'assets/css/admin.css',
@@ -68,10 +72,16 @@ class BV_Agreement_Manager {
             'ajax_url' => admin_url( 'admin-ajax.php' ),
             'nonce'    => wp_create_nonce( 'bv_admin_nonce' ),
             'strings'  => array(
-                'confirm_delete' => __( 'Are you sure you want to delete this agreement template?', 'businessvance-services-manager' ),
-                'saving'         => __( 'Saving...', 'businessvance-services-manager' ),
-                'saved'          => __( 'Saved successfully!', 'businessvance-services-manager' ),
-                'error'          => __( 'An error occurred. Please try again.', 'businessvance-services-manager' ),
+                'confirm_delete'     => __( 'Are you sure you want to delete this agreement template?', 'businessvance-services-manager' ),
+                'saving'             => __( 'Saving...', 'businessvance-services-manager' ),
+                'saved'              => __( 'Saved successfully!', 'businessvance-services-manager' ),
+                'error'              => __( 'An error occurred. Please try again.', 'businessvance-services-manager' ),
+                'importing'          => __( 'Importing...', 'businessvance-services-manager' ),
+                'import_success'     => __( 'Agreement imported successfully!', 'businessvance-services-manager' ),
+                'import_error'       => __( 'Failed to import agreement. Please check the file and try again.', 'businessvance-services-manager' ),
+                'select_pdf'         => __( 'Please select a PDF file to import.', 'businessvance-services-manager' ),
+                'invalid_file'       => __( 'Invalid file type. Only PDF files are accepted.', 'businessvance-services-manager' ),
+                'upload_error'       => __( 'Failed to upload file. Please try again.', 'businessvance-services-manager' ),
             ),
         ) );
     }
@@ -132,6 +142,227 @@ class BV_Agreement_Manager {
             default:
                 return 'bv-badge-custom';
         }
+    }
+
+    /**
+     * Extract text content from a PDF file.
+     *
+     * Tries multiple methods: pdftotext CLI, then pure-PHP fallback.
+     *
+     * @param  string $file_path Absolute path to the PDF file.
+     * @return string|WP_Error  Extracted text on success, WP_Error on failure.
+     */
+    private function extract_pdf_text( $file_path ) {
+        if ( ! file_exists( $file_path ) ) {
+            return new WP_Error( 'file_not_found', __( 'PDF file not found.', 'businessvance-services-manager' ) );
+        }
+
+        // Method 1: pdftotext CLI (most reliable)
+        $output = shell_exec( 'pdftotext -layout "' . escapeshellcmd( $file_path ) . '" - 2>/dev/null' );
+        if ( ! empty( $output ) && strlen( trim( $output ) ) > 50 ) {
+            return $output;
+        }
+
+        // Method 2: pdftotext without layout flag
+        $output = shell_exec( 'pdftotext "' . escapeshellcmd( $file_path ) . '" - 2>/dev/null' );
+        if ( ! empty( $output ) && strlen( trim( $output ) ) > 50 ) {
+            return $output;
+        }
+
+        // Method 3: Python-based extraction
+        $python_script = 'import sys
+try:
+    import pdfplumber
+    text = ""
+    with pdfplumber.open(sys.argv[1]) as pdf:
+        for page in pdf.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + "\n\n"
+    print(text)
+except ImportError:
+    try:
+        import fitz
+        doc = fitz.open(sys.argv[1])
+        text = ""
+        for page in doc:
+            text += page.get_text() + "\n\n"
+        print(text)
+    except ImportError:
+        import PyPDF2
+        reader = PyPDF2.PdfReader(sys.argv[1])
+        text = ""
+        for page in reader.pages:
+            text += page.extract_text() + "\n\n" if page.extract_text() else ""
+        print(text)
+';
+
+        $tmp_script = tempnam( sys_get_temp_dir(), 'bv_pdf_' );
+        file_put_contents( $tmp_script, $python_script );
+        $output = shell_exec( 'python3 "' . escapeshellcmd( $tmp_script ) . '" "' . escapeshellcmd( $file_path ) . '" 2>/dev/null' );
+        unlink( $tmp_script );
+
+        if ( ! empty( $output ) && strlen( trim( $output ) ) > 50 ) {
+            return $output;
+        }
+
+        return new WP_Error( 'extraction_failed', __( 'Could not extract text from the PDF. The file may be image-based or corrupted.', 'businessvance-services-manager' ) );
+    }
+
+    /**
+     * Convert extracted plain text to formatted HTML for agreement content.
+     *
+     * @param  string $text Raw text extracted from PDF.
+     * @return string       HTML-formatted content.
+     */
+    private function text_to_agreement_html( $text ) {
+        $lines = preg_split( '/\r?\n/', $text );
+        $html  = '';
+        $in_list     = false;
+        $in_heading  = false;
+
+        foreach ( $lines as $line ) {
+            $trimmed = trim( $line );
+
+            // Skip empty lines — close list if open
+            if ( $trimmed === '' ) {
+                if ( $in_list ) {
+                    $html .= "</ul>\n";
+                    $in_list = false;
+                }
+                $html .= "\n";
+                continue;
+            }
+
+            // Skip page headers/footers (short lines with common patterns)
+            if ( preg_match( '/^(Page\s+\d+|BUSINESSVANCE\s*\|\s*Research\.\s*Analyze\.\s*Plan\.\s*Succeed\.\s*\|)/i', $trimmed ) ) {
+                continue;
+            }
+
+            // Detect numbered headings like "1. Title", "10. CLIENT ACKNOWLEDGEMENT"
+            if ( preg_match( '/^(\d{1,2})\.\s+[A-Z]/', $trimmed ) ) {
+                if ( $in_list ) {
+                    $html .= "</ul>\n";
+                    $in_list = false;
+                }
+                $html .= '<h3 style="color: #0A2647; font-size: 16px; margin-top: 25px; padding-bottom: 6px; border-bottom: 1px solid #e0e0e0;">' . esc_html( $trimmed ) . "</h3>\n";
+                continue;
+            }
+
+            // Detect all-caps headings like "CLIENT DETAILS", "BUSINESSVANCE DECLARATION"
+            if ( preg_match( '/^[A-Z][A-Z\s&\/]{5,}$/', $trimmed ) && strlen( $trimmed ) < 60 ) {
+                if ( $in_list ) {
+                    $html .= "</ul>\n";
+                    $in_list = false;
+                }
+                $html .= '<h3 style="color: #0A2647; font-size: 16px; margin-top: 30px; padding-bottom: 6px; border-bottom: 2px solid #D4AF37;">' . esc_html( $trimmed ) . "</h3>\n";
+                continue;
+            }
+
+            // Detect bullet points: "•", "-", "*", or lines starting with tab+text
+            if ( preg_match( '/^[\-\*\•]\s/', $trimmed ) || ( strlen( $line ) > 0 && $line[0] === "\t" && ! preg_match( '/^\t[a-zA-Z]/', $trimmed ) ) ) {
+                $trimmed = preg_replace( '/^[\-\*\•]\s*/', '', $trimmed );
+                if ( ! $in_list ) {
+                    $html .= '<ul style="padding-left: 20px;">' . "\n";
+                    $in_list = true;
+                }
+                $html .= '<li style="margin-bottom: 8px;">' . esc_html( $trimmed ) . "</li>\n";
+                continue;
+            }
+
+            // Detect field label lines like "Client full name", "Business name" (followed by blank or value)
+            if ( preg_match( '/^[A-Za-z][A-Za-z\s\/]{2,}$/', $trimmed ) && strlen( $trimmed ) < 50 && ! preg_match( '/[.!?]$/', $trimmed ) ) {
+                if ( $in_list ) {
+                    $html .= "</ul>\n";
+                    $in_list = false;
+                }
+                // Could be a table field — render as a simple line
+                $html .= '<p style="margin: 8px 0; font-weight: 600; color: #0A2647;">' . esc_html( $trimmed ) . "</p>\n";
+                continue;
+            }
+
+            // Regular paragraph text
+            if ( $in_list ) {
+                $html .= "</ul>\n";
+                $in_list = false;
+            }
+
+            // Detect "Important:" or similar callouts
+            if ( preg_match( '/^(Important|Note|Warning|Caution)\s*:/i', $trimmed ) ) {
+                $html .= '<div style="background: #fff8e1; padding: 12px 18px; border-radius: 6px; margin: 15px 0; font-size: 13px; color: #795548;">' . esc_html( $trimmed ) . "</div>\n";
+                continue;
+            }
+
+            // Detect indented descriptions (our commitment, etc.)
+            if ( preg_match( '/^(Our commitment|BusinessVance confirms)/i', $trimmed ) ) {
+                $html .= '<div style="background: #f8f9fa; padding: 15px 20px; border-left: 4px solid #D4AF37; margin-bottom: 25px; border-radius: 0 6px 6px 0;">' . "\n";
+                $html .= '<p style="margin: 0; font-style: italic; color: #555;"><strong>' . esc_html( $trimmed ) . "</strong></p>\n";
+                $html .= "</div>\n";
+                continue;
+            }
+
+            // Default: paragraph
+            $html .= '<p style="margin: 8px 0;">' . esc_html( $trimmed ) . "</p>\n";
+        }
+
+        // Close any remaining list
+        if ( $in_list ) {
+            $html .= "</ul>\n";
+        }
+
+        return $html;
+    }
+
+    /**
+     * Detect the agreement type from text content.
+     *
+     * @param  string $text The extracted text.
+     * @return string       Type slug.
+     */
+    private function detect_agreement_type( $text ) {
+        $text_lower = strtolower( $text );
+
+        if ( preg_match( '/non[\s-]?disclosure|nda/i', $text ) && ! preg_match( '/confidentiality\s+undertaking/i', $text ) ) {
+            return 'nda';
+        }
+        if ( preg_match( '/service\s+agreement|terms\s+of\s+service|engagement/i', $text_lower ) ) {
+            return 'service-agreement';
+        }
+        if ( preg_match( '/confidentiality|information\s+protection|undertaking/i', $text_lower ) ) {
+            return 'confidentiality';
+        }
+
+        return 'custom';
+    }
+
+    /**
+     * Detect a sensible name from text content.
+     *
+     * @param  string $text The extracted text.
+     * @return string
+     */
+    private function detect_agreement_name( $text ) {
+        // Look for a title-like line in the first 30 lines
+        $lines = preg_split( '/\r?\n/', $text );
+        $check_count = min( 30, count( $lines ) );
+
+        for ( $i = 0; $i < $check_count; $i++ ) {
+            $trimmed = trim( $lines[ $i ] );
+            // Skip short lines, all-caps brand names, and generic text
+            if ( strlen( $trimmed ) < 10 ) continue;
+            if ( preg_match( '/^BUSINESSVANCE$/i', $trimmed ) ) continue;
+            if ( preg_match( '/^RESEARCH\.\s*ANALYZE/i', $trimmed ) ) continue;
+            if ( preg_match( '/^BV\s*RESEARCH/i', $trimmed ) ) continue;
+            // Look for lines that look like a title (mixed case, no trailing period)
+            if ( preg_match( '/^[A-Z][A-Za-z\s\-\&\']{10,100}$/', $trimmed ) && ! preg_match( '/\.$/', $trimmed ) ) {
+                // Skip lines that look like section headings (start with number)
+                if ( ! preg_match( '/^\d+\./', $trimmed ) ) {
+                    return $trimmed;
+                }
+            }
+        }
+
+        return __( 'Imported Agreement', 'businessvance-services-manager' );
     }
 
     /**
@@ -316,6 +547,126 @@ class BV_Agreement_Manager {
     }
 
     /**
+     * AJAX: Import an agreement template from a PDF file upload.
+     *
+     * Expects multipart/form-data with:
+     *   - nonce: bv_admin_nonce
+     *   - name: (optional) template name — auto-detected if empty
+     *   - type: (optional) agreement type — auto-detected if empty
+     *   - is_default: 0 or 1
+     *   - pdf_file: the uploaded PDF file
+     */
+    public function ajax_import_pdf() {
+        $this->verify_nonce();
+
+        // Check for uploaded file
+        if ( empty( $_FILES['pdf_file'] ) ) {
+            wp_send_json_error( array( 'message' => __( 'No file uploaded.', 'businessvance-services-manager' ) ) );
+        }
+
+        $file = $_FILES['pdf_file'];
+
+        // Validate file type
+        $file_type = wp_check_filetype( $file['name'] );
+        $allowed   = array( 'pdf' );
+        if ( ! in_array( strtolower( $file_type['ext'] ), $allowed, true ) ) {
+            wp_send_json_error( array( 'message' => __( 'Invalid file type. Only PDF files are accepted.', 'businessvance-services-manager' ) ) );
+        }
+
+        // Check for upload errors
+        if ( $file['error'] !== UPLOAD_ERR_OK ) {
+            $upload_errors = array(
+                UPLOAD_ERR_INI_SIZE   => __( 'The file exceeds the upload_max_filesize directive.', 'businessvance-services-manager' ),
+                UPLOAD_ERR_FORM_SIZE  => __( 'The file exceeds the MAX_FILE_SIZE directive.', 'businessvance-services-manager' ),
+                UPLOAD_ERR_PARTIAL   => __( 'The file was only partially uploaded.', 'businessvance-services-manager' ),
+                UPLOAD_ERR_NO_FILE    => __( 'No file was uploaded.', 'businessvance-services-manager' ),
+                UPLOAD_ERR_NO_TMP_DIR => __( 'Missing temporary folder.', 'businessvance-services-manager' ),
+                UPLOAD_ERR_CANT_WRITE => __( 'Failed to write file to disk.', 'businessvance-services-manager' ),
+            );
+            $error_msg = isset( $upload_errors[ $file['error'] ] ) ? $upload_errors[ $file['error'] ] : __( 'Unknown upload error.', 'businessvance-services-manager' );
+            wp_send_json_error( array( 'message' => $error_msg ) );
+        }
+
+        // Move the uploaded file to a temp location
+        $tmp_path = $file['tmp_name'];
+        if ( ! file_exists( $tmp_path ) ) {
+            wp_send_json_error( array( 'message' => __( 'Uploaded file could not be found.', 'businessvance-services-manager' ) ) );
+        }
+
+        // Extract text from PDF
+        $raw_text = $this->extract_pdf_text( $tmp_path );
+        if ( is_wp_error( $raw_text ) ) {
+            wp_send_json_error( array( 'message' => $raw_text->get_error_message() ) );
+        }
+
+        // Get parameters (with auto-detection)
+        $name       = sanitize_text_field( $_POST['name'] ?? '' );
+        $slug       = sanitize_text_field( $_POST['slug'] ?? '' );
+        $type       = sanitize_text_field( $_POST['type'] ?? '' );
+        $is_default = intval( $_POST['is_default'] ?? 0 );
+
+        // Auto-detect name if not provided
+        if ( empty( $name ) ) {
+            $name = $this->detect_agreement_name( $raw_text );
+        }
+
+        // Auto-generate slug if not provided
+        if ( empty( $slug ) ) {
+            $slug = sanitize_title( $name );
+        }
+
+        // Auto-detect type if not provided
+        if ( empty( $type ) || ! in_array( $type, array( 'nda', 'service-agreement', 'confidentiality', 'custom' ), true ) ) {
+            $type = $this->detect_agreement_type( $raw_text );
+        }
+
+        // Convert plain text to formatted HTML
+        $html_content = $this->text_to_agreement_html( $raw_text );
+
+        // Clean up temp file
+        @unlink( $tmp_path );
+
+        // Insert into database
+        global $wpdb;
+        $table = $this->get_table();
+        $now   = current_time( 'mysql' );
+
+        // If setting as default, unset any existing default of the same type.
+        if ( $is_default ) {
+            $wpdb->update(
+                $table,
+                array( 'is_default' => 0, 'updated_at' => $now ),
+                array( 'type' => $type ),
+                array( '%d', '%s' ),
+                array( '%s' )
+            );
+        }
+
+        $wpdb->insert( $table, array(
+            'name'       => $name,
+            'slug'       => $slug,
+            'type'       => $type,
+            'content'    => $html_content,
+            'is_default' => $is_default,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ), array( '%s', '%s', '%s', '%s', '%d', '%s', '%s' ) );
+
+        $new_id = $wpdb->insert_id;
+
+        wp_send_json_success( array(
+            'message' => sprintf(
+                /* translators: %s: template name */
+                __( 'Agreement "%s" imported successfully from PDF.', 'businessvance-services-manager' ),
+                $name
+            ),
+            'id'    => $new_id,
+            'name'  => $name,
+            'type'  => $type,
+        ) );
+    }
+
+    /**
      * Render the Agreements admin page.
      */
     public function render_agreements_page() {
@@ -337,15 +688,21 @@ class BV_Agreement_Manager {
                     <h1><?php esc_html_e( 'Agreement Templates', 'businessvance-services-manager' ); ?></h1>
                     <p class="bv-subtitle"><?php esc_html_e( 'Manage agreement and NDA templates that can be assigned to services.', 'businessvance-services-manager' ); ?></p>
                 </div>
-                <button type="button" class="button button-primary bv-gold-btn" id="bv-add-agreement">
-                    <?php esc_html_e( '+ Add Template', 'businessvance-services-manager' ); ?>
-                </button>
+                <div class="bv-admin-header-actions" style="display:flex;gap:10px;align-items:center;">
+                    <button type="button" class="button bv-import-pdf-btn" id="bv-import-agreement-pdf" style="border:1px dashed #D4AF37;color:#b7950b;font-weight:600;">
+                        <span class="dashicons dashicons-upload" style="vertical-align:middle;margin-top:4px;margin-right:4px;"></span>
+                        <?php esc_html_e( 'Import from PDF', 'businessvance-services-manager' ); ?>
+                    </button>
+                    <button type="button" class="button button-primary bv-gold-btn" id="bv-add-agreement">
+                        <?php esc_html_e( '+ Add Template', 'businessvance-services-manager' ); ?>
+                    </button>
+                </div>
             </div>
 
             <?php if ( empty( $templates ) ) : ?>
                 <div class="bv-table-container" style="text-align:center; padding:60px 20px;">
                     <p style="font-size:16px; color:#666;">
-                        <?php esc_html_e( 'No agreement templates found. Click "Add Template" to create your first agreement or NDA template.', 'businessvance-services-manager' ); ?>
+                        <?php esc_html_e( 'No agreement templates found. Click "Add Template" to create your first agreement or "Import from PDF" to import an existing document.', 'businessvance-services-manager' ); ?>
                     </p>
                 </div>
             <?php else : ?>
@@ -467,6 +824,89 @@ class BV_Agreement_Manager {
             </div>
         </div>
 
+        <!-- Import PDF Modal -->
+        <div id="bv-import-pdf-modal" class="bv-modal" style="display:none;">
+            <div class="bv-modal-overlay"></div>
+            <div class="bv-modal-content" style="max-width:560px;">
+                <div class="bv-modal-header">
+                    <h2><?php esc_html_e( 'Import Agreement from PDF', 'businessvance-services-manager' ); ?></h2>
+                    <button type="button" class="bv-modal-close">&times;</button>
+                </div>
+                <form id="bv-import-pdf-form" class="bv-modal-body" enctype="multipart/form-data">
+                    <input type="hidden" name="nonce" value="<?php echo esc_attr( wp_create_nonce( 'bv_admin_nonce' ) ); ?>">
+
+                    <div class="bv-form-grid" style="display:flex;flex-direction:column;gap:16px;">
+
+                        <!-- File upload area -->
+                        <div class="bv-form-group">
+                            <label for="bv-import-pdf-file"><?php esc_html_e( 'PDF File *', 'businessvance-services-manager' ); ?></label>
+                            <div class="bv-file-upload-area" id="bv-pdf-drop-zone"
+                                 style="border:2px dashed #ccc;border-radius:8px;padding:30px 20px;text-align:center;cursor:pointer;transition:border-color 0.2s, background 0.2s;">
+                                <div id="bv-pdf-drop-zone-content">
+                                    <span class="dashicons dashicons-upload" style="font-size:40px;width:40px;height:40px;color:#999;"></span>
+                                    <p style="margin:12px 0 4px 0;color:#555;font-size:14px;">
+                                        <?php esc_html_e( 'Drag & drop a PDF file here, or click to select', 'businessvance-services-manager' ); ?>
+                                    </p>
+                                    <p style="margin:0;color:#999;font-size:12px;">
+                                        <?php esc_html_e( 'Accepted: .pdf files only', 'businessvance-services-manager' ); ?>
+                                    </p>
+                                </div>
+                                <div id="bv-pdf-file-info" style="display:none;">
+                                    <span class="dashicons dashicons-pdf" style="font-size:40px;width:40px;height:40px;color:#e74c3c;"></span>
+                                    <p id="bv-pdf-file-name" style="margin:8px 0 4px 0;color:#0A2647;font-weight:600;font-size:14px;"></p>
+                                    <p id="bv-pdf-file-size" style="margin:0;color:#999;font-size:12px;"></p>
+                                    <button type="button" id="bv-pdf-remove-file" class="button button-small" style="margin-top:8px;">
+                                        <?php esc_html_e( 'Remove', 'businessvance-services-manager' ); ?>
+                                    </button>
+                                </div>
+                            </div>
+                            <input type="file" id="bv-import-pdf-file" name="pdf_file" accept=".pdf" style="display:none;">
+                        </div>
+
+                        <hr style="border:none;border-top:1px solid #e0e0e0;margin:4px 0;">
+
+                        <!-- Template details -->
+                        <div class="bv-form-group">
+                            <label for="bv-import-name"><?php esc_html_e( 'Template Name', 'businessvance-services-manager' ); ?></label>
+                            <input type="text" id="bv-import-name" name="name" class="regular-text" placeholder="<?php esc_attr_e( 'Auto-detected from PDF (leave blank to auto-detect)', 'businessvance-services-manager' ); ?>">
+                            <p class="description" style="margin-top:4px;"><?php esc_html_e( 'Leave blank to auto-detect from the PDF content.', 'businessvance-services-manager' ); ?></p>
+                        </div>
+
+                        <div class="bv-form-group">
+                            <label for="bv-import-type"><?php esc_html_e( 'Agreement Type', 'businessvance-services-manager' ); ?></label>
+                            <select id="bv-import-type" name="type">
+                                <option value=""><?php esc_html_e( 'Auto-detect from PDF', 'businessvance-services-manager' ); ?></option>
+                                <option value="nda"><?php esc_html_e( 'NDA', 'businessvance-services-manager' ); ?></option>
+                                <option value="service-agreement"><?php esc_html_e( 'Service Agreement', 'businessvance-services-manager' ); ?></option>
+                                <option value="confidentiality"><?php esc_html_e( 'Confidentiality Agreement', 'businessvance-services-manager' ); ?></option>
+                                <option value="custom"><?php esc_html_e( 'Custom', 'businessvance-services-manager' ); ?></option>
+                            </select>
+                        </div>
+
+                        <div class="bv-form-group" style="display:flex;align-items:center;gap:8px;">
+                            <input type="checkbox" id="bv-import-default" name="is_default" value="1">
+                            <label for="bv-import-default" style="margin:0;"><?php esc_html_e( 'Set as default template for this type', 'businessvance-services-manager' ); ?></label>
+                        </div>
+
+                        <!-- Info box -->
+                        <div class="bv-form-group" style="background:#f0f6fc;border-left:4px solid #2A9D8F;padding:14px 16px;border-radius:0 6px 6px 0;">
+                            <p style="margin:0;font-size:13px;color:#264653;">
+                                <strong><?php esc_html_e( 'How it works:', 'businessvance-services-manager' ); ?></strong><br>
+                                <?php esc_html_e( 'The plugin will extract text from the PDF, auto-detect the title and type, convert it to formatted HTML, and create a new agreement template. You can edit the template after import if needed.', 'businessvance-services-manager' ); ?>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="bv-modal-footer" style="margin-top:20px;">
+                        <button type="button" class="button bv-cancel-btn"><?php esc_html_e( 'Cancel', 'businessvance-services-manager' ); ?></button>
+                        <button type="submit" class="button button-primary" id="bv-import-pdf-submit" style="background:#2A9D8F;border-color:#2A9D8F;">
+                            <?php esc_html_e( 'Import Agreement', 'businessvance-services-manager' ); ?>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
         <script type="text/javascript">
         jQuery(function($) {
             var $modal      = $('#bv-agreement-modal');
@@ -526,7 +966,7 @@ class BV_Agreement_Manager {
 
             // Close modal.
             $('.bv-modal-close, .bv-cancel-btn, .bv-modal-overlay').on('click', function() {
-                $modal.hide();
+                $(this).closest('.bv-modal').hide();
             });
 
             // Save template.
@@ -597,10 +1037,145 @@ class BV_Agreement_Manager {
                 });
             });
 
+            // ============================================================
+            // PDF Import
+            // ============================================================
+            var $importModal    = $('#bv-import-pdf-modal');
+            var $importForm     = $('#bv-import-pdf-form');
+            var $fileInput      = $('#bv-import-pdf-file');
+            var $dropZone       = $('#bv-pdf-drop-zone');
+            var $dropContent    = $('#bv-pdf-drop-zone-content');
+            var $fileInfo       = $('#bv-pdf-file-info');
+            var $fileName       = $('#bv-pdf-file-name');
+            var $fileSize       = $('#bv-pdf-file-size');
+            var $removeFile     = $('#bv-pdf-remove-file');
+            var $importSubmit   = $('#bv-import-pdf-submit');
+            var selectedFile    = null;
+
+            // Open import modal
+            $('#bv-import-agreement-pdf').on('click', function() {
+                $importForm[0].reset();
+                resetFileSelection();
+                $importModal.show();
+            });
+
+            // Click to select file
+            $dropZone.on('click', function(e) {
+                if ($(e.target).is('#bv-pdf-remove-file') || $(e.target).closest('#bv-pdf-remove-file').length) return;
+                $fileInput.trigger('click');
+            });
+
+            // File selected via input
+            $fileInput.on('change', function() {
+                if (this.files && this.files[0]) {
+                    handleFileSelect(this.files[0]);
+                }
+            });
+
+            // Drag & drop
+            $dropZone.on('dragover', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                $(this).css('border-color', '#D4AF37').css('background', '#fffdf5');
+            }).on('dragleave', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                $(this).css('border-color', '#ccc').css('background', '');
+            }).on('drop', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                $(this).css('border-color', '#ccc').css('background', '');
+                var files = e.originalEvent.dataTransfer.files;
+                if (files && files[0]) {
+                    handleFileSelect(files[0]);
+                }
+            });
+
+            // Handle file selection
+            function handleFileSelect(file) {
+                // Validate type
+                if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+                    alert(bvAdmin.strings.invalid_file);
+                    return;
+                }
+                selectedFile = file;
+                $fileName.text(file.name);
+                $fileSize.text(formatFileSize(file.size));
+                $dropContent.hide();
+                $fileInfo.show();
+                $dropZone.css('border-color', '#2A9D8F').css('border-style', 'solid');
+            }
+
+            // Reset file selection
+            function resetFileSelection() {
+                selectedFile = null;
+                $fileInput.val('');
+                $dropContent.show();
+                $fileInfo.hide();
+                $dropZone.css('border-color', '#ccc').css('border-style', 'dashed').css('background', '');
+            }
+
+            // Remove selected file
+            $removeFile.on('click', function(e) {
+                e.stopPropagation();
+                resetFileSelection();
+            });
+
+            // Format file size
+            function formatFileSize(bytes) {
+                if (bytes < 1024) return bytes + ' B';
+                if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+                return (bytes / 1048576).toFixed(1) + ' MB';
+            }
+
+            // Submit import form
+            $importForm.on('submit', function(e) {
+                e.preventDefault();
+
+                if (!selectedFile) {
+                    alert(bvAdmin.strings.select_pdf);
+                    return;
+                }
+
+                var $btn = $importSubmit;
+                var originalText = $btn.text();
+                $btn.text(bvAdmin.strings.importing).prop('disabled', true);
+
+                var formData = new FormData();
+                formData.append('action', 'bv_import_agreement_pdf');
+                formData.append('nonce', bvAdmin.nonce);
+                formData.append('pdf_file', selectedFile);
+                formData.append('name', $('#bv-import-name').val());
+                formData.append('type', $('#bv-import-type').val());
+                formData.append('is_default', $('#bv-import-default').is(':checked') ? 1 : 0);
+
+                $.ajax({
+                    url: bvAdmin.ajax_url,
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(res) {
+                        $btn.text(originalText).prop('disabled', false);
+                        if (res.success) {
+                            $importModal.hide();
+                            location.reload();
+                        } else {
+                            alert(res.data.message || bvAdmin.strings.import_error);
+                        }
+                    },
+                    error: function() {
+                        $btn.text(originalText).prop('disabled', false);
+                        alert(bvAdmin.strings.import_error);
+                    }
+                });
+            });
+
             // Close on Escape.
             $(document).on('keydown', function(e) {
-                if (e.keyCode === 27 && $modal.is(':visible')) {
-                    $modal.hide();
+                if (e.keyCode === 27) {
+                    if ($modal.is(':visible')) $modal.hide();
+                    if ($importModal.is(':visible')) $importModal.hide();
                 }
             });
         });

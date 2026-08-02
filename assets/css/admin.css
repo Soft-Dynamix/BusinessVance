@@ -721,3 +721,34 @@
     align-items: center;
     gap: 6px;
 }
+
+/* ============================================
+   PDF Import Styles
+   ============================================ */
+
+.bv-file-upload-area:hover {
+    border-color: #D4AF37 !important;
+    background: #fffdf5 !important;
+}
+
+.bv-file-upload-area.drag-over {
+    border-color: #D4AF37 !important;
+    background: #fffdf5 !important;
+}
+
+.bv-import-pdf-btn:hover {
+    border-color: #D4AF37 !important;
+    background: #fffdf5 !important;
+}
+
+/* Import modal responsive */
+#bv-import-pdf-modal .bv-modal-content {
+    max-width: 560px;
+}
+
+@media (max-width: 600px) {
+    #bv-import-pdf-modal .bv-modal-content {
+        margin: 20px 10px;
+        width: calc(100% - 20px);
+    }
+}
