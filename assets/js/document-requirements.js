@@ -52,7 +52,7 @@
 
             // Init sortable
             initSortable();
-        });
+        }).fail(function() { alert(strings.error || 'Failed to load document requirements.'); });
     }
 
     // Sortable
@@ -64,7 +64,7 @@
                 update: function() {
                     var order = [];
                     $(this).find('tr').each(function() { order.push($(this).data('id')); });
-                    $.post(ajaxUrl, { action: 'bv_reorder_document_requirements', nonce: nonce, order: order });
+                    $.post(ajaxUrl, { action: 'bv_reorder_document_requirements', nonce: nonce, order: order }).fail(function() { alert(strings.error || 'Reorder failed.'); });
                 }
             });
         }
@@ -109,7 +109,7 @@
             $('#bv-doc-req-form input[name="is_required"]').prop('checked', r.is_required == 1);
             $('#bv-doc-req-form input[name="display_order"]').val(r.display_order);
             openDocReqModal(strings.edit_title);
-        });
+        }).fail(function() { alert(strings.error || 'Failed to load document requirement.'); });
     });
 
     // Delete button
@@ -118,7 +118,7 @@
         var id = $(this).data('id');
         $.post(ajaxUrl, { action: 'bv_delete_document_requirement', nonce: nonce, id: id }, function(res) {
             if (res.success) { location.reload(); } else { alert(res.data.message || strings.error); }
-        });
+        }).fail(function() { alert(strings.error || 'Delete failed.'); });
     });
 
     // Save form
@@ -128,7 +128,7 @@
         var origText = $btn.text();
         $btn.text(strings.saving).prop('disabled', true);
 
-        var formData = $(this).serialize() + '&action=bv_save_document_requirement';
+        var formData = $(this).serialize() + '&action=bv_save_document_requirement&nonce=' + bvDocReqs.nonce;
         $.post(ajaxUrl, formData, function(res) {
             if (res.success) { alert(strings.saved); location.reload(); }
             else { alert(res.data.message || strings.error); $btn.text(origText).prop('disabled', false); }

@@ -26,11 +26,19 @@ class BV_WooCommerce {
      * @return bool
      */
     public static function is_active() {
-        return in_array(
+        $active = in_array(
             'woocommerce/woocommerce.php',
             apply_filters( 'active_plugins', get_option( 'active_plugins' ) ),
             true
         );
+
+        // Also check network-activated plugins on multisite
+        if ( ! $active && is_multisite() ) {
+            $network_plugins = get_site_option( 'active_sitewide_plugins', array() );
+            $active = isset( $network_plugins['woocommerce/woocommerce.php'] );
+        }
+
+        return $active;
     }
 
     /**
@@ -45,7 +53,6 @@ class BV_WooCommerce {
 
         // Add BusinessVance meta box to WooCommerce product edit screen.
         add_action( 'add_meta_boxes', array( __CLASS__, 'add_meta_box' ) );
-        add_action( 'save_post_product', array( __CLASS__, 'save_product_meta' ), 10, 2 );
     }
 
     /**
@@ -56,7 +63,7 @@ class BV_WooCommerce {
     public static function add_meta_box() {
         add_meta_box(
             'bv_product_link',
-            'BusinessVance Link',
+            __( 'BusinessVance Link', 'businessvance-services-manager' ),
             array( __CLASS__, 'render_meta_box' ),
             'product',
             'side',
@@ -92,22 +99,7 @@ class BV_WooCommerce {
         wp_nonce_field( 'bv_save_product_meta', 'bv_product_meta_nonce' );
     }
 
-    /**
-     * Save product meta (placeholder for future two-way sync).
-     *
-     * @param int     $post_id Post ID.
-     * @param WP_Post $post    Post object.
-     * @return void
-     */
-    public static function save_product_meta( $post_id, $post ) {
-        if ( ! isset( $_POST['bv_product_meta_nonce'] ) || ! wp_verify_nonce( $_POST['bv_product_meta_nonce'], 'bv_save_product_meta' ) ) {
-            return;
-        }
-        if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
-            return;
-        }
-        // Meta is managed from the BV admin side, so nothing to save here.
-    }
+
 
     /**
      * Get the WooCommerce add-to-cart URL for a product.
@@ -247,45 +239,45 @@ class BV_WooCommerce {
         if ( empty( $portal_url ) ) $portal_url = site_url( '/client-portal/' );
         if ( empty( $tutor_dashboard_url ) ) $tutor_dashboard_url = site_url( '/tutor-dashboard/' );
 
-        echo '<div style="max-width:600px;margin:30px auto;padding:0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;">';
+        echo '<div class="bv-woo-notice-wrap">';
 
         if ( $has_services && ! $has_courses ) {
             // Service only → direct to portal
-            echo '<div style="background:linear-gradient(135deg,#002B5C 0%,#003d7a 100%);color:#fff;border-radius:12px;padding:32px;text-align:center;margin-bottom:20px;">';
-            echo '<div style="font-size:48px;margin-bottom:16px;">✦</div>';
-            echo '<h2 style="margin:0 0 8px;font-size:22px;">Your Service Project Has Been Created!</h2>';
-            echo '<p style="margin:0 0 24px;color:rgba(255,255,255,0.8);font-size:15px;">Your consulting service order has been processed. Start managing your project now.</p>';
-            echo '<a href="' . esc_url( $portal_url ) . '" style="display:inline-block;background:#D4AF37;color:#002B5C;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:700;text-decoration:none;transition:all 0.2s;">Go to Client Portal →</a>';
+            echo '<div class="bv-woo-notice-hero bv-woo-notice-hero--services">';
+            echo '<div class="bv-woo-notice-hero-icon">✦</div>';
+            echo '<h2>Your Service Project Has Been Created!</h2>';
+            echo '<p>Your consulting service order has been processed. Start managing your project now.</p>';
+            echo '<a href="' . esc_url( $portal_url ) . '" class="bv-woo-notice-cta--gold">Go to Client Portal →</a>';
             echo '</div>';
-            echo '<div style="background:#f8f9fa;border:1px solid #e0e0e0;border-radius:8px;padding:20px;text-align:center;">';
-            echo '<p style="margin:0;color:#666;font-size:14px;">You can also access your portal anytime from your account area.</p>';
+            echo '<div class="bv-woo-notice-sub">';
+            echo '<p>You can also access your portal anytime from your account area.</p>';
             echo '</div>';
         } elseif ( $has_courses && ! $has_services ) {
             // Course only → go to Tutor LMS
-            echo '<div style="background:linear-gradient(135deg,#2A9D8F 0%,#1a7a6e 100%);color:#fff;border-radius:12px;padding:32px;text-align:center;margin-bottom:20px;">';
-            echo '<div style="font-size:48px;margin-bottom:16px;">🎓</div>';
-            echo '<h2 style="margin:0 0 8px;font-size:22px;">Your Course Enrollment is Ready!</h2>';
-            echo '<p style="margin:0 0 24px;color:rgba(255,255,255,0.8);font-size:15px;">Start learning right away from your Tutor LMS dashboard.</p>';
-            echo '<a href="' . esc_url( $tutor_dashboard_url ) . '" style="display:inline-block;background:#fff;color:#2A9D8F;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:700;text-decoration:none;">Go to My Courses →</a>';
+            echo '<div class="bv-woo-notice-hero bv-woo-notice-hero--courses">';
+            echo '<div class="bv-woo-notice-hero-icon">🎓</div>';
+            echo '<h2>Your Course Enrollment is Ready!</h2>';
+            echo '<p>Start learning right away from your Tutor LMS dashboard.</p>';
+            echo '<a href="' . esc_url( $tutor_dashboard_url ) . '" class="bv-woo-notice-cta--white">Go to My Courses →</a>';
             echo '</div>';
         } else {
             // Both services and courses → show both links
-            echo '<div style="background:linear-gradient(135deg,#002B5C 0%,#2A9D8F 100%);color:#fff;border-radius:12px;padding:32px;text-align:center;margin-bottom:20px;">';
-            echo '<h2 style="margin:0 0 8px;font-size:22px;">Thank You for Your Purchase!</h2>';
-            echo '<p style="margin:0;color:rgba(255,255,255,0.8);font-size:15px;">You\'ve purchased both consulting services and courses. Here\'s where to go next:</p>';
+            echo '<div class="bv-woo-notice-hero bv-woo-notice-hero--both">';
+            echo '<h2>Thank You for Your Purchase!</h2>';
+            echo '<p>You\'ve purchased both consulting services and courses. Here\'s where to go next:</p>';
             echo '</div>';
-            echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
-            echo '<div style="background:#f8f9fa;border:1px solid #e0e0e0;border-radius:8px;padding:24px;text-align:center;">';
-            echo '<div style="font-size:36px;margin-bottom:12px;">✦</div>';
-            echo '<h3 style="margin:0 0 8px;color:#002B5C;font-size:16px;">Consulting Services</h3>';
-            echo '<p style="margin:0 0 16px;color:#666;font-size:14px;">Manage your project, sign agreements, and track progress.</p>';
-            echo '<a href="' . esc_url( $portal_url ) . '" style="display:inline-block;background:#002B5C;color:#fff;padding:12px 24px;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Client Portal →</a>';
+            echo '<div class="bv-woo-notice-grid">';
+            echo '<div class="bv-woo-notice-card">';
+            echo '<div class="bv-woo-notice-card-icon">✦</div>';
+            echo '<h3 class="h3--navy">Consulting Services</h3>';
+            echo '<p>Manage your project, sign agreements, and track progress.</p>';
+            echo '<a href="' . esc_url( $portal_url ) . '" class="bv-woo-notice-card-cta--navy">Client Portal →</a>';
             echo '</div>';
-            echo '<div style="background:#f8f9fa;border:1px solid #e0e0e0;border-radius:8px;padding:24px;text-align:center;">';
-            echo '<div style="font-size:36px;margin-bottom:12px;">🎓</div>';
-            echo '<h3 style="margin:0 0 8px;color:#2A9D8F;font-size:16px;">Your Courses</h3>';
-            echo '<p style="margin:0 0 16px;color:#666;font-size:14px;">Access your enrolled courses and start learning.</p>';
-            echo '<a href="' . esc_url( $tutor_dashboard_url ) . '" style="display:inline-block;background:#2A9D8F;color:#fff;padding:12px 24px;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">My Courses →</a>';
+            echo '<div class="bv-woo-notice-card">';
+            echo '<div class="bv-woo-notice-card-icon">🎓</div>';
+            echo '<h3 class="h3--teal">Your Courses</h3>';
+            echo '<p>Access your enrolled courses and start learning.</p>';
+            echo '<a href="' . esc_url( $tutor_dashboard_url ) . '" class="bv-woo-notice-card-cta--teal">My Courses →</a>';
             echo '</div>';
             echo '</div>';
         }
@@ -306,7 +298,7 @@ class BV_WooCommerce {
 
         $args = array(
             'status'   => 'publish',
-            'limit'    => -1,
+            'limit'    => 500,
             'orderby'  => 'title',
             'order'    => 'ASC',
             'return'   => 'objects',
@@ -361,66 +353,5 @@ class BV_WooCommerce {
         return $result;
     }
 
-    /**
-     * Search WooCommerce products by keyword for AJAX dropdowns.
-     *
-     * @param string $search   Search term.
-     * @param string $product_type Optional. Filter by product type. Default 'all'.
-     * @return array Array of [ id, text, price, type, sku, status ]
-     */
-    public static function search_woo_products( $search = '', $product_type = 'all' ) {
-        if ( ! self::is_active() ) {
-            return array();
-        }
-
-        $args = array(
-            'status'  => 'publish',
-            'limit'   => 50,
-            'orderby' => 'title',
-            'order'   => 'ASC',
-            'return'  => 'objects',
-        );
-
-        if ( ! empty( $search ) ) {
-            $args['s'] = $search;
-        }
-
-        if ( 'all' !== $product_type ) {
-            $args['type'] = $product_type;
-        }
-
-        /** @var WC_Product[] $products */
-        $products = wc_get_products( $args );
-        $results = array();
-
-        foreach ( $products as $product ) {
-            $id        = $product->get_id();
-            $name      = $product->get_name();
-            $type      = $product->get_type();
-            $price     = $product->get_price_html();
-            $sku       = $product->get_sku();
-            $status    = $product->get_stock_status();
-
-            $type_label = ucfirst( str_replace( '_', ' ', $type ) );
-            if ( self::is_tutor_lms_course( $id ) ) {
-                $type_label = 'Course';
-            }
-
-            $text = $name . ' (#' . $id . ')';
-            if ( $sku ) {
-                $text .= ' — SKU: ' . $sku;
-            }
-
-            $results[] = array(
-                'id'     => $id,
-                'text'   => $text,
-                'price'  => $price ? strip_tags( $price ) : '',
-                'type'   => $type_label,
-                'sku'    => $sku,
-                'status' => $status,
-            );
-        }
-
-        return $results;
-    }
+    // @deprecated: search_woo_products is not currently used. Removed in 2.7.1.
 }

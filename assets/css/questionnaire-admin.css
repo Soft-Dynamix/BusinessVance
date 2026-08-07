@@ -55,3 +55,38 @@
 /* Status badges */
 .bv-qt-badge-published { background: #d4edda; color: #155724; padding: 2px 10px; border-radius: 12px; font-size: 12px; }
 .bv-qt-badge-draft { background: #e2e3e5; color: #383d41; padding: 2px 10px; border-radius: 12px; font-size: 12px; }
+
+/* Responsive */
+@media (max-width: 782px) {
+    .bv-qt-table-wrap,
+    .bv-qt-editor {
+        overflow-x: auto;
+    }
+    .bv-qt-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .bv-qt-stats {
+        flex-direction: column;
+        width: 100%;
+    }
+    .bv-qt-stat {
+        width: 100%;
+    }
+    .bv-qt-section-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+    }
+    .bv-qt-section-actions {
+        margin-left: 0;
+    }
+}
+
+/* ============================================
+   Focus visible styles for accessibility
+   ============================================ */
+.bv-qt-wrap *:focus-visible {
+    outline: 2px solid #D4AF37;
+    outline-offset: 2px;
+}

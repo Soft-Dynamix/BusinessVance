@@ -155,35 +155,27 @@ class BV_Settings {
         $sanitized = array();
         $defaults  = self::get_defaults();
 
+        // Fields that need sanitize_textarea_field() (preserves newlines) instead of sanitize_text_field()
+        $textarea_fields = array(
+            'services_page_description', 'portal_instructions', 'portal_welcome_message',
+            'consultant_dashboard_instructions', 'agreement_text',
+            'email_body_new_project', 'email_body_agreement_signed', 'email_body_questionnaire_submitted',
+            'email_body_document_uploaded', 'email_body_message_received', 'email_body_report_delivered',
+            'email_message_to_consultant', 'portal_custom_css',
+            'email_project_created_body', 'email_agreement_ready_body', 'email_report_ready_body',
+            'email_message_to_consultant_body', 'email_message_to_client_body', 'physical_address',
+        );
+
         foreach ( $defaults as $key => $default ) {
             if ( isset( $input[ $key ] ) ) {
-                $sanitized[ $key ] = sanitize_text_field( $input[ $key ] );
+                if ( in_array( $key, $textarea_fields, true ) ) {
+                    $sanitized[ $key ] = sanitize_textarea_field( $input[ $key ] );
+                } else {
+                    $sanitized[ $key ] = sanitize_text_field( $input[ $key ] );
+                }
             } else {
                 $sanitized[ $key ] = $default;
             }
-        }
-
-        // Allow longer text for email bodies
-        if ( isset( $input['portal_welcome_message'] ) ) {
-            $sanitized['portal_welcome_message'] = sanitize_textarea_field( $input['portal_welcome_message'] );
-        }
-        if ( isset( $input['email_project_created_body'] ) ) {
-            $sanitized['email_project_created_body'] = sanitize_textarea_field( $input['email_project_created_body'] );
-        }
-        if ( isset( $input['email_agreement_ready_body'] ) ) {
-            $sanitized['email_agreement_ready_body'] = sanitize_textarea_field( $input['email_agreement_ready_body'] );
-        }
-        if ( isset( $input['email_report_ready_body'] ) ) {
-            $sanitized['email_report_ready_body'] = sanitize_textarea_field( $input['email_report_ready_body'] );
-        }
-        if ( isset( $input['email_message_to_consultant_body'] ) ) {
-            $sanitized['email_message_to_consultant_body'] = sanitize_textarea_field( $input['email_message_to_consultant_body'] );
-        }
-        if ( isset( $input['email_message_to_client_body'] ) ) {
-            $sanitized['email_message_to_client_body'] = sanitize_textarea_field( $input['email_message_to_client_body'] );
-        }
-        if ( isset( $input['physical_address'] ) ) {
-            $sanitized['physical_address'] = sanitize_textarea_field( $input['physical_address'] );
         }
 
         // Sanitize URLs
@@ -1469,10 +1461,22 @@ class BV_Settings {
             'bv_activity_log'           => 'Activity Log',
         );
 
+        // Single query to count all tables via UNION ALL for performance
+        $union_parts = array();
         foreach ( $bv_tables as $table_name => $label ) {
             $full_table = $prefix . $table_name;
-            $count = $wpdb->get_var( "SELECT COUNT(*) FROM {$full_table}" );
-            $counts[ $table_name ] = (int) $count;
+            $union_parts[] = "SELECT COUNT(*) AS cnt, '{$table_name}' AS tbl FROM {$full_table}";
+        }
+        $union_sql = implode( ' UNION ALL ', $union_parts );
+        $row_counts = $wpdb->get_results( $union_sql );
+        $counts = array();
+        foreach ( $bv_tables as $table_name => $label ) {
+            $counts[ $table_name ] = 0;
+        }
+        if ( $row_counts ) {
+            foreach ( $row_counts as $row ) {
+                $counts[ $row->tbl ] = (int) $row->cnt;
+            }
         }
 
         $total = array_sum( $counts );
@@ -1704,7 +1708,14 @@ class BV_Settings {
             // Check table exists
             $exists = $wpdb->get_var( "SHOW TABLES LIKE '{$full_table}'" );
             if ( $exists ) {
-                $data['tables'][ $table ] = $wpdb->get_results( "SELECT * FROM {$full_table}", ARRAY_A );
+                $total_rows = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$full_table}" );
+                $limit = 10000;
+                if ( $total_rows > $limit ) {
+                    $data['tables'][ $table ] = $wpdb->get_results( "SELECT * FROM {$full_table} LIMIT {$limit}", ARRAY_A );
+                    $data['truncated_tables'][ $table ] = array( 'total' => $total_rows, 'exported' => $limit );
+                } else {
+                    $data['tables'][ $table ] = $wpdb->get_results( "SELECT * FROM {$full_table}", ARRAY_A );
+                }
             }
         }
 
@@ -1735,6 +1746,39 @@ class BV_Settings {
     }
 
     /**
+     * Whitelist of known plugin table names
+     */
+    private static $allowed_tables = array(
+        'bv_projects', 'bv_project_services', 'bv_project_agreements',
+        'bv_project_documents', 'bv_project_reports', 'bv_project_messages',
+        'bv_project_notes', 'bv_questionnaire_templates', 'bv_questionnaire_sections',
+        'bv_questionnaire_questions', 'bv_questionnaire_responses', 'bv_activity_log',
+        'bv_agreement_templates', 'bv_service_agreements', 'bv_service_documents',
+        'bv_service_questionnaires', 'bv_document_requirements', 'bv_categories',
+        'bv_services', 'bv_plans', 'bv_plan_features', 'bv_custom_icons',
+    );
+
+    /**
+     * Validate column names against actual table schema
+     *
+     * @param string $full_table Full table name with prefix.
+     * @param array  $columns    Column names to validate.
+     * @return array  Validated column names.
+     */
+    private function validate_table_columns( $full_table, $columns ) {
+        global $wpdb;
+        $valid_columns = array();
+        $table_columns = $wpdb->get_col( "SHOW COLUMNS FROM {$full_table}", 0 );
+        if ( ! is_array( $table_columns ) ) return array();
+        foreach ( $columns as $col ) {
+            if ( in_array( $col, $table_columns, true ) ) {
+                $valid_columns[] = $col;
+            }
+        }
+        return $valid_columns;
+    }
+
+    /**
      * Import data from a JSON backup file
      */
     public function ajax_import_data() {
@@ -1744,22 +1788,36 @@ class BV_Settings {
         if ( empty( $_FILES['file'] ) ) wp_send_json_error( 'No file uploaded' );
 
         $file = $_FILES['file'];
+
+        // Validate file size (10MB limit)
+        if ( $file['size'] > 10 * 1024 * 1024 ) {
+            wp_send_json_error( 'File is too large. Maximum import size is 10MB.' );
+        }
+
         $ext = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
         if ( $ext !== 'json' ) wp_send_json_error( 'Only JSON backup files are accepted' );
 
         $json_content = file_get_contents( $file['tmp_name'] );
         $data = json_decode( $json_content, true );
         if ( ! $data || empty( $data['tables'] ) ) {
-            wp_send_json_error( 'Invalid backup file format' );
+            wp_send_json_error( 'Invalid backup file format or corrupted JSON.' );
         }
 
         global $wpdb;
         $prefix = $wpdb->prefix;
         $imported = 0;
+        $skipped_tables = array();
 
         foreach ( $data['tables'] as $table_name => $rows ) {
+            // Validate table name against whitelist
+            $table_name = sanitize_key( $table_name );
+            if ( ! in_array( $table_name, self::$allowed_tables, true ) ) {
+                $skipped_tables[] = $table_name;
+                continue;
+            }
+
             $full_table = $prefix . $table_name;
-            $exists = $wpdb->get_var( "SHOW TABLES LIKE '{$full_table}'" );
+            $exists = $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $full_table ) );
             if ( ! $exists ) continue;
 
             if ( empty( $rows ) || ! is_array( $rows ) ) continue;
@@ -1774,10 +1832,20 @@ class BV_Settings {
 
                 if ( empty( $row ) ) continue;
 
-                $columns = array_keys( $row );
-                $values = array_values( $row );
-                $placeholders = implode( ',', array_fill( 0, count( $columns ), '%s' ) );
-                $column_list = implode( ',', $columns );
+                // Validate column names against actual table schema
+                $all_columns = array_keys( $row );
+                $valid_columns = $this->validate_table_columns( $full_table, $all_columns );
+                if ( empty( $valid_columns ) ) continue;
+
+                // Build filtered row with only valid columns
+                $filtered_row = array();
+                foreach ( $valid_columns as $col ) {
+                    $filtered_row[ $col ] = $row[ $col ];
+                }
+
+                $values = array_values( $filtered_row );
+                $placeholders = implode( ',', array_fill( 0, count( $valid_columns ), '%s' ) );
+                $column_list = implode( ',', $valid_columns );
 
                 // Try insert, ignore on duplicate
                 $wpdb->query( $wpdb->prepare(
@@ -1789,12 +1857,17 @@ class BV_Settings {
             }
         }
 
-        // Restore settings if present
+        // Restore settings if present (sanitized before saving)
         if ( ! empty( $data['settings'] ) && is_array( $data['settings'] ) ) {
-            update_option( self::OPTION_KEY, $data['settings'] );
+            $sanitized_settings = $this->sanitize_settings( $data['settings'] );
+            update_option( self::OPTION_KEY, $sanitized_settings );
         }
 
-        wp_send_json_success( "Imported {$imported} records across " . count( $data['tables'] ) . " tables." );
+        $message = "Imported {$imported} records across " . count( $data['tables'] ) . " tables.";
+        if ( ! empty( $skipped_tables ) ) {
+            $message .= ' Skipped unknown tables: ' . implode( ', ', $skipped_tables ) . '.';
+        }
+        wp_send_json_success( $message );
     }
 
     /**

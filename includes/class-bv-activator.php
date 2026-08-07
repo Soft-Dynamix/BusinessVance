@@ -82,7 +82,10 @@ class BV_Activator {
                         required_documents varchar(1000) NOT NULL DEFAULT '',
                         created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                        PRIMARY KEY  (id)
+                        PRIMARY KEY  (id),
+                        KEY category_id (category_id),
+                        KEY woo_product_id (woo_product_id),
+                        KEY is_visible (is_visible)
                 ) {$charset_collate};";
 
                 dbDelta( $sql_services );
@@ -106,7 +109,10 @@ class BV_Activator {
                         display_order int(11) NOT NULL DEFAULT 0,
                         created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                        PRIMARY KEY  (id)
+                        PRIMARY KEY  (id),
+                        KEY category_id (category_id),
+                        KEY woo_product_id (woo_product_id),
+                        KEY is_visible (is_visible)
                 ) {$charset_collate};";
 
                 dbDelta( $sql_plans );
@@ -121,7 +127,8 @@ class BV_Activator {
                         plan_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
                         feature_text varchar(500) NOT NULL DEFAULT '',
                         display_order int(11) NOT NULL DEFAULT 0,
-                        PRIMARY KEY  (id)
+                        PRIMARY KEY  (id),
+                        KEY plan_id (plan_id)
                 ) {$charset_collate};";
 
                 dbDelta( $sql_plan_features );
@@ -148,7 +155,10 @@ class BV_Activator {
                         created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                         PRIMARY KEY  (id),
-                        UNIQUE KEY project_number (project_number)
+                        UNIQUE KEY project_number (project_number),
+                        KEY client_user_id (client_user_id),
+                        KEY wc_order_id (wc_order_id),
+                        KEY status (status)
                 ) {$charset_collate};";
 
                 dbDelta( $sql_projects );
@@ -164,7 +174,10 @@ class BV_Activator {
                         service_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
                         status varchar(50) NOT NULL DEFAULT 'pending',
                         created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        PRIMARY KEY  (id)
+                        PRIMARY KEY  (id),
+                        KEY project_id (project_id),
+                        KEY service_id (service_id),
+                        UNIQUE KEY project_service (project_id, service_id)
                 ) {$charset_collate};";
 
                 dbDelta( $sql_project_services );
@@ -205,7 +218,8 @@ class BV_Activator {
                         category varchar(50) NOT NULL DEFAULT 'other',
                         uploaded_by varchar(255) NOT NULL DEFAULT 'client',
                         created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        PRIMARY KEY  (id)
+                        PRIMARY KEY  (id),
+                        KEY project_id (project_id)
                 ) {$charset_collate};";
 
                 dbDelta( $sql_project_documents );
@@ -229,7 +243,8 @@ class BV_Activator {
                         delivered_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
                         created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                        PRIMARY KEY  (id)
+                        PRIMARY KEY  (id),
+                        KEY project_id (project_id)
                 ) {$charset_collate};";
 
                 dbDelta( $sql_project_reports );
@@ -248,7 +263,8 @@ class BV_Activator {
                         message text NOT NULL,
                         is_read tinyint(1) NOT NULL DEFAULT 0,
                         created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        PRIMARY KEY  (id)
+                        PRIMARY KEY  (id),
+                        KEY project_id (project_id)
                 ) {$charset_collate};";
 
                 dbDelta( $sql_project_messages );
@@ -264,7 +280,8 @@ class BV_Activator {
                         author_name varchar(255) NOT NULL DEFAULT '',
                         content text NOT NULL,
                         created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        PRIMARY KEY  (id)
+                        PRIMARY KEY  (id),
+                        KEY project_id (project_id)
                 ) {$charset_collate};";
 
                 dbDelta( $sql_project_notes );
@@ -301,7 +318,8 @@ class BV_Activator {
                         description text NOT NULL,
                         display_order int(11) NOT NULL DEFAULT 0,
                         created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        PRIMARY KEY  (id)
+                        PRIMARY KEY  (id),
+                        KEY template_id (template_id)
                 ) {$charset_collate};";
 
                 dbDelta( $sql_questionnaire_sections );
@@ -322,7 +340,8 @@ class BV_Activator {
                         help_text varchar(500) NOT NULL DEFAULT '',
                         display_order int(11) NOT NULL DEFAULT 0,
                         created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        PRIMARY KEY  (id)
+                        PRIMARY KEY  (id),
+                        KEY section_id (section_id)
                 ) {$charset_collate};";
 
                 dbDelta( $sql_questionnaire_questions );
@@ -339,7 +358,9 @@ class BV_Activator {
                         question_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
                         response_value text NOT NULL,
                         created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        PRIMARY KEY  (id)
+                        PRIMARY KEY  (id),
+                        KEY project_id (project_id),
+                        KEY question_id (question_id)
                 ) {$charset_collate};";
 
                 dbDelta( $sql_questionnaire_responses );
@@ -359,7 +380,8 @@ class BV_Activator {
                         metadata text NOT NULL,
                         user_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
                         created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        PRIMARY KEY  (id)
+                        PRIMARY KEY  (id),
+                        KEY project_id (project_id)
                 ) {$charset_collate};";
 
                 dbDelta( $sql_activity_log );
@@ -394,7 +416,8 @@ class BV_Activator {
                         agreement_template_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
                         display_order int(11) NOT NULL DEFAULT 0,
                         PRIMARY KEY  (id),
-                        UNIQUE KEY service_template (service_id, agreement_template_id)
+                        UNIQUE KEY service_template (service_id, agreement_template_id),
+                        KEY service_id (service_id)
                 ) {$charset_collate};";
 
                 dbDelta( $sql_service_agreements );
@@ -416,7 +439,8 @@ class BV_Activator {
                         created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                         PRIMARY KEY  (id),
-                        UNIQUE KEY slug (slug)
+                        UNIQUE KEY slug (slug),
+                        KEY display_order (display_order)
                 ) {$charset_collate};";
 
                 dbDelta( $sql_document_requirements );
@@ -468,7 +492,8 @@ class BV_Activator {
                         source varchar(50) NOT NULL DEFAULT 'upload',
                         created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         PRIMARY KEY  (id),
-                        UNIQUE KEY name (name)
+                        UNIQUE KEY name (name),
+                        KEY source (source)
                 ) {$charset_collate};";
 
                 dbDelta( $sql_custom_icons );
@@ -653,7 +678,10 @@ class BV_Activator {
                         ),
                 );
 
-                $category_ids = array();
+                $wpdb->query( 'START TRANSACTION' );
+
+                try {
+                        $category_ids = array();
 
                 foreach ( $categories as $cat ) {
                         $wpdb->insert(
@@ -1198,8 +1226,15 @@ class BV_Activator {
                         );
                 }
 
+                $wpdb->query( 'COMMIT' );
+
                 // Mark seeding as complete.
                 update_option( 'bv_services_manager_seeded', '1', false );
+
+                } catch ( Exception $e ) {
+                $wpdb->query( 'ROLLBACK' );
+                error_log( 'BV_Activator::seed_data failed: ' . $e->getMessage() );
+                }
         }
 
         /**
@@ -1215,7 +1250,7 @@ class BV_Activator {
 <div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 3px double #D4AF37;">
 <h1 style="color: #0A2647; font-size: 28px; margin: 0 0 5px 0; letter-spacing: 2px;">BUSINESSVANCE</h1>
 <p style="color: #666; font-size: 13px; margin: 0; letter-spacing: 3px;">RESEARCH. ANALYZE. PLAN. SUCCEED.</p>
-<p style="color: #999; font-size: 11px; margin: 5px 0 0 0;">082 377 7490</p>
+<p style="color: #999; font-size: 11px; margin: 5px 0 0 0;">{{REPRESENTATIVE_PHONE}}</p>
 </div>
 
 <h2 style="text-align: center; color: #0A2647; font-size: 20px; margin-bottom: 25px;">CLIENT CONFIDENTIALITY AND INFORMATION PROTECTION UNDERTAKING</h2>
@@ -1314,7 +1349,7 @@ class BV_Activator {
 
 <h3 style="color: #0A2647; font-size: 16px; margin-bottom: 15px;">BUSINESSVANCE DETAILS</h3>
 <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
-<tr><td style="padding: 10px 12px; border: 1px solid #ddd; width: 40%; font-weight: 600; background: #f8f9fa;">Representative name</td><td style="padding: 10px 12px; border: 1px solid #ddd;">Nico du Plessis</td></tr>
+<tr><td style="padding: 10px 12px; border: 1px solid #ddd; width: 40%; font-weight: 600; background: #f8f9fa;">Representative name</td><td style="padding: 10px 12px; border: 1px solid #ddd;">{{REPRESENTATIVE_NAME}}</td></tr>
 <tr><td style="padding: 10px 12px; border: 1px solid #ddd; font-weight: 600; background: #f8f9fa;">Signature</td><td style="padding: 10px 12px; border: 1px solid #ddd;">&nbsp;</td></tr>
 <tr><td style="padding: 10px 12px; border: 1px solid #ddd; font-weight: 600; background: #f8f9fa;">Date</td><td style="padding: 10px 12px; border: 1px solid #ddd;">{{DATE}}</td></tr>
 </table>
@@ -1322,7 +1357,7 @@ class BV_Activator {
 <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 3px double #D4AF37;">
 <p style="margin: 0; font-weight: 700; color: #0A2647; letter-spacing: 2px;">BUSINESSVANCE</p>
 <p style="margin: 4px 0 0 0; font-size: 12px; color: #666; letter-spacing: 2px;">Research. Analyze. Plan. Succeed.</p>
-<p style="margin: 4px 0 0 0; font-size: 12px; color: #666;">Contact: 082 377 7490</p>
+<p style="margin: 4px 0 0 0; font-size: 12px; color: #666;">Contact: {{REPRESENTATIVE_PHONE}}</p>
 </div>
 
 <p style="text-align: center; margin-top: 20px; font-size: 11px; color: #999;">This document was generated by BusinessVance &mdash; Professional Business Consulting<br />Confidential &middot; For authorised use only</p>

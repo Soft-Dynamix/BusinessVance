@@ -26,9 +26,12 @@ define( 'BV_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'BV_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
 define( 'BV_UPLOAD_DIR', wp_upload_dir()['basedir'] . '/bv-documents' );
 
-// Ensure upload directory exists
-if ( ! file_exists( BV_UPLOAD_DIR ) ) {
-    wp_mkdir_p( BV_UPLOAD_DIR );
+// Ensure upload directory exists (only once per request)
+if ( ! defined( 'BV_UPLOAD_DIR_CREATED' ) ) {
+    if ( ! file_exists( BV_UPLOAD_DIR ) ) {
+        wp_mkdir_p( BV_UPLOAD_DIR );
+    }
+    define( 'BV_UPLOAD_DIR_CREATED', true );
 }
 
 // Declare WooCommerce HPOS compatibility before WooCommerce loads.
@@ -92,20 +95,7 @@ function bv_handle_wc_order_completion( $order_id, $order ) {
     $user_id = $user ? $user->ID : 0;
     $billing = $order->get_address( 'billing' );
 
-    // Generate project number
-    $year = date( 'Y' );
-    $last_num = $wpdb->get_var(
-        "SELECT project_number FROM {$projects_table} WHERE project_number LIKE 'BV-{$year}-%' ORDER BY project_number DESC LIMIT 1"
-    );
-    if ( $last_num ) {
-        $parts = explode( '-', $last_num );
-        $next = (int) end( $parts ) + 1;
-    } else {
-        $next = 1;
-    }
-    $project_number = 'BV-' . $year . '-' . str_pad( $next, 6, '0', STR_PAD_LEFT );
-
-    // Get BV services from order items
+    // Get BV services from order items first
     $bv_service_ids = array();
     foreach ( $order->get_items() as $item ) {
         $product_id = $item->get_product_id();
@@ -122,35 +112,66 @@ function bv_handle_wc_order_completion( $order_id, $order ) {
         return; // No BV services in this order
     }
 
-    // Create project
-    $wpdb->insert( $projects_table, array(
-        'project_number'   => $project_number,
-        'client_user_id'  => $user_id,
-        'client_name'     => $billing['first_name'] . ' ' . $billing['last_name'],
-        'client_email'    => $billing['email'],
-        'client_phone'    => $billing['phone'],
-        'client_company'  => $billing['company'],
-        'wc_order_id'     => $order_id,
-        'status'          => 'awaiting-agreement',
-        'progress_percent'=> 0,
-        'notes'           => 'Auto-created from WooCommerce order #' . $order_id,
-        'assigned_to'     => '',
-        'internal_notes'   => '',
-    ), array( '%s', '%d', '%s', '%s', '%s', '%s', '%d', '%s', '%d', '%s', '%s', '%s' ) );
+    // Generate project number with retry loop for race condition safety
+    $year = date( 'Y' );
+    $project_number = '';
+    $max_retries = 5;
+    for ( $attempt = 0; $attempt < $max_retries; $attempt++ ) {
+        $last_num = $wpdb->get_var( $wpdb->prepare(
+            "SELECT project_number FROM {$projects_table} WHERE project_number LIKE %s ORDER BY project_number DESC LIMIT 1",
+            'BV-' . $year . '-%'
+        ) );
+        if ( $last_num ) {
+            $parts = explode( '-', $last_num );
+            $next = (int) $parts[ count( $parts ) - 1 ] + 1;
+        } else {
+            $next = 1;
+        }
+        $project_number = 'BV-' . $year . '-' . str_pad( $next, 6, '0', STR_PAD_LEFT );
 
-    $project_id = $wpdb->insert_id;
+        $wpdb->insert( $projects_table, array(
+            'project_number'   => $project_number,
+            'client_user_id'  => $user_id,
+            'client_name'     => $billing['first_name'] . ' ' . $billing['last_name'],
+            'client_email'    => $billing['email'],
+            'client_phone'    => $billing['phone'],
+            'client_company'  => $billing['company'],
+            'wc_order_id'     => $order_id,
+            'status'          => 'awaiting-agreement',
+            'progress_percent'=> 0,
+            'notes'           => 'Auto-created from WooCommerce order #' . $order_id,
+            'assigned_to'     => '',
+            'internal_notes'   => '',
+        ), array( '%s', '%d', '%s', '%s', '%s', '%s', '%d', '%s', '%d', '%s', '%s', '%s' ) );
+
+        if ( $wpdb->insert_id > 0 && empty( $wpdb->last_error ) ) {
+            break; // Success
+        }
+        // Duplicate key or error — retry with incremented number
+        $wpdb->last_error = '';
+        if ( $attempt === $max_retries - 1 ) {
+            error_log( 'BV: Failed to create project after ' . $max_retries . ' retries for order #' . $order_id );
+            return;
+        }
+    }
+
+    $project_id = (int) $wpdb->insert_id;
 
     // Link services to project
     foreach ( $bv_service_ids as $svc_id ) {
-        $wpdb->insert( $project_services_table, array(
+        $result = $wpdb->insert( $project_services_table, array(
             'project_id' => $project_id,
             'service_id' => $svc_id,
             'status'     => 'pending',
         ), array( '%d', '%d', '%s' ) );
+        if ( ! $result || ! empty( $wpdb->last_error ) ) {
+            error_log( 'BV: Failed to link service ' . $svc_id . ' to project ' . $project_id . ': ' . $wpdb->last_error );
+            $wpdb->last_error = '';
+        }
     }
 
     // Log activity
-    $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array(
+    $result = $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array(
         'project_id'   => $project_id,
         'entity_type'  => 'project',
         'entity_id'    => $project_id,
@@ -159,6 +180,10 @@ function bv_handle_wc_order_completion( $order_id, $order ) {
         'metadata'     => json_encode( array( 'order_id' => $order_id, 'services' => $bv_service_ids ) ),
         'user_id'      => $user_id,
     ), array( '%d', '%s', '%d', '%s', '%s', '%s', '%d' ) );
+    if ( ! $result || ! empty( $wpdb->last_error ) ) {
+        error_log( 'BV: Failed to log activity for project ' . $project_id . ': ' . $wpdb->last_error );
+        $wpdb->last_error = '';
+    }
 }
 
 /**

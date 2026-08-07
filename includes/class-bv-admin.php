@@ -27,7 +27,6 @@ class BV_Admin {
         add_action( 'wp_ajax_bv_reorder_plans', array( $this, 'ajax_reorder_plans' ) );
         add_action( 'wp_ajax_bv_save_category', array( $this, 'ajax_save_category' ) );
         add_action( 'wp_ajax_bv_delete_category', array( $this, 'ajax_delete_category' ) );
-        add_action( 'admin_init', array( $this, 'handle_admin_post' ) );
     }
 
     /**
@@ -209,10 +208,32 @@ class BV_Admin {
             return;
         }
 
+        // Determine the current admin page for JS routing
+        $current_page = 'services';
+        if ( function_exists( 'get_current_screen' ) ) {
+            $screen = get_current_screen();
+            if ( $screen ) {
+                if ( strpos( $screen->id, 'businessvance-plans' ) !== false ) {
+                    $current_page = 'plans';
+                } elseif ( strpos( $screen->id, 'businessvance-categories' ) !== false ) {
+                    $current_page = 'categories';
+                } elseif ( strpos( $screen->id, 'businessvance' ) !== false ) {
+                    $current_page = 'services';
+                }
+            }
+        } else {
+            $page_param = isset( $_GET['page'] ) ? sanitize_text_field( $_GET['page'] ) : '';
+            if ( strpos( $page_param, 'plans' ) !== false ) {
+                $current_page = 'plans';
+            } elseif ( strpos( $page_param, 'categories' ) !== false ) {
+                $current_page = 'categories';
+            }
+        }
+
         wp_localize_script( 'bv-admin-js', 'bvAdmin', array(
             'ajax_url' => admin_url( 'admin-ajax.php' ),
             'nonce'    => wp_create_nonce( 'bv_admin_nonce' ),
-            'page'     => 'services',
+            'page'     => $current_page,
             'strings'  => array(
                 'confirm_delete'    => __( 'Are you sure you want to delete this item?', 'businessvance-services-manager' ),
                 'saving'            => __( 'Saving...', 'businessvance-services-manager' ),
@@ -221,6 +242,41 @@ class BV_Admin {
                 'reorder_saved'     => __( 'Order saved!', 'businessvance-services-manager' ),
             ),
         ) );
+    }
+
+    /**
+     * Classify WooCommerce products into type buckets.
+     *
+     * @param  array $products Array of [ product_id => label ] from BV_WooCommerce::get_woo_products().
+     * @return array Associative array with keys: simple, variable, subscription, course, other.
+     */
+    private function classify_woo_products( $products ) {
+        $classified = array(
+            'simple'       => array(),
+            'variable'     => array(),
+            'subscription' => array(),
+            'course'       => array(),
+            'other'        => array(),
+        );
+
+        foreach ( $products as $pid => $plabel ) {
+            $product = wc_get_product( $pid );
+            if ( ! $product ) continue;
+            $type = $product->get_type();
+            if ( BV_WooCommerce::is_tutor_lms_course( $pid ) ) {
+                $classified['course'][ $pid ] = $plabel;
+            } elseif ( $type === 'simple' ) {
+                $classified['simple'][ $pid ] = $plabel;
+            } elseif ( $type === 'variable' || $type === 'variation' ) {
+                $classified['variable'][ $pid ] = $plabel;
+            } elseif ( $type === 'subscription' || $type === 'variable-subscription' || $type === 'simple-subscription' ) {
+                $classified['subscription'][ $pid ] = $plabel;
+            } else {
+                $classified['other'][ $pid ] = $plabel;
+            }
+        }
+
+        return $classified;
     }
 
     /**
@@ -255,17 +311,35 @@ class BV_Admin {
         global $wpdb;
         $tables = $this->get_tables();
 
-        $total_services = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$tables['services']}" );
-        $visible_services = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$tables['services']} WHERE is_visible = 1" );
-        $hidden_services = $total_services - $visible_services;
-        $featured_services = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$tables['services']} WHERE is_featured = 1" );
+        $counts = $wpdb->get_results(
+            "SELECT 'total_services' AS label, COUNT(*) AS cnt FROM {$tables['services']}
+            UNION ALL
+            SELECT 'visible_services', COUNT(*) FROM {$tables['services']} WHERE is_visible = 1
+            UNION ALL
+            SELECT 'featured_services', COUNT(*) FROM {$tables['services']} WHERE is_featured = 1
+            UNION ALL
+            SELECT 'total_plans', COUNT(*) FROM {$tables['plans']}
+            UNION ALL
+            SELECT 'featured_plans', COUNT(*) FROM {$tables['plans']} WHERE is_featured = 1
+            UNION ALL
+            SELECT 'total_categories', COUNT(*) FROM {$tables['categories']}
+            UNION ALL
+            SELECT 'total_features', COUNT(*) FROM {$tables['features']}"
+        );
 
-        $total_plans = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$tables['plans']}" );
-        $featured_plans = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$tables['plans']} WHERE is_featured = 1" );
+        $count_map = array();
+        foreach ( $counts as $row ) {
+            $count_map[ $row->label ] = (int) $row->cnt;
+        }
 
-        $total_categories = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$tables['categories']}" );
-
-        $total_features = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$tables['features']}" );
+        $total_services    = $count_map['total_services'] ?? 0;
+        $visible_services  = $count_map['visible_services'] ?? 0;
+        $hidden_services   = $total_services - $visible_services;
+        $featured_services = $count_map['featured_services'] ?? 0;
+        $total_plans       = $count_map['total_plans'] ?? 0;
+        $featured_plans    = $count_map['featured_plans'] ?? 0;
+        $total_categories  = $count_map['total_categories'] ?? 0;
+        $total_features    = $count_map['total_features'] ?? 0;
         ?>
         <div class="wrap bv-admin-wrap">
             <div class="bv-admin-header">
@@ -575,64 +649,43 @@ class BV_Admin {
                             <?php if ( BV_WooCommerce::is_active() ) : ?>
                                 <?php 
                                 $svc_wc_products = BV_WooCommerce::get_woo_products();
-                                $svc_simple_products = array();
-                                $svc_variable_products = array();
-                                $svc_subscription_products = array();
-                                $svc_course_products = array();
-                                $svc_other_products = array();
-                                
-                                foreach ( $svc_wc_products as $pid => $plabel ) {
-                                    $product = wc_get_product( $pid );
-                                    if ( ! $product ) continue;
-                                    $type = $product->get_type();
-                                    if ( BV_WooCommerce::is_tutor_lms_course( $pid ) ) {
-                                        $svc_course_products[$pid] = $plabel;
-                                    } elseif ( $type === 'simple' ) {
-                                        $svc_simple_products[$pid] = $plabel;
-                                    } elseif ( $type === 'variable' || $type === 'variation' ) {
-                                        $svc_variable_products[$pid] = $plabel;
-                                    } elseif ( $type === 'subscription' || $type === 'variable-subscription' || $type === 'simple-subscription' ) {
-                                        $svc_subscription_products[$pid] = $plabel;
-                                    } else {
-                                        $svc_other_products[$pid] = $plabel;
-                                    }
-                                }
+                                $svc_classified = $this->classify_woo_products( $svc_wc_products );
                                 ?>
                                 <div class="bv-woo-select-wrap">
                                     <input type="text" class="bv-woo-search" placeholder="<?php esc_attr_e( 'Search products...', 'businessvance-services-manager' ); ?>">
                                     <select id="svc-woo-product" name="woo_product_id" class="bv-woo-product-select regular-text">
                                         <option value="0"><?php esc_html_e( '-- None (Not Linked) --', 'businessvance-services-manager' ); ?></option>
-                                        <?php if ( ! empty( $svc_simple_products ) ) : ?>
+                                        <?php if ( ! empty( $svc_classified['simple'] ) ) : ?>
                                             <optgroup label="<?php esc_attr_e( 'Simple Products', 'businessvance-services-manager' ); ?>">
-                                                <?php foreach ( $svc_simple_products as $pid => $plabel ) : ?>
+                                                <?php foreach ( $svc_classified['simple'] as $pid => $plabel ) : ?>
                                                     <option value="<?php echo esc_attr( $pid ); ?>"><?php echo esc_html( $plabel ); ?></option>
                                                 <?php endforeach; ?>
                                             </optgroup>
                                         <?php endif; ?>
-                                        <?php if ( ! empty( $svc_variable_products ) ) : ?>
+                                        <?php if ( ! empty( $svc_classified['variable'] ) ) : ?>
                                             <optgroup label="<?php esc_attr_e( 'Variable Products', 'businessvance-services-manager' ); ?>">
-                                                <?php foreach ( $svc_variable_products as $pid => $plabel ) : ?>
+                                                <?php foreach ( $svc_classified['variable'] as $pid => $plabel ) : ?>
                                                     <option value="<?php echo esc_attr( $pid ); ?>"><?php echo esc_html( $plabel ); ?></option>
                                                 <?php endforeach; ?>
                                             </optgroup>
                                         <?php endif; ?>
-                                        <?php if ( ! empty( $svc_subscription_products ) ) : ?>
+                                        <?php if ( ! empty( $svc_classified['subscription'] ) ) : ?>
                                             <optgroup label="<?php esc_attr_e( 'Subscription Products', 'businessvance-services-manager' ); ?>">
-                                                <?php foreach ( $svc_subscription_products as $pid => $plabel ) : ?>
+                                                <?php foreach ( $svc_classified['subscription'] as $pid => $plabel ) : ?>
                                                     <option value="<?php echo esc_attr( $pid ); ?>"><?php echo esc_html( $plabel ); ?></option>
                                                 <?php endforeach; ?>
                                             </optgroup>
                                         <?php endif; ?>
-                                        <?php if ( ! empty( $svc_course_products ) ) : ?>
+                                        <?php if ( ! empty( $svc_classified['course'] ) ) : ?>
                                             <optgroup label="🎓 <?php esc_attr_e( 'Tutor LMS Courses', 'businessvance-services-manager' ); ?>">
-                                                <?php foreach ( $svc_course_products as $pid => $plabel ) : ?>
+                                                <?php foreach ( $svc_classified['course'] as $pid => $plabel ) : ?>
                                                     <option value="<?php echo esc_attr( $pid ); ?>"><?php echo esc_html( $plabel ); ?></option>
                                                 <?php endforeach; ?>
                                             </optgroup>
                                         <?php endif; ?>
-                                        <?php if ( ! empty( $svc_other_products ) ) : ?>
+                                        <?php if ( ! empty( $svc_classified['other'] ) ) : ?>
                                             <optgroup label="<?php esc_attr_e( 'Other Products', 'businessvance-services-manager' ); ?>">
-                                                <?php foreach ( $svc_other_products as $pid => $plabel ) : ?>
+                                                <?php foreach ( $svc_classified['other'] as $pid => $plabel ) : ?>
                                                     <option value="<?php echo esc_attr( $pid ); ?>"><?php echo esc_html( $plabel ); ?></option>
                                                 <?php endforeach; ?>
                                             </optgroup>
@@ -742,6 +795,8 @@ class BV_Admin {
                                         $all_doc_reqs = $wpdb->get_results( "SELECT id, name, is_required FROM {$wpdb->prefix}bv_document_requirements ORDER BY display_order ASC, name ASC" );
                                         foreach ( $all_doc_reqs as $dr ) : ?>
                                             <option value="<?php echo esc_attr( $dr->id ); ?>"><?php echo esc_html( $dr->name ); ?><?php if ( $dr->is_required ) : ?> *</option>
+                                        <?php else : ?>
+                                            </option>
                                         <?php endif; ?>
                                         <?php endforeach; ?>
                                         <?php if ( empty( $all_doc_reqs ) ) : ?>
@@ -948,64 +1003,43 @@ class BV_Admin {
                             <?php if ( BV_WooCommerce::is_active() ) : ?>
                                 <?php 
                                 $plan_wc_products = BV_WooCommerce::get_woo_products();
-                                $plan_simple_products = array();
-                                $plan_variable_products = array();
-                                $plan_subscription_products = array();
-                                $plan_course_products = array();
-                                $plan_other_products = array();
-                                
-                                foreach ( $plan_wc_products as $pid => $plabel ) {
-                                    $product = wc_get_product( $pid );
-                                    if ( ! $product ) continue;
-                                    $type = $product->get_type();
-                                    if ( BV_WooCommerce::is_tutor_lms_course( $pid ) ) {
-                                        $plan_course_products[$pid] = $plabel;
-                                    } elseif ( $type === 'simple' ) {
-                                        $plan_simple_products[$pid] = $plabel;
-                                    } elseif ( $type === 'variable' || $type === 'variation' ) {
-                                        $plan_variable_products[$pid] = $plabel;
-                                    } elseif ( $type === 'subscription' || $type === 'variable-subscription' || $type === 'simple-subscription' ) {
-                                        $plan_subscription_products[$pid] = $plabel;
-                                    } else {
-                                        $plan_other_products[$pid] = $plabel;
-                                    }
-                                }
+                                $plan_classified = $this->classify_woo_products( $plan_wc_products );
                                 ?>
                                 <div class="bv-woo-select-wrap">
                                     <input type="text" class="bv-woo-search" placeholder="<?php esc_attr_e( 'Search products...', 'businessvance-services-manager' ); ?>">
                                     <select id="plan-woo-product" name="woo_product_id" class="bv-woo-product-select regular-text">
                                         <option value="0"><?php esc_html_e( '-- None (Not Linked) --', 'businessvance-services-manager' ); ?></option>
-                                        <?php if ( ! empty( $plan_simple_products ) ) : ?>
+                                        <?php if ( ! empty( $plan_classified['simple'] ) ) : ?>
                                             <optgroup label="<?php esc_attr_e( 'Simple Products', 'businessvance-services-manager' ); ?>">
-                                                <?php foreach ( $plan_simple_products as $pid => $plabel ) : ?>
+                                                <?php foreach ( $plan_classified['simple'] as $pid => $plabel ) : ?>
                                                     <option value="<?php echo esc_attr( $pid ); ?>"><?php echo esc_html( $plabel ); ?></option>
                                                 <?php endforeach; ?>
                                             </optgroup>
                                         <?php endif; ?>
-                                        <?php if ( ! empty( $plan_variable_products ) ) : ?>
+                                        <?php if ( ! empty( $plan_classified['variable'] ) ) : ?>
                                             <optgroup label="<?php esc_attr_e( 'Variable Products', 'businessvance-services-manager' ); ?>">
-                                                <?php foreach ( $plan_variable_products as $pid => $plabel ) : ?>
+                                                <?php foreach ( $plan_classified['variable'] as $pid => $plabel ) : ?>
                                                     <option value="<?php echo esc_attr( $pid ); ?>"><?php echo esc_html( $plabel ); ?></option>
                                                 <?php endforeach; ?>
                                             </optgroup>
                                         <?php endif; ?>
-                                        <?php if ( ! empty( $plan_subscription_products ) ) : ?>
+                                        <?php if ( ! empty( $plan_classified['subscription'] ) ) : ?>
                                             <optgroup label="<?php esc_attr_e( 'Subscription Products', 'businessvance-services-manager' ); ?>">
-                                                <?php foreach ( $plan_subscription_products as $pid => $plabel ) : ?>
+                                                <?php foreach ( $plan_classified['subscription'] as $pid => $plabel ) : ?>
                                                     <option value="<?php echo esc_attr( $pid ); ?>"><?php echo esc_html( $plabel ); ?></option>
                                                 <?php endforeach; ?>
                                             </optgroup>
                                         <?php endif; ?>
-                                        <?php if ( ! empty( $plan_course_products ) ) : ?>
+                                        <?php if ( ! empty( $plan_classified['course'] ) ) : ?>
                                             <optgroup label="🎓 <?php esc_attr_e( 'Tutor LMS Courses', 'businessvance-services-manager' ); ?>">
-                                                <?php foreach ( $plan_course_products as $pid => $plabel ) : ?>
+                                                <?php foreach ( $plan_classified['course'] as $pid => $plabel ) : ?>
                                                     <option value="<?php echo esc_attr( $pid ); ?>"><?php echo esc_html( $plabel ); ?></option>
                                                 <?php endforeach; ?>
                                             </optgroup>
                                         <?php endif; ?>
-                                        <?php if ( ! empty( $plan_other_products ) ) : ?>
+                                        <?php if ( ! empty( $plan_classified['other'] ) ) : ?>
                                             <optgroup label="<?php esc_attr_e( 'Other Products', 'businessvance-services-manager' ); ?>">
-                                                <?php foreach ( $plan_other_products as $pid => $plabel ) : ?>
+                                                <?php foreach ( $plan_classified['other'] as $pid => $plabel ) : ?>
                                                     <option value="<?php echo esc_attr( $pid ); ?>"><?php echo esc_html( $plabel ); ?></option>
                                                 <?php endforeach; ?>
                                             </optgroup>
@@ -1164,13 +1198,6 @@ class BV_Admin {
         <?php
     }
 
-    /**
-     * Handle admin POST requests (fallback for non-AJAX)
-     */
-    public function handle_admin_post() {
-        // All CRUD is handled via AJAX
-    }
-
     /* ========== AJAX HANDLERS ========== */
 
     /**
@@ -1268,7 +1295,12 @@ class BV_Admin {
 
         if ( $id > 0 ) {
             // Update
-            $wpdb->update( $tables['services'], $data, array( 'id' => $id ), $format, array( '%d' ) );
+            $result = $wpdb->update( $tables['services'], $data, array( 'id' => $id ), $format, array( '%d' ) );
+            if ( $result === false ) {
+                error_log( 'BV_Admin::ajax_save_service update failed: ' . $wpdb->last_error );
+                wp_send_json_error( array( 'message' => __( 'Database error updating service.', 'businessvance-services-manager' ) ) );
+                return;
+            }
 
             // Sync junction tables
             $this->sync_service_agreements( $id, $agreement_ids );
@@ -1283,6 +1315,11 @@ class BV_Admin {
             $format[] = '%d';
 
             $wpdb->insert( $tables['services'], $data, $format );
+            if ( ! $wpdb->insert_id ) {
+                error_log( 'BV_Admin::ajax_save_service insert failed: ' . $wpdb->last_error );
+                wp_send_json_error( array( 'message' => __( 'Database error creating service.', 'businessvance-services-manager' ) ) );
+                return;
+            }
             $new_id = $wpdb->insert_id;
 
             // Sync junction tables
@@ -1311,6 +1348,31 @@ class BV_Admin {
     }
 
     /**
+     * Generic method to sync a service junction table (delete-then-reinsert).
+     *
+     * @param int   $service_id
+     * @param array $ids        Array of foreign ID values.
+     * @param string $table     Full junction table name.
+     * @param string $id_column The name of the foreign-key column (e.g. 'agreement_template_id').
+     */
+    private function sync_service_junction( $service_id, $ids, $table, $id_column ) {
+        global $wpdb;
+
+        $wpdb->delete( $table, array( 'service_id' => $service_id ), array( '%d' ) );
+
+        foreach ( $ids as $order => $fid ) {
+            $result = $wpdb->insert( $table, array(
+                'service_id'    => $service_id,
+                $id_column      => intval( $fid ),
+                'display_order' => $order,
+            ), array( '%d', '%d', '%d' ) );
+            if ( ! $result ) {
+                error_log( 'BV_Admin::sync_service_junction insert failed on ' . $table . ': ' . $wpdb->last_error );
+            }
+        }
+    }
+
+    /**
      * Sync the bv_service_agreements junction table for a service.
      * Deletes all existing rows then re-inserts.
      *
@@ -1321,17 +1383,7 @@ class BV_Admin {
         global $wpdb;
         $junction = $wpdb->prefix . 'bv_service_agreements';
 
-        // Delete existing
-        $wpdb->delete( $junction, array( 'service_id' => $service_id ), array( '%d' ) );
-
-        // Insert new
-        foreach ( $agreement_ids as $order => $tpl_id ) {
-            $wpdb->insert( $junction, array(
-                'service_id'            => $service_id,
-                'agreement_template_id' => intval( $tpl_id ),
-                'display_order'         => $order,
-            ), array( '%d', '%d', '%d' ) );
-        }
+        $this->sync_service_junction( $service_id, $agreement_ids, $junction, 'agreement_template_id' );
 
         // Also update the legacy column for backward compat (first one)
         $first_id = ! empty( $agreement_ids ) ? intval( $agreement_ids[0] ) : 0;
@@ -1355,17 +1407,7 @@ class BV_Admin {
         global $wpdb;
         $junction = $wpdb->prefix . 'bv_service_questionnaires';
 
-        // Delete existing
-        $wpdb->delete( $junction, array( 'service_id' => $service_id ), array( '%d' ) );
-
-        // Insert new
-        foreach ( $questionnaire_ids as $order => $tpl_id ) {
-            $wpdb->insert( $junction, array(
-                'service_id'                => $service_id,
-                'questionnaire_template_id' => intval( $tpl_id ),
-                'display_order'             => $order,
-            ), array( '%d', '%d', '%d' ) );
-        }
+        $this->sync_service_junction( $service_id, $questionnaire_ids, $junction, 'questionnaire_template_id' );
 
         // Also update the legacy column for backward compat (first one)
         $first_id = ! empty( $questionnaire_ids ) ? intval( $questionnaire_ids[0] ) : 0;
@@ -1389,17 +1431,7 @@ class BV_Admin {
         global $wpdb;
         $junction = $wpdb->prefix . 'bv_service_documents';
 
-        // Delete existing
-        $wpdb->delete( $junction, array( 'service_id' => $service_id ), array( '%d' ) );
-
-        // Insert new
-        foreach ( $doc_req_ids as $order => $req_id ) {
-            $wpdb->insert( $junction, array(
-                'service_id'              => $service_id,
-                'document_requirement_id' => intval( $req_id ),
-                'display_order'           => $order,
-            ), array( '%d', '%d', '%d' ) );
-        }
+        $this->sync_service_junction( $service_id, $doc_req_ids, $junction, 'document_requirement_id' );
     }
 
     /**
@@ -1438,7 +1470,12 @@ class BV_Admin {
         $current = (int) $wpdb->get_var( $wpdb->prepare( "SELECT is_visible FROM {$table} WHERE id = %d", $id ) );
         $new_value = $current ? 0 : 1;
 
-        $wpdb->update( $table, array( 'is_visible' => $new_value ), array( 'id' => $id ), array( '%d' ), array( '%d' ) );
+        $result = $wpdb->update( $table, array( 'is_visible' => $new_value ), array( 'id' => $id ), array( '%d' ), array( '%d' ) );
+        if ( $result === false ) {
+            error_log( 'BV_Admin::ajax_toggle_visibility update failed: ' . $wpdb->last_error );
+            wp_send_json_error( array( 'message' => __( 'Database error toggling visibility.', 'businessvance-services-manager' ) ) );
+            return;
+        }
         wp_send_json_success( array( 'is_visible' => $new_value ) );
     }
 
@@ -1535,7 +1572,12 @@ class BV_Admin {
 
         if ( $id > 0 ) {
             // Update plan
-            $wpdb->update( $tables['plans'], $data, array( 'id' => $id ), $format, array( '%d' ) );
+            $result = $wpdb->update( $tables['plans'], $data, array( 'id' => $id ), $format, array( '%d' ) );
+            if ( $result === false ) {
+                error_log( 'BV_Admin::ajax_save_plan update failed: ' . $wpdb->last_error );
+                wp_send_json_error( array( 'message' => __( 'Database error updating plan.', 'businessvance-services-manager' ) ) );
+                return;
+            }
 
             // Update features - delete existing and re-insert
             $wpdb->delete( $tables['features'], array( 'plan_id' => $id ), array( '%d' ) );
@@ -1557,6 +1599,11 @@ class BV_Admin {
             $format[] = '%d';
 
             $wpdb->insert( $tables['plans'], $data, $format );
+            if ( ! $wpdb->insert_id ) {
+                error_log( 'BV_Admin::ajax_save_plan insert failed: ' . $wpdb->last_error );
+                wp_send_json_error( array( 'message' => __( 'Database error creating plan.', 'businessvance-services-manager' ) ) );
+                return;
+            }
             $new_id = $wpdb->insert_id;
 
             // Insert features
@@ -1648,10 +1695,20 @@ class BV_Admin {
         $format = array( '%s', '%s', '%s' );
 
         if ( $id > 0 ) {
-            $wpdb->update( $tables['categories'], $data, array( 'id' => $id ), $format, array( '%d' ) );
+            $result = $wpdb->update( $tables['categories'], $data, array( 'id' => $id ), $format, array( '%d' ) );
+            if ( $result === false ) {
+                error_log( 'BV_Admin::ajax_save_category update failed: ' . $wpdb->last_error );
+                wp_send_json_error( array( 'message' => __( 'Database error updating category.', 'businessvance-services-manager' ) ) );
+                return;
+            }
             wp_send_json_success( array( 'message' => __( 'Category updated.', 'businessvance-services-manager' ), 'id' => $id ) );
         } else {
             $wpdb->insert( $tables['categories'], $data, $format );
+            if ( ! $wpdb->insert_id ) {
+                error_log( 'BV_Admin::ajax_save_category insert failed: ' . $wpdb->last_error );
+                wp_send_json_error( array( 'message' => __( 'Database error creating category.', 'businessvance-services-manager' ) ) );
+                return;
+            }
             $new_id = $wpdb->insert_id;
             wp_send_json_success( array( 'message' => __( 'Category created.', 'businessvance-services-manager' ), 'id' => $new_id ) );
         }

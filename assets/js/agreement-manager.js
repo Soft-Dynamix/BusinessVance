@@ -28,6 +28,7 @@
         $form[0].reset();
         $idField.val('');
         $modal.show();
+        $('body').css('overflow', 'hidden');
         $nameField.focus();
     });
 
@@ -51,16 +52,18 @@
                 $contentField.val(t.content);
                 $defaultField.prop('checked', parseInt(t.is_default) === 1);
                 $modal.show();
+                $('body').css('overflow', 'hidden');
                 $nameField.focus();
             } else {
                 alert(res.data.message || bvAdmin.strings.error);
             }
-        });
+        }).fail(function() { alert(bvAdmin.strings.error); });
     });
 
     // Close modal.
     $('.bv-modal-close, .bv-cancel-btn, .bv-modal-overlay').on('click', function() {
         $(this).closest('.bv-modal').hide();
+        $('body').css('overflow', '');
     });
 
     // Save template.
@@ -84,6 +87,7 @@
             $submitBtn.text(originalText).prop('disabled', false);
             if (res.success) {
                 $modal.hide();
+                $('body').css('overflow', '');
                 location.reload();
             } else {
                 alert(res.data.message || bvAdmin.strings.error);
@@ -111,7 +115,7 @@
             } else {
                 alert(res.data.message || bvAdmin.strings.error);
             }
-        });
+        }).fail(function() { alert(bvAdmin.strings.error); });
     });
 
     // Set default.
@@ -128,7 +132,7 @@
             } else {
                 alert(res.data.message || bvAdmin.strings.error);
             }
-        });
+        }).fail(function() { alert(bvAdmin.strings.error); });
     });
 
     // ============================================================
@@ -151,6 +155,7 @@
         $importForm[0].reset();
         resetFileSelection();
         $importModal.show();
+        $('body').css('overflow', 'hidden');
     });
 
     // Click to select file
@@ -253,6 +258,7 @@
                 $btn.text(originalText).prop('disabled', false);
                 if (res.success) {
                     $importModal.hide();
+                    $('body').css('overflow', '');
                     location.reload();
                 } else {
                     alert(res.data.message || bvAdmin.strings.import_error);
@@ -268,8 +274,8 @@
     // Close on Escape.
     $(document).on('keydown', function(e) {
         if (e.keyCode === 27) {
-            if ($modal.is(':visible')) $modal.hide();
-            if ($importModal.is(':visible')) $importModal.hide();
+            if ($modal.is(':visible')) { $modal.hide(); $('body').css('overflow', ''); }
+            if ($importModal.is(':visible')) { $importModal.hide(); $('body').css('overflow', ''); }
         }
     });
 

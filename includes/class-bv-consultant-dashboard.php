@@ -53,7 +53,7 @@ class BV_Consultant_Dashboard {
         wp_localize_script( 'bv-consultant-dashboard', 'bv_cd', array(
             'ajax_url' => admin_url( 'admin-ajax.php' ),
             'nonce'    => wp_create_nonce( 'bv_consultant_dashboard' ),
-            'upload_dir' => BV_UPLOAD_DIR,
+            'upload_url' => BV_PLUGIN_URL . 'uploads/',
             'current_user' => wp_get_current_user()->display_name,
             'current_time' => date( 'd M Y H:i' ),
         ) );
@@ -69,7 +69,12 @@ class BV_Consultant_Dashboard {
         $statuses = array( 'awaiting-agreement', 'awaiting-questionnaire', 'awaiting-documents', 'in-progress', 'quality-check', 'completed', 'delivered', 'archived' );
 
         ?>
-        <div class="wrap bv-cd-wrap" id="bv-cd-app">
+        <?php
+        $cd_settings = BV_Settings::get_settings();
+        $cd_primary = esc_attr( $cd_settings['primary_color'] ?? '#002B5C' );
+        $cd_secondary = esc_attr( $cd_settings['secondary_color'] ?? '#0A2647' );
+        ?>
+        <div class="wrap bv-cd-wrap" id="bv-cd-app" style="--bv-cd-primary: <?php echo $cd_primary; ?>; --bv-cd-secondary: <?php echo $cd_secondary; ?>;">
             <h1 class="bv-cd-title"><span class="bv-cd-icon">📋</span> <?php echo esc_html( BV_Settings::get( 'cd_welcome_title' ) ?: 'Consultant Dashboard' ); ?></h1>
 
             <!-- Stats Bar -->
@@ -93,7 +98,6 @@ class BV_Consultant_Dashboard {
             <?php endif; ?>
         </div>
 
-        <style><?php echo $this->get_inline_css(); ?></style>
         <?php
     }
 
@@ -406,10 +410,100 @@ class BV_Consultant_Dashboard {
     // AJAX Handlers
     // ============================
 
+    public function ajax_get_projects() {
+        check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( 'Unauthorized' );
+        }
+
+        global $wpdb;
+        $filter_status = isset( $_POST['filter_status'] ) ? sanitize_text_field( $_POST['filter_status'] ) : '';
+        $search = isset( $_POST['search'] ) ? sanitize_text_field( $_POST['search'] ) : '';
+        $per_page = isset( $_POST['per_page'] ) ? absint( $_POST['per_page'] ) : 20;
+        $page = isset( $_POST['page'] ) ? absint( $_POST['page'] ) : 1;
+        $offset = ( $page - 1 ) * $per_page;
+
+        $where = '1=1';
+        if ( $filter_status ) {
+            $where .= $wpdb->prepare( ' AND p.status = %s', $filter_status );
+        }
+        if ( $search ) {
+            $like = '%' . $wpdb->esc_like( $search ) . '%';
+            $where .= $wpdb->prepare( ' AND (p.project_number LIKE %s OR p.client_name LIKE %s OR p.client_email LIKE %s OR p.client_company LIKE %s)', $like, $like, $like, $like );
+        }
+
+        $projects = $wpdb->get_results( $wpdb->prepare(
+            "SELECT p.* FROM {$wpdb->prefix}bv_projects p WHERE {$where} ORDER BY p.created_at DESC LIMIT %d OFFSET %d",
+            $per_page, $offset
+        ) );
+
+        $total = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}bv_projects p WHERE {$where}" );
+
+        wp_send_json_success( array(
+            'projects' => $projects,
+            'total'    => $total,
+            'pages'    => ceil( $total / $per_page ),
+        ) );
+    }
+
+    public function ajax_get_project_detail() {
+        check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( 'Unauthorized' );
+        }
+
+        global $wpdb;
+        $pid = isset( $_POST['project_id'] ) ? absint( $_POST['project_id'] ) : 0;
+        if ( ! $pid ) {
+            wp_send_json_error( 'Invalid project ID' );
+        }
+
+        $project = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_projects WHERE id = %d", $pid ) );
+        if ( ! $project ) {
+            wp_send_json_error( 'Project not found' );
+        }
+
+        $services  = $wpdb->get_results( $wpdb->prepare( "SELECT s.* FROM {$wpdb->prefix}bv_project_services ps JOIN {$wpdb->prefix}bv_services s ON ps.service_id = s.id WHERE ps.project_id = %d", $pid ) );
+        $agreement = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_project_agreements WHERE project_id = %d ORDER BY id DESC LIMIT 1", $pid ) );
+        $documents = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_project_documents WHERE project_id = %d ORDER BY created_at DESC", $pid ) );
+        $reports   = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_project_reports WHERE project_id = %d ORDER BY created_at DESC", $pid ) );
+        $messages  = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_project_messages WHERE project_id = %d ORDER BY created_at ASC", $pid ) );
+        $notes     = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_project_notes WHERE project_id = %d ORDER BY created_at DESC", $pid ) );
+        $responses = $wpdb->get_results( $wpdb->prepare(
+            "SELECT r.*, q.label, q.type, qs.title as section_title
+             FROM {$wpdb->prefix}bv_questionnaire_responses r
+             JOIN {$wpdb->prefix}bv_questionnaire_questions q ON r.question_id = q.id
+             JOIN {$wpdb->prefix}bv_questionnaire_sections qs ON q.section_id = qs.id
+             WHERE r.project_id = %d
+             ORDER BY qs.display_order, q.display_order", $pid ) );
+
+        wp_send_json_success( array(
+            'project'   => $project,
+            'services'  => $services,
+            'agreement' => $agreement,
+            'documents' => $documents,
+            'reports'   => $reports,
+            'messages'  => $messages,
+            'notes'     => $notes,
+            'responses' => $responses,
+        ) );
+    }
+
     public function ajax_update_project_status() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( 'Unauthorized' );
+        }
         $pid = absint( $_POST['project_id'] );
         $status = sanitize_text_field( $_POST['status'] );
+
+        // Validate status against whitelist
+        $allowed_statuses = array( 'pending', 'agreement', 'questionnaire', 'documents', 'in-progress', 'review', 'delivered', 'completed', 'cancelled',
+            'awaiting-agreement', 'awaiting-questionnaire', 'awaiting-documents', 'quality-check', 'archived' );
+        if ( ! in_array( $status, $allowed_statuses, true ) ) {
+            wp_send_json_error( 'Invalid status value' );
+        }
+
         global $wpdb;
         $wpdb->update( $wpdb->prefix . 'bv_projects', array( 'status' => $status ), array( 'id' => $pid ), array( '%s' ), array( '%d' ) );
         $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array( 'project_id' => $pid, 'entity_type' => 'project', 'entity_id' => $pid, 'action' => 'status_changed', 'description' => "Status changed to {$status}", 'user_id' => get_current_user_id() ), array( '%d','%s','%d','%s','%s','%d' ) );
@@ -418,6 +512,9 @@ class BV_Consultant_Dashboard {
 
     public function ajax_update_progress() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( 'Unauthorized' );
+        }
         $pid = absint( $_POST['project_id'] );
         $progress = max(0, min(100, absint( $_POST['progress'] )));
         global $wpdb;
@@ -459,6 +556,9 @@ class BV_Consultant_Dashboard {
 
     public function ajax_deliver_report() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( 'Unauthorized' );
+        }
         global $wpdb;
         $rid = absint( $_POST['report_id'] );
         $wpdb->update( $wpdb->prefix . 'bv_project_reports',
@@ -476,6 +576,9 @@ class BV_Consultant_Dashboard {
 
     public function ajax_send_message() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( 'Unauthorized' );
+        }
         $pid = absint( $_POST['project_id'] );
         $message = sanitize_textarea_field( $_POST['message'] );
         if ( empty( $message ) ) wp_send_json_error( 'Message required' );
@@ -551,6 +654,9 @@ class BV_Consultant_Dashboard {
 
     public function ajax_add_note() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( 'Unauthorized' );
+        }
         $pid = absint( $_POST['project_id'] );
         $content = sanitize_textarea_field( $_POST['content'] );
         if ( empty( $content ) ) wp_send_json_error( 'Note required' );
@@ -566,6 +672,9 @@ class BV_Consultant_Dashboard {
 
     public function ajax_update_internal_notes() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( 'Unauthorized' );
+        }
         $pid = absint( $_POST['project_id'] );
         $notes = sanitize_textarea_field( $_POST['notes'] );
         global $wpdb;
@@ -575,6 +684,9 @@ class BV_Consultant_Dashboard {
 
     public function ajax_get_messages() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( 'Unauthorized' );
+        }
         $pid = absint( $_GET['project_id'] ?? $_POST['project_id'] ?? 0 );
         global $wpdb;
         $messages = $wpdb->get_results( $wpdb->prepare(
@@ -589,7 +701,10 @@ class BV_Consultant_Dashboard {
         global $wpdb;
         $doc = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_project_documents WHERE id = %d", $doc_id ) );
         if ( ! $doc || ! file_exists( $doc->filepath ) ) wp_die( 'Document not found' );
-        header( 'Content-Type: ' . $doc->mime_type );
+        // Validate MIME type against whitelist
+        $allowed_mime_types = array( 'application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/plain', 'application/zip', 'application/octet-stream' );
+        $mime = in_array( $doc->mime_type, $allowed_mime_types, true ) ? $doc->mime_type : 'application/octet-stream';
+        header( 'Content-Type: ' . $mime );
         header( 'Content-Disposition: attachment; filename="' . basename( $doc->filename ) . '"' );
         header( 'Content-Length: ' . $doc->filesize );
         readfile( $doc->filepath );
@@ -608,7 +723,10 @@ class BV_Consultant_Dashboard {
             wp_die( 'Report not found' );
         }
         
-        header( 'Content-Type: ' . $report->mime_type );
+        // Validate MIME type against whitelist
+        $allowed_mime_types = array( 'application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/plain', 'application/zip', 'application/octet-stream' );
+        $mime = in_array( $report->mime_type, $allowed_mime_types, true ) ? $report->mime_type : 'application/octet-stream';
+        header( 'Content-Type: ' . $mime );
         header( 'Content-Disposition: inline; filename="' . basename( $report->filename ) . '"' );
         header( 'Content-Length: ' . $report->filesize );
         readfile( $report->filepath );
@@ -624,14 +742,21 @@ class BV_Consultant_Dashboard {
         $email = sanitize_email( $_POST['client_email'] );
         if ( empty( $name ) || empty( $email ) ) wp_send_json_error( 'Name and email required' );
 
-        // Generate project number
+        // Generate project number with retry for race condition
         $projects_table = $wpdb->prefix . 'bv_projects';
         $year = date( 'Y' );
-        $last = $wpdb->get_var( "SELECT project_number FROM {$projects_table} WHERE project_number LIKE 'BV-{$year}-%' ORDER BY project_number DESC LIMIT 1" );
-        $next = $last ? (int) end( explode( '-', $last ) ) + 1 : 1;
-        $project_number = 'BV-' . $year . '-' . str_pad( $next, 6, '0', STR_PAD_LEFT );
+        $project_number = '';
+        $max_retries = 3;
 
-        $wpdb->insert( $projects_table, array(
+        for ( $attempt = 1; $attempt <= $max_retries; $attempt++ ) {
+            $last = $wpdb->get_var( $wpdb->prepare(
+                "SELECT project_number FROM {$projects_table} WHERE project_number LIKE %s ORDER BY project_number DESC LIMIT 1",
+                'BV-' . $year . '-%'
+            ) );
+            $next = $last ? (int) end( explode( '-', $last ) ) + 1 : 1;
+            $project_number = 'BV-' . $year . '-' . str_pad( $next, 6, '0', STR_PAD_LEFT );
+
+            $wpdb->insert( $projects_table, array(
             'project_number' => $project_number, 'client_user_id' => 0,
             'client_name' => $name, 'client_email' => $email,
             'client_phone' => sanitize_text_field( $_POST['client_phone'] ?? '' ),
@@ -639,6 +764,19 @@ class BV_Consultant_Dashboard {
             'wc_order_id' => 0, 'status' => 'awaiting-agreement', 'progress_percent' => 0,
             'notes' => sanitize_textarea_field( $_POST['notes'] ?? '' ),
         ), array( '%s','%d','%s','%s','%s','%s','%d','%s','%d','%s' ) );
+
+            if ( $wpdb->insert_id ) {
+                break; // Success, exit retry loop
+            }
+            // Check if it was a duplicate key error, otherwise break
+            if ( empty( $wpdb->last_error ) || strpos( $wpdb->last_error, 'Duplicate' ) === false ) {
+                break;
+            }
+        }
+
+        if ( ! $wpdb->insert_id ) {
+            wp_send_json_error( 'Failed to create project. Please try again.' );
+        }
 
         wp_send_json_success( array( 'project_id' => $wpdb->insert_id, 'project_number' => $project_number ) );
     }
@@ -705,69 +843,14 @@ class BV_Consultant_Dashboard {
         exit;
     }
 
+    /**
+     * Returns empty string — all CSS was extracted to assets/css/consultant-dashboard.css.
+     * CSS custom properties are set inline on the container div in render_page().
+     *
+     * @since 2.7.0
+     * @return string
+     */
     private function get_inline_css() {
-        $settings = BV_Settings::get_settings();
-        $primary   = esc_attr( $settings['primary_color'] );
-        $secondary = esc_attr( $settings['secondary_color'] );
-
-        return '
-    .bv-cd-wrap { max-width: 1400px; }
-    .bv-cd-title { display: flex; align-items: center; gap: 10px; color: ' . $primary . '; }
-    .bv-cd-icon { font-size: 28px; }
-    .bv-cd-stats { display: flex; gap: 16px; margin: 20px 0; }
-    .bv-cd-stat { background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px 24px; text-align: center; min-width: 100px; }
-    .bv-cd-stat-num { display: block; font-size: 28px; font-weight: 700; color: ' . $primary . '; }
-    .bv-cd-stat-label { font-size: 12px; color: #666; text-transform: uppercase; }
-    .bv-cd-stat-active .bv-cd-stat-num { color: ' . $secondary . '; }
-    .bv-cd-stat-waiting .bv-cd-stat-num { color: #F4A261; }
-    .bv-cd-stat-done .bv-cd-stat-num { color: #27AE60; }
-    .bv-cd-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
-    .bv-cd-filter-form { display: flex; gap: 8px; flex-wrap: wrap; }
-    .bv-cd-back { margin-bottom: 12px; }
-    .bv-cd-project-header { background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; }
-    .bv-cd-project-header h2 { margin: 0; color: ' . $primary . '; }
-    .bv-cd-project-header p { margin: 4px 0 0; font-size: 14px; color: #666; }
-    .bv-cd-project-controls { display: flex; flex-direction: column; gap: 12px; align-items: flex-end; }
-    .bv-cd-status-select label, .bv-cd-progress-control label { font-size: 13px; font-weight: 600; color: #333; }
-    .bv-cd-progress-input { width: 200px; }
-    .bv-cd-tabs { display: flex; border-bottom: 2px solid #e0e0e0; margin-bottom: 16px; overflow-x: auto; }
-    .bv-cd-tab { padding: 10px 20px; border: none; background: none; cursor: pointer; font-size: 14px; font-weight: 500; color: #666; border-bottom: 2px solid transparent; margin-bottom: -2px; }
-    .bv-cd-tab:hover { color: ' . $primary . '; }
-    .bv-cd-tab.active { color: ' . $primary . '; border-bottom-color: ' . $primary . '; }
-    .bv-cd-panel { padding: 4px 0; }
-    .bv-cd-overview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .bv-cd-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
-    .bv-cd-card h4 { margin: 0 0 12px; color: ' . $primary . '; font-size: 15px; }
-    .bv-cd-card ul { margin: 0; padding-left: 20px; }
-    .bv-cd-card ul li { margin: 4px 0; }
-    .bv-cd-card p { margin: 4px 0; font-size: 14px; }
-    .bv-cd-mini-progress { width: 60px; height: 6px; background: #e0e0e0; border-radius: 3px; display: inline-block; vertical-align: middle; margin-right: 6px; }
-    .bv-cd-mini-fill { height: 100%; background: ' . $secondary . '; border-radius: 3px; }
-    .bv-status { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
-    .bv-status-awaiting-agreement { background: #FFF3CD; color: #856404; }
-    .bv-status-awaiting-questionnaire { background: #FFF3CD; color: #856404; }
-    .bv-status-awaiting-documents { background: #E8DAEF; color: #6C3483; }
-    .bv-status-in-progress { background: #D6EAF8; color: #1A5276; }
-    .bv-status-quality-check { background: #D1F2EB; color: #0E6655; }
-    .bv-status-completed { background: #D5F5E3; color: #1E8449; }
-    .bv-status-delivered { background: #27AE60; color: #fff; }
-    .bv-status-archived { background: #E5E7EB; color: #6B7280; }
-    .bv-cd-msg-thread { border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; max-height: 400px; overflow-y: auto; margin-bottom: 16px; background: #fafafa; }
-    .bv-cd-msg { margin-bottom: 12px; padding: 10px 14px; border-radius: 6px; }
-    .bv-cd-msg strong { font-size: 13px; }
-    .bv-cd-msg span { font-size: 11px; color: #999; margin-left: 8px; }
-    .bv-cd-msg p { margin: 6px 0 0; font-size: 14px; line-height: 1.5; }
-    .bv-cd-msg-admin { background: #E3F2FD; border-left: 3px solid ' . $primary . '; }
-    .bv-cd-msg-client { background: #fff; border-left: 3px solid ' . $secondary . '; }
-    .bv-cd-note { padding: 12px; border-bottom: 1px solid #e0e0e0; }
-    .bv-cd-note strong { font-size: 13px; color: ' . $primary . '; }
-    .bv-cd-note-time { font-size: 11px; color: #999; margin-left: 8px; }
-    .bv-cd-note p { margin: 6px 0 0; font-size: 14px; }
-    @media (max-width: 782px) {
-        .bv-cd-stats { flex-wrap: wrap; }
-        .bv-cd-overview-grid { grid-template-columns: 1fr; }
-        .bv-cd-project-header { flex-direction: column; }
-    }
-    ';
+        return '';
     }
 }

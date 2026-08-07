@@ -28,6 +28,19 @@ class BV_Shortcodes {
      * Load SVG icon paths
      */
     private function load_icon_paths() {
+        if ( class_exists( 'BV_Icon_Manager' ) ) {
+            // Attempt to use centralized icon data from Icon Manager
+            $admin_icons = BV_Icon_Manager::get_all_icons_for_picker();
+            if ( ! empty( $admin_icons ) ) {
+                $this->icon_paths = array();
+                foreach ( $admin_icons as $icon ) {
+                    $this->icon_paths[ $icon['name'] ] = $icon['svg_inner'];
+                }
+                return;
+            }
+        }
+
+        // Fallback: hardcoded Lucide SVG paths
         $this->icon_paths = array(
             'briefcase'    => '<path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><rect width="20" height="14" x="2" y="6" rx="2"/>',
             'building'     => '<rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/>',
@@ -259,19 +272,19 @@ class BV_Shortcodes {
                     <div class="bv-trust-badges">
                         <div class="bv-trust-badge">
                             <?php echo $this->get_icon_svg( 'shield-check', 20 ); ?>
-                            <span>PROFESSIONAL QUALITY REPORTS</span>
+                            <span><?php esc_html_e( 'PROFESSIONAL QUALITY REPORTS', 'businessvance-services-manager' ); ?></span>
                         </div>
                         <div class="bv-trust-badge">
                             <?php echo $this->get_icon_svg( 'clock', 20 ); ?>
-                            <span>FAST TURNAROUND</span>
+                            <span><?php esc_html_e( 'FAST TURNAROUND', 'businessvance-services-manager' ); ?></span>
                         </div>
                         <div class="bv-trust-badge">
                             <?php echo $this->get_icon_svg( 'lock', 20 ); ?>
-                            <span>100% CONFIDENTIAL & SECURE</span>
+                            <span><?php esc_html_e( '100% CONFIDENTIAL & SECURE', 'businessvance-services-manager' ); ?></span>
                         </div>
                         <div class="bv-trust-badge">
                             <?php echo $this->get_icon_svg( 'star', 20 ); ?>
-                            <span>ACTIONABLE RECOMMENDATIONS</span>
+                            <span><?php esc_html_e( 'ACTIONABLE RECOMMENDATIONS', 'businessvance-services-manager' ); ?></span>
                         </div>
                     </div>
                     <?php endif; ?>
@@ -334,7 +347,7 @@ class BV_Shortcodes {
                         <tr>
                             <th style="width:28%;">SERVICE</th>
                             <th style="width:47%;">DESCRIPTION</th>
-                            <th class="bv-col-price" style="width:25%;">PRICE (ZAR)</th>
+                            <th class="bv-col-price" style="width:25%;"><?php esc_html_e( 'PRICE (ZAR)', 'businessvance-services-manager' ); ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -364,7 +377,7 @@ class BV_Shortcodes {
                                             <?php echo esc_html( ! empty( $service->price_display ) ? $service->price_display : $service->price ); ?>
                                         </span>
                                         <a href="<?php echo $this->get_service_url( $service ); ?>" class="bv-btn bv-btn-gold bv-btn-sm">
-                                            ADD TO CART
+                                            <?php esc_html_e( 'ADD TO CART', 'businessvance-services-manager' ); ?>
                                         </a>
                                     </div>
                                 </td>
@@ -397,7 +410,7 @@ class BV_Shortcodes {
                                 <?php echo esc_html( ! empty( $service->price_display ) ? $service->price_display : $service->price ); ?>
                             </span>
                             <a href="<?php echo $this->get_service_url( $service ); ?>" class="bv-btn bv-btn-gold bv-btn-sm">
-                                ADD TO CART
+                                <?php esc_html_e( 'ADD TO CART', 'businessvance-services-manager' ); ?>
                             </a>
                         </div>
                     </div>
@@ -416,10 +429,10 @@ class BV_Shortcodes {
             return $this->get_woo_url( $service->woo_product_id );
         }
         if ( $service->service_type === 'quote' ) {
-            return '/contact';
+            return home_url( '/contact/' );
         }
         if ( $service->service_type === 'booking' ) {
-            return '/booking';
+            return home_url( '/booking/' );
         }
         return '#';
     }
@@ -444,14 +457,24 @@ class BV_Shortcodes {
             return '';
         }
 
-        // Load features for each plan
-        foreach ( $plans as $plan ) {
-            $plan->features = $wpdb->get_results(
+        // Batch-load all plan features in a single query
+        $plan_ids = array_map( 'intval', wp_list_pluck( $plans, 'id' ) );
+        $all_features = array();
+        if ( ! empty( $plan_ids ) ) {
+            $placeholders = implode( ',', array_fill( 0, count( $plan_ids ), '%d' ) );
+            $raw_features = $wpdb->get_results(
                 $wpdb->prepare(
-                    "SELECT * FROM {$tables['features']} WHERE plan_id = %d ORDER BY display_order ASC",
-                    $plan->id
+                    "SELECT * FROM {$tables['features']} WHERE plan_id IN ({$placeholders}) ORDER BY display_order ASC",
+                    ...$plan_ids
                 )
             );
+            foreach ( $raw_features as $f ) {
+                $all_features[ $f->plan_id ][] = $f;
+            }
+        }
+
+        foreach ( $plans as $plan ) {
+            $plan->features = isset( $all_features[ $plan->id ] ) ? $all_features[ $plan->id ] : array();
         }
 
         // Button style classes per plan color
@@ -468,9 +491,9 @@ class BV_Shortcodes {
             <div class="bv-section-header">
                 <div class="bv-section-banner">
                     <?php echo $this->get_icon_svg( 'crown', 18 ); ?>
-                    &nbsp; MONTHLY SUBSCRIPTION PLANS
+                    &nbsp; <?php esc_html_e( 'MONTHLY SUBSCRIPTION PLANS', 'businessvance-services-manager' ); ?>
                 </div>
-                <div class="bv-section-sub-alt">CHOOSE THE PLAN THAT GROWS WITH YOU</div>
+                <div class="bv-section-sub-alt"><?php esc_html_e( 'CHOOSE THE PLAN THAT GROWS WITH YOU', 'businessvance-services-manager' ); ?></div>
             </div>
 
             <div class="bv-plans-grid">
@@ -480,7 +503,7 @@ class BV_Shortcodes {
                     <div class="bv-plan-card <?php echo $plan->is_featured ? 'bv-plan-featured' : ''; ?>" <?php if ( $plan->is_featured ) echo 'style="border-color:' . esc_attr( $plan->color ) . ';"'; ?>>
                         <?php if ( $plan->is_featured ) : ?>
                             <div class="bv-plan-popular" style="background-color: <?php echo esc_attr( $plan->color ); ?>;">
-                                MOST POPULAR
+<?php esc_html_e( 'MOST POPULAR', 'businessvance-services-manager' ); ?>
                             </div>
                         <?php endif; ?>
 
@@ -514,7 +537,7 @@ class BV_Shortcodes {
                                     <?php echo esc_html( $plan->button_label ); ?>
                                 </a>
                             <?php else : ?>
-                                <a href="/contact" class="bv-btn <?php echo esc_attr( $btn_class ); ?> bv-btn-block">
+                                <a href="<?php echo esc_url( home_url( '/contact/' ) ); ?>" class="bv-btn <?php echo esc_attr( $btn_class ); ?> bv-btn-block">
                                     <?php echo esc_html( $plan->button_label ); ?>
                                 </a>
                             <?php endif; ?>

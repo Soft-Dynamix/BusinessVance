@@ -26,12 +26,70 @@ $pos         = $settings['services_currency_position'];
  * @param float|string $price The price.
  * @return string
  */
+if ( ! function_exists( 'bv_format_price' ) ) {
 function bv_format_price( $price, $symbol, $pos ) {
     $formatted = number_format( (float) $price, 2, '.', ',' );
     if ( $pos === 'after' ) {
         return $formatted . ' ' . $symbol;
     }
     return $symbol . ' ' . $formatted;
+}
+}
+
+/**
+ * Return a simplified KSES allowlist for the SVG elements used by BV_Icon_Manager.
+ *
+ * @return array
+ */
+if ( ! function_exists( 'bv_svg_allowed_html' ) ) {
+function bv_svg_allowed_html() {
+    return array(
+        'svg'  => array(
+            'xmlns'   => true,
+            'width'   => true,
+            'height'  => true,
+            'viewBox' => true,
+            'fill'    => true,
+            'class'   => true,
+            'role'    => true,
+            'aria-hidden' => true,
+        ),
+        'path' => array(
+            'd'    => true,
+            'fill' => true,
+        ),
+        'g'    => array(
+            'fill' => true,
+        ),
+        'rect' => array(
+            'x'      => true,
+            'y'      => true,
+            'width'  => true,
+            'height' => true,
+            'rx'     => true,
+            'fill'   => true,
+        ),
+        'circle' => array(
+            'cx'    => true,
+            'cy'    => true,
+            'r'     => true,
+            'fill'  => true,
+        ),
+        'line' => array(
+            'x1'    => true,
+            'y1'    => true,
+            'x2'    => true,
+            'y2'    => true,
+            'stroke' => true,
+            'stroke-width' => true,
+        ),
+        'polyline' => array(
+            'points' => true,
+            'fill'   => true,
+            'stroke' => true,
+        ),
+    );
+}
 }
 ?>
 
@@ -45,7 +103,7 @@ function bv_format_price( $price, $symbol, $pos ) {
     <!-- Category Filter -->
     <?php if ( $show_cats ) : ?>
     <div class="bv-category-filter">
-        <button class="bv-cat-btn bv-cat-btn-active" data-category="all">All</button>
+        <button class="bv-cat-btn bv-cat-btn-active" data-category="all"><?php echo esc_html__( 'All', 'businessvance-services-manager' ); ?></button>
         <?php foreach ( $categories as $cat ) : ?>
             <button class="bv-cat-btn" data-category="<?php echo esc_attr( $cat->slug ); ?>" data-cat-id="<?php echo esc_attr( $cat->id ); ?>" style="border-color:<?php echo esc_attr( $cat->color ); ?>;">
                 <?php echo esc_html( $cat->name ); ?>
@@ -72,13 +130,13 @@ function bv_format_price( $price, $symbol, $pos ) {
                         <td class="bv-col-service">
                             <div class="bv-service-name">
                                 <?php if ( class_exists( 'BV_Icon_Manager' ) ) : ?>
-                                    <span class="bv-service-icon"><?php echo BV_Icon_Manager::get_icon_svg( $svc->icon, 20 ); ?></span>
+                                    <span class="bv-service-icon"><?php echo wp_kses( BV_Icon_Manager::get_icon_svg( $svc->icon, 20 ), bv_svg_allowed_html() ); ?></span>
                                 <?php else : ?>
                                     <span class="bv-icon bv-icon-<?php echo esc_attr( strtolower( $svc->icon ) ); ?>"></span>
                                 <?php endif; ?>
                                 <?php echo esc_html( $svc->name ); ?>
                                 <?php if ( $svc->featured ) : ?>
-                                    <span class="bv-featured-badge">Featured</span>
+                                    <span class="bv-featured-badge"><?php echo esc_html__( 'Featured', 'businessvance-services-manager' ); ?></span>
                                 <?php endif; ?>
                             </div>
                             <div class="bv-service-desc"><?php echo esc_html( $svc->description ); ?></div>
@@ -107,7 +165,7 @@ function bv_format_price( $price, $symbol, $pos ) {
             <div class="bv-plan-card" data-category-id="<?php echo esc_attr( $plan->category_id ); ?>" style="border-top: 4px solid <?php echo esc_attr( $plan->color ); ?>;">
                 <div class="bv-plan-header" style="background-color: <?php echo esc_attr( $plan->color ); ?>;">
                     <?php if ( $plan->featured ) : ?>
-                        <span class="bv-plan-featured-label">Featured</span>
+                        <span class="bv-plan-featured-label"><?php echo esc_html__( 'Featured', 'businessvance-services-manager' ); ?></span>
                     <?php endif; ?>
                     <h3 class="bv-plan-name"><?php echo esc_html( $plan->name ); ?></h3>
                     <?php if ( $plan->subtitle ) : ?>
@@ -115,7 +173,7 @@ function bv_format_price( $price, $symbol, $pos ) {
                     <?php endif; ?>
                     <div class="bv-plan-price">
                         <span class="bv-plan-price-amount"><?php echo bv_format_price( $plan->price, $symbol, $pos ); ?></span>
-                        <span class="bv-plan-price-period">/ month</span>
+                        <span class="bv-plan-price-period"><?php echo esc_html__( '/ month', 'businessvance-services-manager' ); ?></span>
                     </div>
                     <a href="<?php echo esc_url( $plan->button_url_rendered ); ?>" class="bv-btn bv-btn-gold bv-btn-sm">
                         <?php echo esc_html( $plan->button_label ); ?>
@@ -129,7 +187,7 @@ function bv_format_price( $price, $symbol, $pos ) {
                         <?php endforeach; ?>
                     </ul>
                     <?php else : ?>
-                        <p class="bv-no-features">No features listed.</p>
+                        <p class="bv-no-features"><?php echo esc_html__( 'No features listed.', 'businessvance-services-manager' ); ?></p>
                     <?php endif; ?>
                 </div>
                 <div class="bv-plan-footer">
@@ -144,7 +202,7 @@ function bv_format_price( $price, $symbol, $pos ) {
     <?php endif; ?>
 
     <?php if ( empty( $services ) && empty( $plans ) ) : ?>
-        <p class="bv-no-items">No services or plans are currently available.</p>
+        <p class="bv-no-items"><?php echo esc_html__( 'No services or plans are currently available.', 'businessvance-services-manager' ); ?></p>
     <?php endif; ?>
 
 </div>

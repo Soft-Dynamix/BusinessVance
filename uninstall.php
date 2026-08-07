@@ -19,6 +19,9 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 global $wpdb;
 $prefix = $wpdb->prefix;
 
+// Read the uninstall flag BEFORE deleting any options
+$delete_all_data = get_option( 'bv_delete_data_on_uninstall', 'no' );
+
 // Always clean up plugin options (safe, no client data)
 $options_to_delete = array(
     'bv_plugin_version',
@@ -27,17 +30,13 @@ $options_to_delete = array(
     'bv_services_manager_seeded',
     'bv_settings',
     'bv_delete_data_on_uninstall',
+    'bv_agreements_migrated',
+    'bv_questionnaires_migrated',
 );
 
 foreach ( $options_to_delete as $option ) {
     delete_option( $option );
 }
-
-// Check if full data removal was requested via Settings
-$delete_all_data = get_option( 'bv_delete_data_on_uninstall', 'no' );
-
-// Clear the option first so it doesn't persist even if DB tables are kept
-delete_option( 'bv_delete_data_on_uninstall' );
 
 if ( $delete_all_data === 'yes' ) {
     // ===== FULL CLEANUP — User explicitly requested complete removal =====

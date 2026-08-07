@@ -4,7 +4,9 @@
 (function($) {
     'use strict';
 
-    var BVQT = window.bvQT || {};
+    if (typeof bvQT === 'undefined') { console.error('BV: bvQT not localized'); return; }
+    var BVQT = window.bvQT;
+    // ajaxurl is a WordPress-admin global, always available on admin pages.
 
     // ── Template List ──
     function loadTemplates() {
@@ -77,7 +79,7 @@
             $('#bv-qt-tpl-status').val(t.status);
             $('#bv-qt-edit-title').text('Edit Template: ' + t.name);
             renderSections(res.data.sections || []);
-        });
+        }).fail(function() { alert('Failed to load template.'); });
     }
 
     function getTemplateId() {
@@ -187,12 +189,13 @@
                                     id: 0, section_id: res3.data.id, type: q.type, label: q.label,
                                     placeholder: q.placeholder, is_required: q.is_required,
                                     help_text: q.help_text, options_text: q.options_raw || '', display_order: q.display_order
-                                }, function() { qPending--; if(qPending===0){ pending--; if(pending===0) loadTemplates(); } });
+                                }, function() { qPending--; if(qPending===0){ pending--; if(pending===0) loadTemplates(); } })
+                                .fail(function() { qPending--; if(qPending===0){ pending--; if(pending===0) loadTemplates(); } alert('Failed to duplicate a question.'); });
                             });
-                        });
+                        }).fail(function() { pending--; if(pending===0) loadTemplates(); alert('Failed to duplicate a section.'); });
                     });
-                });
-            });
+                }).fail(function() { alert('Failed to create duplicate template.'); });
+            }).fail(function() { alert('Failed to load template for duplication.'); });
         });
 
         // Delete template
@@ -201,7 +204,7 @@
             $.post(ajaxurl, { action: 'bv_qt_delete_template', nonce: BVQT.nonce, id: $(this).data('id') }, function(res) {
                 alert(res.success ? 'Deleted.' : res.data.message);
                 loadTemplates();
-            });
+            }).fail(function() { alert('Delete failed.'); });
         });
 
         // Auto slug from name
@@ -228,7 +231,7 @@
                     $('#bv-qt-edit-title').text('Edit Template: ' + $('#bv-qt-tpl-name').val());
                 }
                 editTemplate(newId);
-            });
+            }).fail(function() { alert('Failed to save template.'); });
         });
 
         // ── Sections ──
@@ -264,7 +267,7 @@
                 if (!res.success) { alert(res.data.message); return; }
                 $('#bv-qt-section-form-wrap').hide();
                 editTemplate(getTemplateId());
-            });
+            }).fail(function() { alert('Failed to save section.'); });
         });
 
         // Cancel section
@@ -285,7 +288,7 @@
                 title: newTitle, description: '', display_order: item.index()
             }, function(res) {
                 if (res.success) editTemplate(getTemplateId());
-            });
+            }).fail(function() { alert('Failed to update section.'); });
         });
 
         // Delete section
@@ -296,7 +299,7 @@
                 id: $(this).data('sid')
             }, function(res) {
                 if (res.success) editTemplate(getTemplateId());
-            });
+            }).fail(function() { alert('Failed to delete section.'); });
         });
 
         // Move section up/down
@@ -306,11 +309,18 @@
             var dir = $(this).hasClass('bv-qt-move-up') ? 'up' : 'down';
             if (dir === 'up' && item.index() === 0) return;
             if (dir === 'down' && item.index() === list.children().length - 1) return;
-            if (dir === 'up') item.prev().before(item);
-            else item.next().after(item);
+            var $prev = item.prev();
+            var $next = item.next();
+            if (dir === 'up') $prev.before(item);
+            else $next.after(item);
             var ids = [];
             list.children('.bv-qt-section-item').each(function() { ids.push($(this).data('section-id')); });
-            $.post(ajaxurl, { action: 'bv_qt_reorder', nonce: BVQT.nonce, type: 'section', ids: ids.join(',') });
+            $.post(ajaxurl, { action: 'bv_qt_reorder', nonce: BVQT.nonce, type: 'section', ids: ids.join(',') })
+            .fail(function() {
+                alert('Reorder failed, reverting.');
+                if (dir === 'up') item.insertBefore($prev);
+                else item.insertAfter($next);
+            });
         });
 
         // ── Questions ──
@@ -327,7 +337,7 @@
             }, function(res) {
                 if (!res.success) { alert(res.data.message); return; }
                 editTemplate(getTemplateId());
-            });
+            }).fail(function() { alert('Failed to add question.'); });
         });
 
         // Edit question → opens inline form
@@ -377,7 +387,7 @@
                     + '</div>';
                 $(this).closest('li').after(formHtml);
                 toggleOptionVisibility();
-            });
+            }).fail(function() { alert('Failed to load template data.'); });
         });
 
         // Toggle options field based on type
@@ -409,7 +419,7 @@
                 } else {
                     alert(res.data.message);
                 }
-            });
+            }).fail(function() { alert('Failed to save question.'); });
         });
 
         // Cancel question edit
@@ -425,7 +435,7 @@
                 id: $(this).data('qid')
             }, function(res) {
                 if (res.success) editTemplate(getTemplateId());
-            });
+            }).fail(function() { alert('Failed to delete question.'); });
         });
 
         function escAttr(str) {
@@ -446,13 +456,232 @@
                     alert(msg);
                     loadTemplates();
                 } else {
-                    alert('Import failed: ' + (res.data.message || 'Unknown error'));
+                    var errMsg = res.data && res.data.message ? res.data.message : 'Unknown error';
+                    if (errMsg.indexOf('Security check failed') !== -1) {
+                        errMsg += ' — Your session may have expired. Please refresh the page and try again.';
+                    } else if (errMsg.indexOf('Permission denied') !== -1) {
+                        errMsg += ' — You do not have permission to perform this action.';
+                    }
+                    alert('Import failed: ' + errMsg);
                 }
-            }).fail(function() {
+            }).fail(function(xhr, status, error) {
                 $btn.prop('disabled', false).html('<span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span> Import Pre-built Questionnaires');
-                alert('Request failed.');
+                alert('Request failed: ' + (error || status || 'Network error') + '. The import may have timed out — try refreshing the page.');
             });
         };
+
+        // ── Import from JSON ──
+        $('#bv-qt-import-json-btn').on('click', function() {
+            $('#bv-qt-json-file').val('').trigger('click');
+        });
+
+        $('#bv-qt-json-file').on('change', function() {
+            var fileInput = this;
+            if (!fileInput.files || !fileInput.files[0]) return;
+            var file = fileInput.files[0];
+            if (!file.name.toLowerCase().endsWith('.json')) {
+                alert('Please select a .json file.');
+                fileInput.value = '';
+                return;
+            }
+            if (!confirm('Import questionnaire templates from "' + escHtml(file.name) + '"?\n\nExisting templates with the same slug will be skipped.')) {
+                fileInput.value = '';
+                return;
+            }
+            var $btn = $('#bv-qt-import-json-btn').prop('disabled', true).html('<span class="dashicons dashicons-update-alt spin" style="margin-top:4px;margin-right:3px;"></span> Importing...');
+            var fd = new FormData();
+            fd.append('file', file);
+            fd.append('action', 'bv_qt_import_json');
+            fd.append('nonce', BVQT.nonce);
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: fd,
+                processData: false,
+                contentType: false,
+                success: function(res) {
+                    $btn.prop('disabled', false).html('<span class="dashicons dashicons-upload" style="margin-top:4px;margin-right:3px;"></span> Import from JSON');
+                    if (res.success) {
+                        var msg = res.data.message + '\n\nDetails:';
+                        if (res.data.results && res.data.results.details) {
+                            $.each(res.data.results.details, function(i, d) {
+                                msg += '\n• ' + d.message + (d.sections > 0 ? ' (' + d.sections + ' sections, ' + d.questions + ' questions)' : '');
+                            });
+                        }
+                        alert(msg);
+                        loadTemplates();
+                    } else {
+                        var errMsg = res.data && res.data.message ? res.data.message : 'Unknown error';
+                        alert('Import failed: ' + errMsg);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    $btn.prop('disabled', false).html('<span class="dashicons dashicons-upload" style="margin-top:4px;margin-right:3px;"></span> Import from JSON');
+                    alert('Request failed: ' + (error || status || 'Network error') + '. Please try again.');
+                }
+            });
+            fileInput.value = '';
+        });
+
+        // ── Export to JSON ──
+        $('#bv-qt-export-json-btn').on('click', function() {
+            var $btn = $(this).prop('disabled', true).html('<span class="dashicons dashicons-update-alt spin" style="margin-top:4px;margin-right:3px;"></span> Exporting...');
+            $.post(ajaxurl, { action: 'bv_qt_export_json', nonce: BVQT.nonce }, function(res) {
+                $btn.prop('disabled', false).html('<span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span> Export to JSON');
+                if (res.success) {
+                    var data = res.data.data;
+                    var jsonStr = JSON.stringify(data, null, 2);
+                    var filename = res.data.filename || 'questionnaire-templates.json';
+                    bvQTDownloadJson(jsonStr, filename);
+                    alert('Exported ' + res.data.count + ' template(s) as ' + filename);
+                } else {
+                    var errMsg = res.data && res.data.message ? res.data.message : 'Unknown error';
+                    alert('Export failed: ' + errMsg);
+                }
+            }).fail(function(xhr, status, error) {
+                $btn.prop('disabled', false).html('<span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span> Export to JSON');
+                alert('Export failed: ' + (error || status || 'Network error'));
+            });
+        });
+
+        // ── Download sample JSON template ──
+        $('#bv-qt-sample-json-link').on('click', function(e) {
+            e.preventDefault();
+            var sample = {
+                "questionnaires": [
+                    {
+                        "name": "My Custom Questionnaire",
+                        "slug": "my-custom-questionnaire",
+                        "description": "A sample questionnaire template showing the expected JSON format.",
+                        "version": "1.0",
+                        "status": "published",
+                        "sections": [
+                            {
+                                "title": "Section One",
+                                "description": "First section of the questionnaire.",
+                                "order": 1,
+                                "questions": [
+                                    {
+                                        "type": "text",
+                                        "label": "Your full name",
+                                        "required": true,
+                                        "placeholder": "e.g. John Doe",
+                                        "help_text": "Enter your legal full name.",
+                                        "options": []
+                                    },
+                                    {
+                                        "type": "email",
+                                        "label": "Email address",
+                                        "required": true,
+                                        "placeholder": "you@example.com",
+                                        "help_text": "",
+                                        "options": []
+                                    },
+                                    {
+                                        "type": "select",
+                                        "label": "Preferred contact method",
+                                        "required": false,
+                                        "placeholder": "",
+                                        "help_text": "How would you like us to contact you?",
+                                        "options": [
+                                            { "value": "email", "label": "Email" },
+                                            { "value": "phone", "label": "Phone" },
+                                            { "value": "whatsapp", "label": "WhatsApp" }
+                                        ]
+                                    },
+                                    {
+                                        "type": "textarea",
+                                        "label": "Tell us about your business",
+                                        "required": true,
+                                        "placeholder": "Describe your business...",
+                                        "help_text": "Include what products/services you offer.",
+                                        "options": []
+                                    },
+                                    {
+                                        "type": "checkbox",
+                                        "label": "Which services are you interested in?",
+                                        "required": false,
+                                        "placeholder": "",
+                                        "help_text": "Select all that apply.",
+                                        "options": [
+                                            { "value": "market-research", "label": "Market Research Report" },
+                                            { "value": "business-plan", "label": "Business Plan" },
+                                            { "value": "financial-analysis", "label": "Financial Analysis" }
+                                        ]
+                                    },
+                                    {
+                                        "type": "heading",
+                                        "label": "Additional Information",
+                                        "required": false,
+                                        "placeholder": "",
+                                        "help_text": "",
+                                        "options": []
+                                    },
+                                    {
+                                        "type": "paragraph",
+                                        "label": "Please provide any additional information that may help us understand your requirements better.",
+                                        "required": false,
+                                        "placeholder": "",
+                                        "help_text": "",
+                                        "options": []
+                                    },
+                                    {
+                                        "type": "radio",
+                                        "label": "How did you hear about us?",
+                                        "required": false,
+                                        "placeholder": "",
+                                        "help_text": "",
+                                        "options": [
+                                            { "value": "google", "label": "Google Search" },
+                                            { "value": "referral", "label": "Referral" },
+                                            { "value": "social", "label": "Social Media" },
+                                            { "value": "other", "label": "Other" }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "title": "Section Two",
+                                "description": "Second section.",
+                                "order": 2,
+                                "questions": [
+                                    {
+                                        "type": "number",
+                                        "label": "Annual revenue (ZAR)",
+                                        "required": false,
+                                        "placeholder": "e.g. 500000",
+                                        "help_text": "Approximate annual revenue.",
+                                        "options": []
+                                    },
+                                    {
+                                        "type": "date",
+                                        "label": "When did you start your business?",
+                                        "required": false,
+                                        "placeholder": "",
+                                        "help_text": "",
+                                        "options": []
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            };
+            bvQTDownloadJson(JSON.stringify(sample, null, 2), 'sample-questionnaire-template.json');
+        });
+
+        // Helper: download JSON as file
+        function bvQTDownloadJson(jsonStr, filename) {
+            var blob = new Blob([jsonStr], { type: 'application/json' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
 
     });
 

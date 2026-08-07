@@ -31,6 +31,8 @@ class BV_Questionnaire_Admin {
         add_action( 'wp_ajax_bv_qt_delete_question', array( $this, 'ajax_delete_question' ) );
         add_action( 'wp_ajax_bv_qt_reorder', array( $this, 'ajax_reorder' ) );
         add_action( 'wp_ajax_bv_qt_import_questionnaires', array( $this, 'ajax_import_questionnaires' ) );
+        add_action( 'wp_ajax_bv_qt_import_json', array( $this, 'ajax_import_json' ) );
+        add_action( 'wp_ajax_bv_qt_export_json', array( $this, 'ajax_export_json' ) );
     }
 
     /**
@@ -145,8 +147,9 @@ class BV_Questionnaire_Admin {
         );
 
         if ( $wpdb->last_error ) {
+            error_log( 'BV Questionnaire Admin Error: ' . $wpdb->last_error );
             wp_send_json_error( array(
-                'message' => 'Database error: ' . $wpdb->last_error,
+                'message' => 'Database error occurred',
             ) );
         }
 
@@ -272,7 +275,8 @@ class BV_Questionnaire_Admin {
         }
 
         if ( $wpdb->last_error ) {
-            wp_send_json_error( array( 'message' => 'Database error: ' . $wpdb->last_error ) );
+            error_log( 'BV Questionnaire Admin Error: ' . $wpdb->last_error );
+            wp_send_json_error( array( 'message' => 'Database error occurred' ) );
         }
 
         wp_send_json_success( array(
@@ -304,8 +308,11 @@ class BV_Questionnaire_Admin {
 
         // Delete all questions in those sections
         if ( ! empty( $section_ids ) ) {
-            $section_id_list = implode( ',', array_map( 'absint', $section_ids ) );
-            $wpdb->query( "DELETE FROM {$t['questions']} WHERE section_id IN ({$section_id_list})" );
+            $placeholders = implode( ',', array_fill( 0, count( $section_ids ), '%d' ) );
+            $wpdb->query( $wpdb->prepare(
+                "DELETE FROM {$t['questions']} WHERE section_id IN ({$placeholders})",
+                $section_ids
+            ) );
         }
 
         // Delete all sections
@@ -364,7 +371,8 @@ class BV_Questionnaire_Admin {
         }
 
         if ( $wpdb->last_error ) {
-            wp_send_json_error( array( 'message' => 'Database error: ' . $wpdb->last_error ) );
+            error_log( 'BV Questionnaire Admin Error: ' . $wpdb->last_error );
+            wp_send_json_error( array( 'message' => 'Database error occurred' ) );
         }
 
         $section = $wpdb->get_row( $wpdb->prepare(
@@ -492,7 +500,8 @@ class BV_Questionnaire_Admin {
         }
 
         if ( $wpdb->last_error ) {
-            wp_send_json_error( array( 'message' => 'Database error: ' . $wpdb->last_error ) );
+            error_log( 'BV Questionnaire Admin Error: ' . $wpdb->last_error );
+            wp_send_json_error( array( 'message' => 'Database error occurred' ) );
         }
 
         $question = $wpdb->get_row( $wpdb->prepare(
@@ -604,6 +613,21 @@ class BV_Questionnaire_Admin {
                         <span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span>
                         Import Pre-built Questionnaires
                     </button>
+                    <button type="button" id="bv-qt-import-json-btn" class="button button-secondary" style="margin-left:8px;">
+                        <span class="dashicons dashicons-upload" style="margin-top:4px;margin-right:3px;"></span>
+                        Import from JSON
+                    </button>
+                    <button type="button" id="bv-qt-export-json-btn" class="button button-secondary" style="margin-left:8px;">
+                        <span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span>
+                        Export to JSON
+                    </button>
+                    <input type="file" id="bv-qt-json-file" accept=".json" style="display:none;" />
+                    <p style="margin:8px 0 0 0;color:#646970;font-size:12px;">
+                        <a href="javascript:void(0)" id="bv-qt-sample-json-link" title="Download a sample JSON file showing the expected import format">
+                            Download sample JSON template
+                        </a>
+                        &nbsp;— Use Export to get the format from an existing template, or download this sample.
+                    </p>
                 </div>
 
                 <table class="wp-list-table widefat fixed striped" id="bv-qt-templates-table">
@@ -794,6 +818,367 @@ class BV_Questionnaire_Admin {
         <?php
     }
 
+    /* ==========================================================================
+     * AJAX: Import questionnaire templates from a JSON file
+     * ========================================================================== */
+
+    /**
+     * Allowed question types for JSON import validation.
+     */
+    private static $allowed_question_types = array(
+        'text', 'textarea', 'number', 'email', 'phone', 'date',
+        'select', 'radio', 'checkbox', 'heading', 'paragraph', 'file',
+    );
+
+    /**
+     * Import questionnaire templates from a user-uploaded JSON file.
+     *
+     * Expected JSON format:
+     * {
+     *   "questionnaires": [
+     *     {
+     *       "name": "...", "slug": "...", "description": "...",
+     *       "version": "1.0", "status": "published",
+     *       "sections": [
+     *         {
+     *           "title": "...", "description": "...", "order": 1,
+     *           "questions": [
+     *             { "type": "text", "label": "...", "required": true, ... }
+     *           ]
+     *         }
+     *       ]
+     *     }
+     *   ]
+     * }
+     *
+     * @since 2.7.1
+     */
+    public function ajax_import_json() {
+        $this->verify_nonce();
+
+        set_time_limit( 300 );
+
+        if ( empty( $_FILES['file'] ) ) {
+            wp_send_json_error( array( 'message' => 'No file uploaded.' ) );
+        }
+
+        $file = $_FILES['file'];
+
+        // Validate file type
+        $ext = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
+        if ( $ext !== 'json' ) {
+            wp_send_json_error( array( 'message' => 'Only JSON files are accepted. Please upload a .json file.' ) );
+        }
+
+        // Validate file size (5MB max for JSON)
+        if ( $file['size'] > 5 * 1024 * 1024 ) {
+            wp_send_json_error( array( 'message' => 'File is too large. Maximum import size is 5MB.' ) );
+        }
+
+        $json_content = file_get_contents( $file['tmp_name'] );
+        $data = json_decode( $json_content, true );
+
+        if ( json_last_error() !== JSON_ERROR_NONE ) {
+            wp_send_json_error( array( 'message' => 'Invalid JSON file: ' . json_last_error_msg() ) );
+        }
+
+        // Support both "questionnaires" and "templates" keys
+        $questionnaires = array();
+        if ( ! empty( $data['questionnaires'] ) && is_array( $data['questionnaires'] ) ) {
+            $questionnaires = $data['questionnaires'];
+        } elseif ( ! empty( $data['templates'] ) && is_array( $data['templates'] ) ) {
+            $questionnaires = $data['templates'];
+        } else {
+            wp_send_json_error( array(
+                'message' => 'Invalid format. JSON must contain a "questionnaires" array with template definitions.',
+            ) );
+        }
+
+        global $wpdb;
+        $t = $this->get_tables();
+        $results = array(
+            'imported' => 0,
+            'skipped'  => 0,
+            'errors'   => 0,
+            'details'  => array(),
+        );
+
+        foreach ( $questionnaires as $idx => $tpl_data ) {
+            $result = $this->import_single_template( $wpdb, $t, $tpl_data, $idx + 1 );
+            $results[ $result['status'] ]++;
+            $results['details'][] = $result;
+        }
+
+        // Build summary message
+        $message = "Import complete: {$results['imported']} imported, {$results['skipped']} skipped, {$results['errors']} errors.";
+        wp_send_json_success( array(
+            'message' => $message,
+            'results' => $results,
+        ) );
+    }
+
+    /**
+     * Import a single template from parsed JSON data.
+     *
+     * @since 2.7.1
+     * @param \wpdb  $wpdb     Database instance.
+     * @param array  $t        Table names from get_tables().
+     * @param array  $tpl_data Template data from JSON.
+     * @param int    $index    Template index (for error messages).
+     * @return array Result with status, message, counts.
+     */
+    private function import_single_template( $wpdb, $t, $tpl_data, $index ) {
+        // Validate required fields
+        if ( empty( $tpl_data['name'] ) ) {
+            return array(
+                'status'  => 'error',
+                'message' => "Template #{$index}: Missing 'name' field.",
+                'sections' => 0, 'questions' => 0,
+            );
+        }
+
+        $name        = sanitize_text_field( wp_unslash( $tpl_data['name'] ) );
+        $slug        = ! empty( $tpl_data['slug'] ) ? sanitize_title( wp_unslash( $tpl_data['slug'] ) ) : sanitize_title( $name );
+        $description = ! empty( $tpl_data['description'] ) ? sanitize_textarea_field( wp_unslash( $tpl_data['description'] ) ) : '';
+        $version     = ! empty( $tpl_data['version'] ) ? sanitize_text_field( $tpl_data['version'] ) : '1.0';
+        $status      = ( ! empty( $tpl_data['status'] ) && in_array( $tpl_data['status'], array( 'draft', 'published' ), true ) )
+                        ? $tpl_data['status'] : 'draft';
+        $sections    = ! empty( $tpl_data['sections'] ) && is_array( $tpl_data['sections'] )
+                        ? $tpl_data['sections'] : array();
+
+        // Check if slug already exists
+        $existing = $wpdb->get_var( $wpdb->prepare(
+            "SELECT id FROM {$t['templates']} WHERE slug = %s",
+            $slug
+        ) );
+
+        if ( $existing ) {
+            return array(
+                'status'   => 'skipped',
+                'message'  => "Template #{$index} '{$name}' already exists (slug: {$slug}). Skipped.",
+                'sections' => 0, 'questions' => 0,
+            );
+        }
+
+        // Insert template
+        $wpdb->insert( $t['templates'], array(
+            'name'        => $name,
+            'slug'        => $slug,
+            'description' => $description,
+            'version'     => $version,
+            'status'      => $status,
+            'created_at'  => current_time( 'mysql' ),
+            'updated_at'  => current_time( 'mysql' ),
+        ), array( '%s', '%s', '%s', '%s', '%s', '%s', '%s' ) );
+
+        if ( ! $wpdb->insert_id ) {
+            error_log( "BV JSON Import: Failed to insert template '{$name}': " . $wpdb->last_error );
+            return array(
+                'status'  => 'error',
+                'message' => "Template #{$index} '{$name}': Database error on insert.",
+                'sections' => 0, 'questions' => 0,
+            );
+        }
+
+        $template_id = $wpdb->insert_id;
+        $total_questions = 0;
+        $section_count = 0;
+
+        // Wrap in transaction
+        $wpdb->query( 'START TRANSACTION' );
+
+        foreach ( $sections as $sec_idx => $section ) {
+            if ( empty( $section['title'] ) ) {
+                continue;
+            }
+
+            $sec_title = sanitize_text_field( wp_unslash( $section['title'] ) );
+            $sec_desc  = ! empty( $section['description'] ) ? sanitize_textarea_field( wp_unslash( $section['description'] ) ) : '';
+            $sec_order = ! empty( $section['order'] ) ? absint( $section['order'] ) : ( $sec_idx + 1 );
+            $questions = ! empty( $section['questions'] ) && is_array( $section['questions'] )
+                            ? $section['questions'] : array();
+
+            $wpdb->insert( $t['sections'], array(
+                'template_id'   => $template_id,
+                'title'         => $sec_title,
+                'description'   => $sec_desc,
+                'display_order' => $sec_order,
+                'created_at'    => current_time( 'mysql' ),
+            ), array( '%d', '%s', '%s', '%d', '%s' ) );
+
+            if ( ! $wpdb->insert_id ) {
+                error_log( "BV JSON Import: Failed to insert section '{$sec_title}': " . $wpdb->last_error );
+                $wpdb->query( 'ROLLBACK' );
+                $wpdb->delete( $t['templates'], array( 'id' => $template_id ) );
+                return array(
+                    'status'    => 'error',
+                    'message'   => "Template #{$index} '{$name}': Failed to insert section '{$sec_title}'.",
+                    'sections'  => $section_count, 'questions' => $total_questions,
+                );
+            }
+
+            $section_id = $wpdb->insert_id;
+            $section_count++;
+
+            foreach ( $questions as $q_idx => $q ) {
+                if ( empty( $q['label'] ) ) {
+                    continue;
+                }
+
+                $q_type  = ! empty( $q['type'] ) ? sanitize_text_field( $q['type'] ) : 'text';
+                $q_label = sanitize_text_field( wp_unslash( $q['label'] ) );
+
+                // Validate question type
+                if ( ! in_array( $q_type, self::$allowed_question_types, true ) ) {
+                    $q_type = 'text';
+                }
+
+                $q_placeholder = ! empty( $q['placeholder'] ) ? sanitize_text_field( wp_unslash( $q['placeholder'] ) ) : '';
+                $q_help_text   = ! empty( $q['help_text'] ) ? sanitize_text_field( wp_unslash( $q['help_text'] ) ) : '';
+                $q_required    = ! empty( $q['required'] ) ? 1 : 0;
+
+                // Process options
+                $options = array();
+                if ( ! empty( $q['options'] ) && is_array( $q['options'] ) ) {
+                    foreach ( $q['options'] as $opt ) {
+                        if ( is_array( $opt ) ) {
+                            $opt_val = ! empty( $opt['value'] ) ? sanitize_text_field( $opt['value'] ) : sanitize_title( $opt['label'] );
+                            $opt_lbl = ! empty( $opt['label'] ) ? sanitize_text_field( $opt['label'] ) : $opt_val;
+                            $options[] = array( 'value' => $opt_val, 'label' => $opt_lbl );
+                        } elseif ( is_string( $opt ) ) {
+                            $options[] = array( 'value' => sanitize_title( $opt ), 'label' => sanitize_text_field( $opt ) );
+                        }
+                    }
+                }
+                $options_json = wp_json_encode( $options );
+
+                $wpdb->insert( $t['questions'], array(
+                    'section_id'    => $section_id,
+                    'type'          => $q_type,
+                    'label'         => $q_label,
+                    'placeholder'   => $q_placeholder,
+                    'is_required'   => $q_required,
+                    'options'       => $options_json,
+                    'help_text'     => $q_help_text,
+                    'display_order' => $q_idx + 1,
+                ), array( '%d', '%s', '%s', '%s', '%d', '%s', '%s', '%d' ) );
+
+                $total_questions++;
+            }
+        }
+
+        $wpdb->query( 'COMMIT' );
+
+        return array(
+            'status'    => 'imported',
+            'message'   => "Template #{$index} '{$name}': Imported successfully.",
+            'sections'  => $section_count, 'questions' => $total_questions,
+        );
+    }
+
+    /* ==========================================================================
+     * AJAX: Export questionnaire templates as JSON
+     * ========================================================================== */
+
+    /**
+     * Export questionnaire templates as a downloadable JSON file.
+     *
+     * Accepts optional 'template_ids' (comma-separated) to export specific templates.
+     * If no IDs provided, exports all templates.
+     *
+     * @since 2.7.1
+     */
+    public function ajax_export_json() {
+        $this->verify_nonce();
+
+        global $wpdb;
+        $t = $this->get_tables();
+
+        // Check if tables exist
+        $table_exists = $wpdb->get_var( "SHOW TABLES LIKE '{$t['templates']}'" );
+        if ( ! $table_exists ) {
+            wp_send_json_error( array( 'message' => 'Questionnaire tables not found.' ) );
+        }
+
+        // Determine which templates to export
+        $template_ids_param = isset( $_POST['template_ids'] ) ? sanitize_text_field( $_POST['template_ids'] ) : '';
+        if ( $template_ids_param ) {
+            $id_array = array_map( 'absint', explode( ',', $template_ids_param ) );
+            $id_array = array_filter( $id_array );
+            if ( empty( $id_array ) ) {
+                wp_send_json_error( array( 'message' => 'No valid template IDs provided.' ) );
+            }
+            $placeholders = implode( ',', array_fill( 0, count( $id_array ), '%d' ) );
+            $templates = $wpdb->get_results( $wpdb->prepare(
+                "SELECT * FROM {$t['templates']} WHERE id IN ({$placeholders}) ORDER BY id ASC",
+                $id_array
+            ) );
+        } else {
+            $templates = $wpdb->get_results( "SELECT * FROM {$t['templates']} ORDER BY id ASC" );
+        }
+
+        if ( ! $templates ) {
+            wp_send_json_error( array( 'message' => 'No templates found to export.' ) );
+        }
+
+        $export = array( 'questionnaires' => array() );
+
+        foreach ( $templates as $tpl ) {
+            $sections = $wpdb->get_results( $wpdb->prepare(
+                "SELECT * FROM {$t['sections']} WHERE template_id = %d ORDER BY display_order ASC, id ASC",
+                $tpl->id
+            ) );
+
+            $sec_data = array();
+            if ( $sections ) {
+                foreach ( $sections as $sec ) {
+                    $questions = $wpdb->get_results( $wpdb->prepare(
+                        "SELECT * FROM {$t['questions']} WHERE section_id = %d ORDER BY display_order ASC, id ASC",
+                        $sec->id
+                    ) );
+
+                    $q_data = array();
+                    if ( $questions ) {
+                        foreach ( $questions as $q ) {
+                            $q_opts = json_decode( $q->options, true );
+                            $q_data[] = array(
+                                'type'        => $q->type,
+                                'label'       => $q->label,
+                                'placeholder' => $q->placeholder,
+                                'required'    => (bool) $q->is_required,
+                                'help_text'   => $q->help_text,
+                                'options'     => is_array( $q_opts ) ? $q_opts : array(),
+                            );
+                        }
+                    }
+
+                    $sec_data[] = array(
+                        'title'       => $sec->title,
+                        'description' => $sec->description,
+                        'order'       => (int) $sec->display_order,
+                        'questions'   => $q_data,
+                    );
+                }
+            }
+
+            $export['questionnaires'][] = array(
+                'name'        => $tpl->name,
+                'slug'        => $tpl->slug,
+                'description' => $tpl->description,
+                'version'     => $tpl->version,
+                'status'      => $tpl->status,
+                'sections'    => $sec_data,
+            );
+        }
+
+        wp_send_json_success( array(
+            'message'    => 'Export successful.',
+            'data'       => $export,
+            'filename'   => 'questionnaire-templates-' . date( 'Y-m-d' ) . '.json',
+            'count'      => count( $export['questionnaires'] ),
+        ) );
+    }
+
     /**
      * AJAX handler for importing pre-built questionnaire templates.
      *
@@ -802,11 +1187,23 @@ class BV_Questionnaire_Admin {
     public function ajax_import_questionnaires() {
         $this->verify_nonce();
 
+        // Allow enough time for 350+ row inserts
+        set_time_limit( 300 );
+        // Prevent output buffering issues on large AJAX responses
+        @ini_set( 'display_errors', 0 );
+
         if ( ! class_exists( 'BV_Questionnaire_Import' ) ) {
             require_once BV_PLUGIN_DIR . 'includes/class-bv-questionnaire-import.php';
         }
 
-        $results = BV_Questionnaire_Import::import_questionnaires();
+        try {
+            $results = BV_Questionnaire_Import::import_questionnaires();
+        } catch ( \Exception $e ) {
+            wp_send_json_error( array(
+                'message' => 'Import error: ' . $e->getMessage(),
+            ) );
+            return;
+        }
 
         wp_send_json_success( array(
             'message' => 'Import complete.',

@@ -119,6 +119,7 @@
     .bv-form-group label { display: block; margin-bottom: 8px; font-weight: 600; font-size: 14px; color: #374151; }
     .bv-form-group input, .bv-form-group select, .bv-form-group textarea { width: 100%; padding: 12px 16px; border: 1.5px solid #d1d5db; border-radius: 8px; font-size: 14px; box-sizing: border-box; transition: all 0.2s ease; background: #fff; color: #1a1a2e; }
     .bv-form-group input:focus, .bv-form-group select:focus, .bv-form-group textarea:focus { outline: none; border-color: var(--bv-primary); box-shadow: 0 0 0 3px rgba(0,43,92,0.1); }
+    .bv-form-group input:focus-visible, .bv-form-group select:focus-visible, .bv-form-group textarea:focus-visible { outline: 2px solid var(--bv-accent, #D4AF37); outline-offset: 2px; }
     .bv-form-group .description { font-size: 12px; color: #9CA3AF; margin-top: 6px; }
 
     /* Buttons */
@@ -169,6 +170,7 @@
     .bv-q-field label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; color: #374151; line-height: 1.4; }
     .bv-q-field input[type="text"], .bv-q-field input[type="number"], .bv-q-field input[type="email"], .bv-q-field input[type="tel"], .bv-q-field input[type="date"], .bv-q-field input[type="url"], .bv-q-field input[type="file"], .bv-q-field select, .bv-q-field textarea { width: 100%; padding: 11px 14px; border: 1.5px solid #d1d5db; border-radius: 8px; font-size: 14px; box-sizing: border-box; transition: all 0.2s ease; background: #fff; color: #1a1a2e; font-family: inherit; }
     .bv-q-field input:focus, .bv-q-field select:focus, .bv-q-field textarea:focus { outline: none; border-color: var(--bv-primary); box-shadow: 0 0 0 3px rgba(0,43,92,0.1); }
+    .bv-q-field input:focus-visible, .bv-q-field select:focus-visible, .bv-q-field textarea:focus-visible { outline: 2px solid var(--bv-accent, #D4AF37); outline-offset: 2px; }
     .bv-q-field textarea { min-height: 80px; resize: vertical; line-height: 1.6; }
     .bv-q-field select { appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8.825L1.175 4 2.238 2.938 6 6.7 9.763 2.938 10.825 4z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; cursor: pointer; }
     .bv-q-field input[type="date"] { cursor: text; }
@@ -230,7 +232,7 @@
     .bv-message-bubble { padding: 14px 18px; border-radius: 12px; max-width: 80%; font-size: 14px; line-height: 1.6; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
     .bv-message-sent { background: linear-gradient(135deg, var(--bv-primary), var(--bv-primary-light-20)); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
     .bv-message-received { background: #f3f4f6; color: #1a1a2e; align-self: flex-start; border-bottom-left-radius: 4px; }
-    .bv-message-meta { font-size: 11px; color: rgba(255,255,255,0.6); margin-top: 6px; }
+    .bv-message-meta { font-size: 11px; color: rgba(255,255,255,0.85); margin-top: 6px; }
     .bv-message-received .bv-message-meta { color: #9CA3AF; }
 
     /* Reports */
@@ -266,4 +268,22 @@
         .bv-info-grid { grid-template-columns: 1fr; }
         .bv-overview-header { flex-direction: column; }
         .bv-portal-header-inner { padding: 12px 16px; }
+    }
+
+    /* ============================================
+       Focus visible styles for accessibility
+       ============================================ */
+    .bv-portal *:focus-visible {
+        outline: 2px solid var(--bv-accent, #D4AF37);
+        outline-offset: 2px;
+    }
+
+    /* ============================================
+       Prefers reduced motion
+       ============================================ */
+    @media (prefers-reduced-motion: reduce) {
+        .bv-portal * {
+            animation-duration: 0.01ms !important;
+            transition-duration: 0.01ms !important;
+        }
     }

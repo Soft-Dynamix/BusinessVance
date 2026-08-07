@@ -169,13 +169,13 @@ class BV_Agreement_Manager {
         }
 
         // Method 1: pdftotext CLI (most reliable)
-        $output = shell_exec( 'pdftotext -layout "' . escapeshellcmd( $file_path ) . '" - 2>/dev/null' );
+        $output = shell_exec( 'pdftotext -layout ' . escapeshellarg( $file_path ) . ' - 2>/dev/null' );
         if ( ! empty( $output ) && strlen( trim( $output ) ) > 50 ) {
             return $output;
         }
 
         // Method 2: pdftotext without layout flag
-        $output = shell_exec( 'pdftotext "' . escapeshellcmd( $file_path ) . '" - 2>/dev/null' );
+        $output = shell_exec( 'pdftotext ' . escapeshellarg( $file_path ) . ' - 2>/dev/null' );
         if ( ! empty( $output ) && strlen( trim( $output ) ) > 50 ) {
             return $output;
         }
@@ -210,7 +210,7 @@ except ImportError:
 
         $tmp_script = tempnam( sys_get_temp_dir(), 'bv_pdf_' );
         file_put_contents( $tmp_script, $python_script );
-        $output = shell_exec( 'python3 "' . escapeshellcmd( $tmp_script ) . '" "' . escapeshellcmd( $file_path ) . '" 2>/dev/null' );
+        $output = shell_exec( 'python3 ' . escapeshellarg( $tmp_script ) . ' ' . escapeshellarg( $file_path ) . ' 2>/dev/null' );
         unlink( $tmp_script );
 
         if ( ! empty( $output ) && strlen( trim( $output ) ) > 50 ) {

@@ -5,6 +5,15 @@
 (function($) {
     'use strict';
 
+    if (typeof bv_portal === 'undefined') return;
+
+    function bvEscapeHtml(str) {
+        if (!str) return '';
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(str));
+        return div.innerHTML;
+    }
+
     window.bv_sign_agreement = function(projectId) {
         var name = $('#bv-sign-name').val();
         if (!name) { alert(bv_portal.i18n?.enter_name || 'Please enter your full legal name.'); return; }
@@ -19,8 +28,10 @@
                 $('#bv-agreement-status').html('<span style="color:#27AE60;">✓ Agreement signed successfully! The page will reload...</span>');
                 setTimeout(function() { location.reload(); }, 1500);
             } else {
-                $('#bv-agreement-status').html('<span style="color:#DC3545;">' + (r.data || 'Error signing agreement') + '</span>');
+                $('#bv-agreement-status').html('<span style="color:#DC3545;">' + bvEscapeHtml(r.data || 'Error signing agreement') + '</span>');
             }
+        }).fail(function(xhr, status, error) {
+            $('#bv-agreement-status').html('<span style="color:#DC3545;">Network error: ' + bvEscapeHtml(error) + '</span>');
         });
     };
 
@@ -51,10 +62,10 @@
             contentType: false,
             success: function(r) {
                 if (r.success) {
-                    if (statusEl) statusEl.html('<span style="color:#27AE60;">✓ ' + (r.data || 'Uploaded') + '</span>');
+                    if (statusEl) statusEl.html('<span style="color:#27AE60;">✓ ' + bvEscapeHtml(r.data || 'Uploaded') + '</span>');
                     setTimeout(function() { location.reload(); }, 1000);
                 } else {
-                    if (statusEl) statusEl.html('<span style="color:#DC3545;">' + (r.data || 'Error uploading') + '</span>');
+                    if (statusEl) statusEl.html('<span style="color:#DC3545;">' + bvEscapeHtml(r.data || 'Error uploading') + '</span>');
                 }
             },
             error: function() {
@@ -86,10 +97,10 @@
             contentType: false,
             success: function(r) {
                 if (r.success) {
-                    $('#bv-doc-status').html('<span style="color:#27AE60;">✓ ' + r.data + '</span>');
+                    $('#bv-doc-status').html('<span style="color:#27AE60;">✓ ' + bvEscapeHtml(r.data) + '</span>');
                     setTimeout(function() { location.reload(); }, 1000);
                 } else {
-                    $('#bv-doc-status').html('<span style="color:#DC3545;">' + (r.data || 'Error uploading') + '</span>');
+                    $('#bv-doc-status').html('<span style="color:#DC3545;">' + bvEscapeHtml(r.data || 'Error uploading') + '</span>');
                 }
             },
             error: function() {
@@ -99,7 +110,7 @@
     };
 
     window.bv_download_report = function(reportId) {
-        window.location.href = bv_portal.ajax_url + '?action=bv_portal_download_report&nonce=' + bv_portal.nonce + '&report_id=' + reportId;
+        window.location.href = bv_portal.ajax_url + '?action=bv_portal_download_report&nonce=' + bv_portal.nonce + '&report_id=' + encodeURIComponent(reportId);
     };
 
     window.bv_send_message = function(projectId) {
@@ -114,9 +125,9 @@
         }, function(r) {
             if (r.success) {
                 var html = '<div class="bv-message bv-message-client">' +
-                    '<div class="bv-message-header"><strong>' + r.data.sender_name + '</strong>' +
-                    '<span class="bv-message-time">' + r.data.created_at + '</span></div>' +
-                    '<div class="bv-message-body">' + r.data.message + '</div></div>';
+                    '<div class="bv-message-header"><strong>' + bvEscapeHtml(r.data.sender_name) + '</strong>' +
+                    '<span class="bv-message-time">' + bvEscapeHtml(r.data.created_at) + '</span></div>' +
+                    '<div class="bv-message-body">' + bvEscapeHtml(r.data.message) + '</div></div>';
                 $('#bv-messages-thread').append(html);
                 $('#bv-messages-thread').scrollTop($('#bv-messages-thread')[0].scrollHeight);
                 $('#bv-message-text').val('');
@@ -124,6 +135,8 @@
             } else {
                 $('#bv-msg-status').html('<span style="color:#DC3545;">Error sending message</span>');
             }
+        }).fail(function(xhr, status, error) {
+            $('#bv-msg-status').html('<span style="color:#DC3545;">Network error: ' + bvEscapeHtml(error) + '</span>');
         });
     };
 
@@ -156,9 +169,9 @@
         }, function(r) {
             $btn.text(origText).prop('disabled', false);
             if (r.success) {
-                $('#bv-q-status').html('<span class="bv-q-saved">&#10003; ' + (r.data || 'Saved') + '</span>');
+                $('#bv-q-status').html('<span class="bv-q-saved">&#10003; ' + bvEscapeHtml(r.data || 'Saved') + '</span>');
             } else {
-                $('#bv-q-status').html('<span class="bv-q-error">' + (r.data || 'Error saving') + '</span>');
+                $('#bv-q-status').html('<span class="bv-q-error">' + bvEscapeHtml(r.data || 'Error saving') + '</span>');
             }
         }).fail(function() {
             $btn.text(origText).prop('disabled', false);

@@ -7,6 +7,13 @@
 
     if (typeof bv_cd === 'undefined') return;
 
+    function bvEscapeHtml(str) {
+        if (!str) return '';
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(str));
+        return div.innerHTML;
+    }
+
     /**
      * Download questionnaire responses as CSV for a project.
      */
@@ -35,7 +42,7 @@
             var status = $(this).val();
             $.post(bv_cd.ajax_url, { action: 'bv_cd_update_project_status', nonce: bv_cd.nonce, project_id: pid, status: status }, function(r) {
                 if (r.success) { location.reload(); } else { alert(r.data || 'Error'); }
-            });
+            }).fail(function() { alert('Request failed. Please try again.'); });
         });
 
         // Progress update
@@ -43,8 +50,11 @@
             var pid = $(this).data('project-id');
             var val = $(this).val();
             $.post(bv_cd.ajax_url, { action: 'bv_cd_update_progress', nonce: bv_cd.nonce, project_id: pid, progress: val }, function(r) {
-                if (r.success) { $('.bv-cd-progress-display').text(val + '%'); $('.bv-cd-progress-fill').css('width', val + '%'); }
-            });
+                if (r.success) {
+                    $('#bv-cd-project-' + pid + ' .bv-cd-progress-display').text(val + '%');
+                    $('#bv-cd-project-' + pid + ' .bv-cd-progress-fill').css('width', val + '%');
+                } else { alert(r.data || 'Error'); }
+            }).fail(function() { alert('Request failed. Please try again.'); });
         });
 
         // Internal notes save
@@ -53,7 +63,7 @@
             var notes = $('#bv-cd-internal-notes').val();
             $.post(bv_cd.ajax_url, { action: 'bv_cd_update_internal_notes', nonce: bv_cd.nonce, project_id: pid, notes: notes }, function(r) {
                 if (r.success) { alert('Notes saved'); } else { alert(r.data || 'Error'); }
-            });
+            }).fail(function() { alert('Request failed. Please try again.'); });
         });
 
         // Add note
@@ -65,10 +75,10 @@
                 if (r.success) {
                     var user = bv_cd.current_user;
                     var time = bv_cd.current_time;
-                    $('#bv-cd-notes-list').prepend('<div class="bv-cd-note"><strong>' + user + '</strong><span class="bv-cd-note-time">' + time + '</span><p>' + $('<div>').text(content).html() + '</p></div>');
+                    $('#bv-cd-notes-list').prepend('<div class="bv-cd-note"><strong>' + bvEscapeHtml(user) + '</strong><span class="bv-cd-note-time">' + bvEscapeHtml(time) + '</span><p>' + $('<div>').text(content).html() + '</p></div>');
                     $('#bv-cd-note-content').val('');
                 } else { alert(r.data || 'Error'); }
-            });
+            }).fail(function() { alert('Request failed. Please try again.'); });
         });
 
         // Send message
@@ -80,11 +90,11 @@
                 if (r.success) {
                     var user = bv_cd.current_user;
                     var time = bv_cd.current_time;
-                    $('#bv-cd-msg-thread').append('<div class="bv-cd-msg bv-cd-msg-admin"><strong>' + user + '</strong><span>' + time + '</span><p>' + $('<div>').text(msg).html() + '</p></div>');
+                    $('#bv-cd-msg-thread').append('<div class="bv-cd-msg bv-cd-msg-admin"><strong>' + bvEscapeHtml(user) + '</strong><span>' + bvEscapeHtml(time) + '</span><p>' + $('<div>').text(msg).html() + '</p></div>');
                     $('#bv-cd-msg-text').val('');
                     $('#bv-cd-msg-thread').scrollTop($('#bv-cd-msg-thread')[0].scrollHeight);
                 }
-            });
+            }).fail(function() { alert('Request failed. Please try again.'); });
         });
 
         // Report upload
@@ -101,7 +111,7 @@
             fd.append('title', title);
             $.ajax({ url: bv_cd.ajax_url, type: 'POST', data: fd, processData: false, contentType: false, success: function(r) {
                 if (r.success) { alert('Report uploaded'); location.reload(); } else { alert(r.data || 'Error uploading'); }
-            }});
+            }, error: function() { alert('Request failed. Please try again.'); }});
         });
 
         // Deliver report
@@ -110,7 +120,7 @@
             if (!confirm('Mark this report as delivered? The client will be able to download it.')) return;
             $.post(bv_cd.ajax_url, { action: 'bv_cd_deliver_report', nonce: bv_cd.nonce, report_id: rid }, function(r) {
                 if (r.success) { location.reload(); } else { alert(r.data || 'Error'); }
-            });
+            }).fail(function() { alert('Request failed. Please try again.'); });
         });
 
         // Create project
@@ -123,9 +133,9 @@
             data.notes = $('#bv-cd-new-notes').val();
             if (!data.client_name || !data.client_email) return alert('Name and email required');
             $.post(bv_cd.ajax_url, data, function(r) {
-                if (r.success) { location.href = '?page=bv-consultant-dashboard&project_id=' + r.data.project_id; }
+                if (r.success) { location.href = '?page=bv-consultant-dashboard&project_id=' + encodeURIComponent(r.data.project_id); }
                 else { alert(r.data || 'Error'); }
-            });
+            }).fail(function() { alert('Request failed. Please try again.'); });
         });
     });
 

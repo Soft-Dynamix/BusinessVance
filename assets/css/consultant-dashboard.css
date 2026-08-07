@@ -1,0 +1,67 @@
+/* ============================================
+   BusinessVance Consultant Dashboard Styles
+   ============================================
+   CSS extracted from get_inline_css() in class-bv-consultant-dashboard.php.
+   Dynamic colors replaced with CSS custom properties.
+   The PHP template sets --bv-cd-primary and --bv-cd-secondary
+   via a small inline <style> block so these rules stay dynamic.
+   ============================================ */
+
+.bv-cd-wrap { max-width: 1400px; }
+.bv-cd-title { display: flex; align-items: center; gap: 10px; color: var(--bv-cd-primary, #002B5C); }
+.bv-cd-icon { font-size: 28px; }
+.bv-cd-stats { display: flex; gap: 16px; margin: 20px 0; }
+.bv-cd-stat { background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px 24px; text-align: center; min-width: 100px; }
+.bv-cd-stat-num { display: block; font-size: 28px; font-weight: 700; color: var(--bv-cd-primary, #002B5C); }
+.bv-cd-stat-label { font-size: 12px; color: #666; text-transform: uppercase; }
+.bv-cd-stat-active .bv-cd-stat-num { color: var(--bv-cd-secondary, #0A2647); }
+.bv-cd-stat-waiting .bv-cd-stat-num { color: #F4A261; }
+.bv-cd-stat-done .bv-cd-stat-num { color: #27AE60; }
+.bv-cd-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+.bv-cd-filter-form { display: flex; gap: 8px; flex-wrap: wrap; }
+.bv-cd-back { margin-bottom: 12px; }
+.bv-cd-project-header { background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; }
+.bv-cd-project-header h2 { margin: 0; color: var(--bv-cd-primary, #002B5C); }
+.bv-cd-project-header p { margin: 4px 0 0; font-size: 14px; color: #666; }
+.bv-cd-project-controls { display: flex; flex-direction: column; gap: 12px; align-items: flex-end; }
+.bv-cd-status-select label, .bv-cd-progress-control label { font-size: 13px; font-weight: 600; color: #333; }
+.bv-cd-progress-input { width: 200px; }
+.bv-cd-tabs { display: flex; border-bottom: 2px solid #e0e0e0; margin-bottom: 16px; overflow-x: auto; }
+.bv-cd-tab { padding: 10px 20px; border: none; background: none; cursor: pointer; font-size: 14px; font-weight: 500; color: #666; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+.bv-cd-tab:hover { color: var(--bv-cd-primary, #002B5C); }
+.bv-cd-tab.active { color: var(--bv-cd-primary, #002B5C); border-bottom-color: var(--bv-cd-primary, #002B5C); }
+.bv-cd-panel { padding: 4px 0; }
+.bv-cd-overview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.bv-cd-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+.bv-cd-card h4 { margin: 0 0 12px; color: var(--bv-cd-primary, #002B5C); font-size: 15px; }
+.bv-cd-card ul { margin: 0; padding-left: 20px; }
+.bv-cd-card ul li { margin: 4px 0; }
+.bv-cd-card p { margin: 4px 0; font-size: 14px; }
+.bv-cd-mini-progress { width: 60px; height: 6px; background: #e0e0e0; border-radius: 3px; display: inline-block; vertical-align: middle; margin-right: 6px; }
+.bv-cd-mini-fill { height: 100%; background: var(--bv-cd-secondary, #0A2647); border-radius: 3px; }
+.bv-status { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+.bv-status-awaiting-agreement { background: #FFF3CD; color: #856404; }
+.bv-status-awaiting-questionnaire { background: #FFF3CD; color: #856404; }
+.bv-status-awaiting-documents { background: #E8DAEF; color: #6C3483; }
+.bv-status-in-progress { background: #D6EAF8; color: #1A5276; }
+.bv-status-quality-check { background: #D1F2EB; color: #0E6655; }
+.bv-status-completed { background: #D5F5E3; color: #1E8449; }
+.bv-status-delivered { background: #27AE60; color: #fff; }
+.bv-status-archived { background: #E5E7EB; color: #6B7280; }
+.bv-cd-msg-thread { border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; max-height: 400px; overflow-y: auto; margin-bottom: 16px; background: #fafafa; }
+.bv-cd-msg { margin-bottom: 12px; padding: 10px 14px; border-radius: 6px; }
+.bv-cd-msg strong { font-size: 13px; }
+.bv-cd-msg span { font-size: 11px; color: #999; margin-left: 8px; }
+.bv-cd-msg p { margin: 6px 0 0; font-size: 14px; line-height: 1.5; }
+.bv-cd-msg-admin { background: #E3F2FD; border-left: 3px solid var(--bv-cd-primary, #002B5C); }
+.bv-cd-msg-client { background: #fff; border-left: 3px solid var(--bv-cd-secondary, #0A2647); }
+.bv-cd-note { padding: 12px; border-bottom: 1px solid #e0e0e0; }
+.bv-cd-note strong { font-size: 13px; color: var(--bv-cd-primary, #002B5C); }
+.bv-cd-note-time { font-size: 11px; color: #999; margin-left: 8px; }
+.bv-cd-note p { margin: 6px 0 0; font-size: 14px; }
+
+@media (max-width: 782px) {
+    .bv-cd-stats { flex-wrap: wrap; }
+    .bv-cd-overview-grid { grid-template-columns: 1fr; }
+    .bv-cd-project-header { flex-direction: column; }
+}

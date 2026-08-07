@@ -3,6 +3,7 @@
    Matches reference design: Navy #0A2647, Orange #F4A261, Teal #2A9D8F
    ============================================ */
 
+/* ---- These styles are used by the shortcode renderer, not the services-page template ---- */
 /* Page Wrapper */
 .bv-page-wrapper {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -597,55 +598,20 @@
 }
 
 /* ---- RESPONSIVE ---- */
-.bv-desktop-only {
-    display: block;
-}
-
-.bv-mobile-only {
-    display: none;
-}
+/* .bv-desktop-only { display: block; } */
+/* .bv-mobile-only { display: none; } */
 
 @media (max-width: 768px) {
-    .bv-desktop-only {
-        display: none !important;
-    }
+    /* .bv-desktop-only { display: none !important; } */
+    /* .bv-mobile-only { display: block !important; } */
 
-    .bv-mobile-only {
-        display: block !important;
-    }
-
-    .bv-header-inner {
-        padding: 32px 16px 28px;
-    }
-
-    .bv-shield-logo {
-        width: 56px;
-        height: 56px;
-    }
-
-    .bv-brand-name {
-        font-size: 26px;
-        letter-spacing: 2px;
-    }
-
-    .bv-brand-tagline {
-        font-size: 10px;
-        letter-spacing: 3px;
-    }
-
-    .bv-brand-description {
-        font-size: 13px;
-    }
-
-    .bv-section-banner {
-        font-size: 14px;
-        padding: 8px 20px;
-    }
-
-    .bv-section-sub {
-        font-size: 10px;
-        padding: 5px 16px;
-    }
+    /* .bv-header-inner { padding: 32px 16px 28px; } */
+    /* .bv-shield-logo { width: 56px; height: 56px; } */
+    /* .bv-brand-name { font-size: 26px; letter-spacing: 2px; } */
+    /* .bv-brand-tagline { font-size: 10px; letter-spacing: 3px; } */
+    /* .bv-brand-description { font-size: 13px; } */
+    /* .bv-section-banner { font-size: 14px; padding: 8px 20px; } */
+    /* .bv-section-sub { font-size: 10px; padding: 5px 16px; } */
 
     .bv-services-section,
     .bv-plans-section {
@@ -665,16 +631,8 @@
         font-size: 26px;
     }
 
-    .bv-trust-badges {
-        gap: 20px 32px;
-        flex-direction: column;
-        align-items: center;
-    }
-
-    .bv-footer-contact p {
-        font-size: 12px;
-        word-break: break-all;
-    }
+    /* .bv-trust-badges { gap: 20px 32px; flex-direction: column; align-items: center; } */
+    /* .bv-footer-contact p { font-size: 12px; word-break: break-all; } */
 }
 
 @media (min-width: 769px) and (max-width: 1024px) {
@@ -689,5 +647,161 @@
 
     .bv-service-desc {
         font-size: 12px;
+    }
+}
+
+/* ============================================
+   Focus visible styles for accessibility
+   ============================================ */
+.bv-frontend *:focus-visible,
+.bv-services-section *:focus-visible {
+    outline: 2px solid #D4AF37;
+    outline-offset: 2px;
+}
+
+/* ============================================
+   Prefers reduced motion
+   ============================================ */
+@media (prefers-reduced-motion: reduce) {
+    .bv-frontend * {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ============================================
+   WooCommerce Post-Purchase Notice
+   ============================================ */
+.bv-woo-notice-wrap {
+    max-width: 600px;
+    margin: 30px auto;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+.bv-woo-notice-hero {
+    color: #fff;
+    border-radius: 12px;
+    padding: 32px;
+    text-align: center;
+    margin-bottom: 20px;
+}
+.bv-woo-notice-hero--services {
+    background: linear-gradient(135deg, #002B5C 0%, #003d7a 100%);
+}
+.bv-woo-notice-hero--courses {
+    background: linear-gradient(135deg, #2A9D8F 0%, #1a7a6e 100%);
+}
+.bv-woo-notice-hero--both {
+    background: linear-gradient(135deg, #002B5C 0%, #2A9D8F 100%);
+}
+.bv-woo-notice-hero-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+}
+.bv-woo-notice-hero h2 {
+    margin: 0 0 8px;
+    font-size: 22px;
+}
+.bv-woo-notice-hero p {
+    margin: 0 0 24px;
+    color: rgba(255,255,255,0.8);
+    font-size: 15px;
+}
+.bv-woo-notice-hero a {
+    display: inline-block;
+    padding: 14px 32px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 700;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+.bv-woo-notice-cta--gold {
+    background: #D4AF37;
+    color: #002B5C;
+}
+.bv-woo-notice-cta--gold:hover {
+    background: #c9a330;
+}
+.bv-woo-notice-cta--white {
+    background: #fff;
+    color: #2A9D8F;
+}
+.bv-woo-notice-cta--white:hover {
+    background: #f0f0f0;
+}
+.bv-woo-notice-sub {
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+}
+.bv-woo-notice-sub p {
+    margin: 0;
+    color: #666;
+    font-size: 14px;
+}
+.bv-woo-notice-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+.bv-woo-notice-card {
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+}
+.bv-woo-notice-card-icon {
+    font-size: 36px;
+    margin-bottom: 12px;
+}
+.bv-woo-notice-card h3 {
+    margin: 0 0 8px;
+    font-size: 16px;
+}
+.bv-woo-notice-card .h3--navy {
+    color: #002B5C;
+}
+.bv-woo-notice-card .h3--teal {
+    color: #2A9D8F;
+}
+.bv-woo-notice-card p {
+    margin: 0 0 16px;
+    color: #666;
+    font-size: 14px;
+}
+.bv-woo-notice-card a {
+    display: inline-block;
+    padding: 12px 24px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+.bv-woo-notice-card-cta--navy {
+    background: #002B5C;
+    color: #fff;
+}
+.bv-woo-notice-card-cta--navy:hover {
+    background: #003d80;
+}
+.bv-woo-notice-card-cta--teal {
+    background: #2A9D8F;
+    color: #fff;
+}
+.bv-woo-notice-card-cta--teal:hover {
+    background: #21867a;
+}
+
+@media (max-width: 600px) {
+    .bv-woo-notice-grid {
+        grid-template-columns: 1fr;
+    }
+    .bv-woo-notice-hero {
+        padding: 24px 16px;
     }
 }

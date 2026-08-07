@@ -207,7 +207,7 @@ class BV_Document_Requirements {
             wp_send_json_success( array( 'message' => __( 'Document requirement updated.', 'businessvance-services-manager' ), 'id' => $id ) );
         } else {
             // Auto-assign next display_order
-            $max_order = (int) $wpdb->get_var( "SELECT COALESCE(MAX(display_order), 0) FROM {$this->get_table()}" );
+            $max_order = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COALESCE(MAX(display_order), 0) FROM {$this->get_table()}" ) );
             $data['display_order'] = $max_order + 1;
             $format[] = '%d';
 
@@ -250,14 +250,19 @@ class BV_Document_Requirements {
             wp_send_json_error();
         }
 
+        $sanitized_ids = array();
+        $case_parts = array();
+
         foreach ( $order as $position => $id ) {
-            $wpdb->update(
-                $this->get_table(),
-                array( 'display_order' => intval( $position ) ),
-                array( 'id' => intval( $id ) ),
-                array( '%d' ),
-                array( '%d' )
-            );
+            $sanitized_ids[] = intval( $id );
+            $case_parts[] = $wpdb->prepare( 'WHEN %d THEN %d', intval( $id ), intval( $position ) );
+        }
+
+        if ( ! empty( $sanitized_ids ) && ! empty( $case_parts ) ) {
+            $table = $this->get_table();
+            $id_list = implode( ',', $sanitized_ids );
+            $sql = "UPDATE {$table} SET display_order = CASE id " . implode( ' ', $case_parts ) . " END WHERE id IN ({$id_list})";
+            $wpdb->query( $sql );
         }
 
         wp_send_json_success( array( 'message' => __( 'Order saved.', 'businessvance-services-manager' ) ) );

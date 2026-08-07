@@ -76,10 +76,24 @@ class BV_Questionnaire_Import {
             'updated_at'  => current_time( 'mysql' ),
         ), array( '%s', '%s', '%s', '%s', '%s', '%s', '%s' ) );
 
+        if ( ! $wpdb->insert_id ) {
+            error_log( 'BV Import: Failed to insert template ' . $data['name'] . ': ' . $wpdb->last_error );
+            return array(
+                'status'    => 'error',
+                'message'   => 'Failed to create template: ' . $data['name'],
+                'sections'  => 0,
+                'questions' => 0,
+            );
+        }
+
         $template_id = $wpdb->insert_id;
         $total_questions = 0;
 
+        // Wrap section/question inserts in a transaction for atomicity
+        $wpdb->query( 'START TRANSACTION' );
+
         // Insert sections and questions.
+        $section_count = 0;
         foreach ( $data['sections'] as $section ) {
             $wpdb->insert( $table_sections, array(
                 'template_id'   => $template_id,
@@ -89,7 +103,21 @@ class BV_Questionnaire_Import {
                 'created_at'    => current_time( 'mysql' ),
             ), array( '%d', '%s', '%s', '%d', '%s' ) );
 
+            if ( ! $wpdb->insert_id ) {
+                error_log( 'BV Import: Failed to insert section ' . $section['title'] . ': ' . $wpdb->last_error );
+                $wpdb->query( 'ROLLBACK' );
+                // Clean up the orphaned template row
+                $wpdb->delete( $table_templates, array( 'id' => $template_id ) );
+                return array(
+                    'status'    => 'error',
+                    'message'   => 'Failed to create section: ' . $section['title'],
+                    'sections'  => $section_count,
+                    'questions' => $total_questions,
+                );
+            }
+
             $section_id = $wpdb->insert_id;
+            $section_count++;
 
             foreach ( $section['questions'] as $order => $q ) {
                 $options_json = ( ! empty( $q['options'] ) )
@@ -113,6 +141,8 @@ class BV_Questionnaire_Import {
                 $total_questions++;
             }
         }
+
+        $wpdb->query( 'COMMIT' );
 
         return array(
             'status'    => 'imported',

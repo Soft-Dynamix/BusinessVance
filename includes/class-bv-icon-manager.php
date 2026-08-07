@@ -279,25 +279,7 @@ class BV_Icon_Manager {
             'patternUnits'         => true,
             'patternTransform'     => true,
         ),
-        'animate'   => array(
-            'attributeName' => true,
-            'from'          => true,
-            'to'            => true,
-            'dur'           => true,
-            'repeatCount'   => true,
-            'values'        => true,
-            'begin'         => true,
-        ),
-        'animateTransform' => array(
-            'attributeName' => true,
-            'type'          => true,
-            'from'          => true,
-            'to'            => true,
-            'dur'           => true,
-            'repeatCount'   => true,
-            'values'        => true,
-            'begin'         => true,
-        ),
+
         'symbol'    => array(
             'id'      => true,
             'viewBox' => true,
@@ -326,16 +308,7 @@ class BV_Icon_Manager {
             'class'          => true,
             'style'          => true,
         ),
-        'foreignObject' => array(
-            'x'      => true,
-            'y'      => true,
-            'width'  => true,
-            'height' => true,
-            'class'  => true,
-        ),
         'image'     => array(
-            'href'       => true,
-            'xlink:href' => true,
             'x'          => true,
             'y'          => true,
             'width'      => true,
@@ -450,6 +423,23 @@ class BV_Icon_Manager {
             'ajax_url' => admin_url( 'admin-ajax.php' ),
             'nonce'    => wp_create_nonce( 'bv_admin_nonce' ),
             'page'     => 'icons',
+            'strings'  => array(
+                'add_icon_title'      => __( 'Add Custom Icon', 'businessvance-services-manager' ),
+                'edit_icon_title'     => __( 'Edit Custom Icon', 'businessvance-services-manager' ),
+                'save_btn'            => __( 'Save Icon', 'businessvance-services-manager' ),
+                'update_btn'          => __( 'Update Icon', 'businessvance-services-manager' ),
+                'saving_btn'          => __( 'Saving...', 'businessvance-services-manager' ),
+                'preview_placeholder' => __( 'Icon preview will appear here', 'businessvance-services-manager' ),
+                'select_svg'          => __( 'Please select an SVG file.', 'businessvance-services-manager' ),
+                'label_required'      => __( 'Icon label is required.', 'businessvance-services-manager' ),
+                'name_required'       => __( 'Icon name is required.', 'businessvance-services-manager' ),
+                'name_format'         => __( 'Icon name must contain only lowercase letters, numbers, and hyphens.', 'businessvance-services-manager' ),
+                'svg_required'        => __( 'Please upload an SVG file or paste SVG code.', 'businessvance-services-manager' ),
+                'load_failed'         => __( 'Failed to load icon.', 'businessvance-services-manager' ),
+                'delete_failed'       => __( 'Failed to delete icon.', 'businessvance-services-manager' ),
+                'delete_confirm'      => __( 'Are you sure you want to delete this icon?', 'businessvance-services-manager' ),
+                'generic_error'       => __( 'An error occurred. Please try again.', 'businessvance-services-manager' ),
+            ),
         ) );
     }
 
@@ -602,386 +592,6 @@ class BV_Icon_Manager {
                 </div>
             </div>
         </div>
-
-        <style>
-            /* Icon Manager Styles */
-            .bv-icon-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-                gap: 16px;
-            }
-            .bv-icon-card {
-                background: #fff;
-                border: 1px solid #dcdcde;
-                border-radius: 8px;
-                padding: 16px 12px 12px;
-                text-align: center;
-                transition: box-shadow 0.2s, border-color 0.2s;
-                position: relative;
-            }
-            .bv-icon-card:hover {
-                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-                border-color: #008080;
-            }
-            .bv-icon-card__preview {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                height: 48px;
-                margin-bottom: 8px;
-                color: #002B5C;
-            }
-            .bv-icon-card__label {
-                font-weight: 600;
-                font-size: 12px;
-                color: #1d2327;
-                margin-bottom: 2px;
-                word-break: break-word;
-            }
-            .bv-icon-card__name {
-                font-size: 11px;
-                color: #666;
-                word-break: break-all;
-            }
-            .bv-icon-card--custom .bv-icon-card__actions {
-                margin-top: 10px;
-                display: flex;
-                gap: 6px;
-                justify-content: center;
-            }
-            .bv-icon-modal {
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                z-index: 160000;
-            }
-            .bv-icon-modal__overlay {
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: rgba(0,0,0,0.5);
-            }
-            .bv-icon-modal__content {
-                position: absolute;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
-                background: #fff;
-                border-radius: 8px;
-                width: 560px;
-                max-width: 95vw;
-                max-height: 90vh;
-                overflow-y: auto;
-                box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-            }
-            .bv-icon-modal__header {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding: 16px 20px;
-                border-bottom: 1px solid #dcdcde;
-            }
-            .bv-icon-modal__header h2 {
-                margin: 0;
-                font-size: 18px;
-            }
-            .bv-icon-modal__close {
-                background: none;
-                border: none;
-                font-size: 24px;
-                cursor: pointer;
-                color: #666;
-                line-height: 1;
-                padding: 0 4px;
-            }
-            .bv-icon-modal__close:hover {
-                color: #d63638;
-            }
-            .bv-icon-modal__body {
-                padding: 20px;
-            }
-            .bv-icon-modal__body .bv-form-group {
-                margin-bottom: 16px;
-            }
-            .bv-icon-modal__body .bv-form-group label {
-                display: block;
-                font-weight: 600;
-                margin-bottom: 4px;
-            }
-            .bv-icon-modal__body .bv-form-group .required {
-                color: #d63638;
-            }
-            .bv-icon-modal__footer {
-                padding: 16px 20px;
-                border-top: 1px solid #dcdcde;
-                display: flex;
-                justify-content: flex-end;
-                gap: 8px;
-            }
-            .bv-icon-source-tabs {
-                display: flex;
-                gap: 4px;
-            }
-            .bv-icon-source-tab {
-                cursor: pointer;
-            }
-            .bv-icon-source-tab.active {
-                background: #008080;
-                color: #fff;
-                border-color: #008080;
-            }
-            .bv-icon-preview svg {
-                max-width: 80px;
-                max-height: 80px;
-                color: #002B5C;
-            }
-            .bv-section-title {
-                margin-bottom: 16px;
-                padding-bottom: 8px;
-                border-bottom: 1px solid #dcdcde;
-            }
-        </style>
-
-        <script>
-        (function($) {
-            'use strict';
-
-            var currentSource = 'upload';
-
-            // Open modal for adding new icon
-            $('#bv-add-icon-btn').on('click', function() {
-                $('#bv-icon-edit-id').val(0);
-                $('#bv-icon-modal-title').text('<?php esc_html_e( 'Add Custom Icon', 'businessvance-services-manager' ); ?>');
-                $('#bv-icon-save-btn').text('<?php esc_html_e( 'Save Icon', 'businessvance-services-manager' ); ?>');
-                $('#bv-icon-label').val('');
-                $('#bv-icon-name').val('');
-                $('#bv-icon-file').val('');
-                $('#bv-icon-svg-code').val('');
-                $('#bv-icon-viewbox').val('0 0 24 24');
-                $('#bv-icon-svg-inner').val('');
-                $('#bv-icon-preview').html('<span style="color:#999;"><?php esc_html_e( 'Icon preview will appear here', 'businessvance-services-manager' ); ?></span>');
-                $('#bv-icon-preview-group').hide();
-                switchSourceTab('upload');
-                $('#bv-icon-modal').show();
-            });
-
-            // Edit icon button
-            $(document).on('click', '.bv-icon-edit-btn', function() {
-                var id = $(this).data('id');
-                $.ajax({
-                    url: bvAdmin.ajax_url,
-                    type: 'POST',
-                    data: {
-                        action: 'bv_get_custom_icon',
-                        nonce: bvAdmin.nonce,
-                        id: id
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            var icon = response.data;
-                            $('#bv-icon-edit-id').val(icon.id);
-                            $('#bv-icon-modal-title').text('<?php esc_html_e( 'Edit Custom Icon', 'businessvance-services-manager' ); ?>');
-                            $('#bv-icon-save-btn').text('<?php esc_html_e( 'Update Icon', 'businessvance-services-manager' ); ?>');
-                            $('#bv-icon-label').val(icon.label);
-                            $('#bv-icon-name').val(icon.name);
-                            $('#bv-icon-svg-inner').val(icon.svg_inner);
-                            $('#bv-icon-viewbox').val(icon.view_box || '0 0 24 24');
-                            $('#bv-icon-file').val('');
-                            $('#bv-icon-svg-code').val('');
-                            switchSourceTab('paste');
-                            $('#bv-icon-svg-code').val('<svg viewBox="' + (icon.view_box || '0 0 24 24') + '" xmlns="http://www.w3.org/2000/svg">' + icon.svg_inner + '</svg>');
-                            showPreview(icon.svg_inner, icon.view_box || '0 0 24 24');
-                            $('#bv-icon-modal').show();
-                        } else {
-                            alert(response.data.message || '<?php esc_html_e( 'Failed to load icon.', 'businessvance-services-manager' ); ?>');
-                        }
-                    }
-                });
-            });
-
-            // Delete icon button
-            $(document).on('click', '.bv-icon-delete-btn', function() {
-                var btn = $(this);
-                var id = btn.data('id');
-                var name = btn.data('name');
-                if (!confirm('<?php esc_html_e( 'Are you sure you want to delete this icon?', 'businessvance-services-manager' ); ?>')) {
-                    return;
-                }
-                $.ajax({
-                    url: bvAdmin.ajax_url,
-                    type: 'POST',
-                    data: {
-                        action: 'bv_delete_custom_icon',
-                        nonce: bvAdmin.nonce,
-                        id: id
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            if (response.data.warning) {
-                                alert(response.data.warning);
-                            }
-                            btn.closest('.bv-icon-card').fadeOut(300, function() { $(this).remove(); });
-                        } else {
-                            alert(response.data.message || '<?php esc_html_e( 'Failed to delete icon.', 'businessvance-services-manager' ); ?>');
-                        }
-                    }
-                });
-            });
-
-            // Close modal
-            $('#bv-icon-modal-close, #bv-icon-modal-cancel, .bv-icon-modal__overlay').on('click', function() {
-                $('#bv-icon-modal').hide();
-            });
-
-            // Source tabs
-            $('.bv-icon-source-tab').on('click', function() {
-                switchSourceTab($(this).data('source'));
-            });
-
-            function switchSourceTab(source) {
-                currentSource = source;
-                $('.bv-icon-source-tab').removeClass('active');
-                $('.bv-icon-source-tab[data-source="' + source + '"]').addClass('active');
-                if (source === 'upload') {
-                    $('#bv-icon-upload-group').show();
-                    $('#bv-icon-paste-group').hide();
-                } else {
-                    $('#bv-icon-upload-group').hide();
-                    $('#bv-icon-paste-group').show();
-                }
-            }
-
-            // Auto-generate slug from label
-            $('#bv-icon-label').on('input', function() {
-                var editId = parseInt($('#bv-icon-edit-id').val());
-                if (editId === 0) {
-                    var slug = $(this).val().toLowerCase()
-                        .replace(/[^a-z0-9\s-]/g, '')
-                        .replace(/[\s-]+/g, '-')
-                        .replace(/^-+|-+$/g, '')
-                        .replace(/^-/, 'custom-');
-                    if (!slug) slug = 'custom-icon';
-                    $('#bv-icon-name').val(slug);
-                }
-            });
-
-            // Handle file upload
-            $('#bv-icon-file').on('change', function(e) {
-                var file = e.target.files[0];
-                if (!file) return;
-                if (!file.name.toLowerCase().endsWith('.svg')) {
-                    alert('<?php esc_html_e( 'Please select an SVG file.', 'businessvance-services-manager' ); ?>');
-                    $(this).val('');
-                    return;
-                }
-                var reader = new FileReader();
-                reader.onload = function(ev) {
-                    processSvgContent(ev.target.result);
-                };
-                reader.readAsText(file);
-            });
-
-            // Handle paste of SVG code
-            $('#bv-icon-svg-code').on('input', function() {
-                var code = $(this).val().trim();
-                if (code.indexOf('<svg') !== -1) {
-                    processSvgContent(code);
-                }
-            });
-
-            function processSvgContent(svgString) {
-                // Extract inner content between <svg ...> and </svg>
-                var innerMatch = svgString.match(/<svg[^>]*>([\s\S]*)<\/svg>/i);
-                if (!innerMatch) {
-                    // Maybe the content is already inner content
-                    if (svgString.indexOf('<svg') === -1 && (svgString.indexOf('<path') !== -1 || svgString.indexOf('<circle') !== -1 || svgString.indexOf('<rect') !== -1)) {
-                        $('#bv-icon-svg-inner').val(svgString.trim());
-                        showPreview(svgString.trim(), '0 0 24 24');
-                    }
-                    return;
-                }
-
-                var svgTag = svgString.match(/<svg[^>]*>/i)[0];
-                var inner = innerMatch[1].trim();
-
-                // Extract viewBox
-                var vbMatch = svgTag.match(/viewBox\s*=\s*["']([^"']+)["']/i);
-                var viewBox = vbMatch ? vbMatch[1] : '0 0 24 24';
-
-                $('#bv-icon-svg-inner').val(inner);
-                $('#bv-icon-viewbox').val(viewBox);
-                showPreview(inner, viewBox);
-            }
-
-            function showPreview(inner, viewBox) {
-                var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="' + viewBox + '" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + '</svg>';
-                $('#bv-icon-preview').html(svg);
-                $('#bv-icon-preview-group').show();
-            }
-
-            // Save icon
-            $('#bv-icon-save-btn').on('click', function() {
-                var label = $('#bv-icon-label').val().trim();
-                var name = $('#bv-icon-name').val().trim();
-                var svgInner = $('#bv-icon-svg-inner').val().trim();
-                var editId = parseInt($('#bv-icon-edit-id').val());
-
-                if (!label) {
-                    alert('<?php esc_html_e( 'Icon label is required.', 'businessvance-services-manager' ); ?>');
-                    $('#bv-icon-label').focus();
-                    return;
-                }
-                if (!name) {
-                    alert('<?php esc_html_e( 'Icon name is required.', 'businessvance-services-manager' ); ?>');
-                    $('#bv-icon-name').focus();
-                    return;
-                }
-                if (!/^[a-z0-9-]+$/.test(name)) {
-                    alert('<?php esc_html_e( 'Icon name must contain only lowercase letters, numbers, and hyphens.', 'businessvance-services-manager' ); ?>');
-                    $('#bv-icon-name').focus();
-                    return;
-                }
-                if (!svgInner) {
-                    alert('<?php esc_html_e( 'Please upload an SVG file or paste SVG code.', 'businessvance-services-manager' ); ?>');
-                    return;
-                }
-
-                var btn = $(this);
-                btn.prop('disabled', true).text('<?php esc_html_e( 'Saving...', 'businessvance-services-manager' ); ?>');
-
-                $.ajax({
-                    url: bvAdmin.ajax_url,
-                    type: 'POST',
-                    data: {
-                        action: 'bv_save_custom_icon',
-                        nonce: bvAdmin.nonce,
-                        id: editId,
-                        name: name,
-                        label: label,
-                        svg_inner: svgInner,
-                        view_box: $('#bv-icon-viewbox').val().trim(),
-                        source: currentSource
-                    },
-                    success: function(response) {
-                        btn.prop('disabled', false).text(editId ? '<?php esc_html_e( 'Update Icon', 'businessvance-services-manager' ); ?>' : '<?php esc_html_e( 'Save Icon', 'businessvance-services-manager' ); ?>');
-                        if (response.success) {
-                            location.reload();
-                        } else {
-                            alert(response.data.message || '<?php esc_html_e( 'An error occurred. Please try again.', 'businessvance-services-manager' ); ?>');
-                        }
-                    },
-                    error: function() {
-                        btn.prop('disabled', false).text(editId ? '<?php esc_html_e( 'Update Icon', 'businessvance-services-manager' ); ?>' : '<?php esc_html_e( 'Save Icon', 'businessvance-services-manager' ); ?>');
-                        alert('<?php esc_html_e( 'An error occurred. Please try again.', 'businessvance-services-manager' ); ?>');
-                    }
-                });
-            });
-        })(jQuery);
-        </script>
         <?php
     }
 
@@ -1071,6 +681,16 @@ class BV_Icon_Manager {
         // Sanitize SVG inner content
         $svg_inner = self::sanitize_svg( $raw_svg );
 
+        // Store view_box in a separate option since the bv_custom_icons table
+        // does not have a view_box column. Stored as an array keyed by icon name.
+        // TODO: Add a view_box column to bv_custom_icons table in a future migration.
+        $view_box = sanitize_text_field( $_POST['view_box'] ?? '0 0 24 24' );
+        $view_box_option = get_option( 'bv_custom_icons_viewbox', array() );
+        if ( ! is_array( $view_box_option ) ) {
+            $view_box_option = array();
+        }
+        $view_box_option[ $name ] = $view_box;
+
         $data = array(
             'name'      => $name,
             'label'     => $label,
@@ -1082,19 +702,20 @@ class BV_Icon_Manager {
         if ( $id > 0 ) {
             // Update existing icon
             $wpdb->update( $table, $data, array( 'id' => $id ), $format, array( '%d' ) );
-            wp_send_json_success( array(
-                'message' => __( 'Icon updated.', 'businessvance-services-manager' ),
-                'id'      => $id,
-            ) );
         } else {
             // Insert new icon
             $wpdb->insert( $table, $data, $format );
-            $new_id = $wpdb->insert_id;
-            wp_send_json_success( array(
-                'message' => __( 'Icon saved.', 'businessvance-services-manager' ),
-                'id'      => $new_id,
-            ) );
         }
+
+        // Persist view_box option
+        update_option( 'bv_custom_icons_viewbox', $view_box_option );
+
+        $saved_id = $id > 0 ? $id : $wpdb->insert_id;
+        $message = $id > 0 ? __( 'Icon updated.', 'businessvance-services-manager' ) : __( 'Icon saved.', 'businessvance-services-manager' );
+        wp_send_json_success( array(
+            'message' => $message,
+            'id'      => $saved_id,
+        ) );
     }
 
     /**
@@ -1173,9 +794,9 @@ class BV_Icon_Manager {
             wp_send_json_error( array( 'message' => __( 'Icon not found.', 'businessvance-services-manager' ) ) );
         }
 
-        // Attempt to extract viewBox from the svg_inner content if it was stored
-        // Custom icons store the viewBox alongside the svg_inner; we return a default.
-        $icon['view_box'] = '0 0 24 24';
+        // Retrieve view_box from the separate option.
+        $view_box_option = get_option( 'bv_custom_icons_viewbox', array() );
+        $icon['view_box'] = isset( $view_box_option[ $icon['name'] ] ) ? $view_box_option[ $icon['name'] ] : '0 0 24 24';
 
         wp_send_json_success( $icon );
     }
@@ -1211,10 +832,16 @@ class BV_Icon_Manager {
      * @return array Array of objects/associative arrays, each with id, name, label, svg_inner.
      */
     public static function get_custom_icons() {
+        static $custom_icons_cache = null;
+        if ( null !== $custom_icons_cache ) {
+            return $custom_icons_cache;
+        }
+
         global $wpdb;
         $table = $wpdb->prefix . 'bv_custom_icons';
 
-        return $wpdb->get_results( "SELECT id, name, label, svg_inner FROM {$table} ORDER BY created_at DESC", ARRAY_A );
+        $custom_icons_cache = $wpdb->get_results( "SELECT id, name, label, svg_inner FROM {$table} ORDER BY created_at DESC", ARRAY_A );
+        return $custom_icons_cache;
     }
 
     /**

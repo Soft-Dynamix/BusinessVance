@@ -17,6 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class BV_Client_Portal {
 
     private $plugin_url;
+    private $_question_service_map = array();
 
     public function __construct() {
         $this->plugin_url = BV_PLUGIN_URL;
@@ -29,7 +30,8 @@ class BV_Client_Portal {
         add_action( 'wp_ajax_bv_portal_download_report', array( $this, 'ajax_download_report' ) );
 
         // Ensure bv_project_documents has document_requirement_id column
-        add_action( 'init', array( $this, 'maybe_add_document_requirement_column' ), 99 );
+        // Only runs on admin_init to avoid running on every frontend page load.
+        add_action( 'admin_init', array( $this, 'maybe_add_document_requirement_column' ), 99 );
     }
 
     /**
@@ -40,12 +42,20 @@ class BV_Client_Portal {
      * @return void
      */
     public function maybe_add_document_requirement_column() {
+        // Only run this migration once.
+        if ( get_option( 'bv_document_requirement_column_added' ) ) {
+            return;
+        }
+
         global $wpdb;
         $table = $wpdb->prefix . 'bv_project_documents';
         $col   = $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'document_requirement_id'" );
         if ( empty( $col ) ) {
             $wpdb->query( "ALTER TABLE {$table} ADD COLUMN document_requirement_id bigint(20) UNSIGNED NOT NULL DEFAULT 0 AFTER service_id" );
         }
+
+        // Mark as done so we never run this again on every page load.
+        update_option( 'bv_document_requirement_column_added', '1' );
     }
 
     public function enqueue_assets() {
@@ -339,7 +349,7 @@ class BV_Client_Portal {
         $active_project = null;
         if ( $project_id ) {
             foreach ( $projects as $p ) {
-                if ( $p->id == $project_id ) { $active_project = $p; break; }
+                if ( $p->id === $project_id ) { $active_project = $p; break; }
             }
         }
         if ( ! $active_project ) {
@@ -1519,7 +1529,10 @@ class BV_Client_Portal {
             wp_die( esc_html__( 'Report not found', 'businessvance-services-manager' ) );
         }
 
-        header( 'Content-Type: ' . $report->mime_type );
+        // Validate MIME type against whitelist
+        $allowed_mime_types = array( 'application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/plain', 'application/zip', 'application/octet-stream' );
+        $mime = in_array( $report->mime_type, $allowed_mime_types, true ) ? $report->mime_type : 'application/octet-stream';
+        header( 'Content-Type: ' . $mime );
         header( 'Content-Disposition: attachment; filename="' . basename( $report->filename ) . '"' );
         header( 'Content-Length: ' . $report->filesize );
         readfile( $report->filepath );

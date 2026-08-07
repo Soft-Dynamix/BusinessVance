@@ -15,6 +15,11 @@
     var nonce   = bvAdmin.nonce;
     var strings = bvAdmin.strings;
 
+    function bvEscapeAttr(str) {
+        if (!str) return '';
+        return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
     /* ============================================
        MODAL MANAGEMENT
        ============================================ */
@@ -45,7 +50,7 @@
         // Reset icon picker
         $('#bv-icon-picker-grid .bv-icon-pick-btn').removeClass('selected');
         $('#bv-icon-picker-grid .bv-icon-pick-btn[data-icon="briefcase"]').addClass('selected');
-        $('#bv-icon-preview').html($('.bv-icon-picker-grid .bv-icon-pick-btn[data-icon="briefcase"] svg').clone());
+        $('#bv-icon-preview').html($('#bv-icon-picker-grid .bv-icon-pick-btn[data-icon="briefcase"] svg').clone());
         // Reset new service fields
         $('#bv-svc-agreements-list').empty();
         $('#svc-agreement-ids').val('');
@@ -106,10 +111,10 @@
                 // Set icon picker
                 $('#bv-service-form input[name="icon"]').val(svc.icon || 'briefcase');
                 // Highlight the selected icon button
-                $('.bv-icon-picker-grid .bv-icon-pick-btn').removeClass('selected');
-                $('.bv-icon-picker-grid .bv-icon-pick-btn[data-icon="' + (svc.icon || 'briefcase') + '"]').addClass('selected');
+                $('#bv-icon-picker-grid .bv-icon-pick-btn').removeClass('selected');
+                $('#bv-icon-picker-grid .bv-icon-pick-btn[data-icon="' + bvEscapeAttr(svc.icon || 'briefcase').replace(/]/g, '') + '"]').addClass('selected');
                 // Update preview
-                var selectedSvg = $('.bv-icon-picker-grid .bv-icon-pick-btn[data-icon="' + (svc.icon || 'briefcase') + '"] svg').clone();
+                var selectedSvg = $('#bv-icon-picker-grid .bv-icon-pick-btn[data-icon="' + bvEscapeAttr(svc.icon || 'briefcase').replace(/]/g, '') + '"] svg').clone();
                 $('#bv-icon-preview').html(selectedSvg);
                 $('#bv-service-form input[name="button_label"]').val(svc.button_label);
                 $('#bv-service-form select[name="service_type"]').val(svc.service_type);
@@ -125,7 +130,7 @@
             } else {
                 alert(response.data.message || strings.error);
             }
-        });
+        }).fail(function() { alert(strings.error); });
     });
 
     // Save Service
@@ -170,7 +175,7 @@
             } else {
                 alert(response.data.message || strings.error);
             }
-        });
+        }).fail(function() { alert(strings.error); });
     });
 
     /* ============================================
@@ -227,7 +232,7 @@
 
                 openModal('bv-plan-modal');
             }
-        });
+        }).fail(function() { alert(strings.error); });
     });
 
     // Save Plan
@@ -286,13 +291,13 @@
             } else {
                 alert(response.data.message || strings.error);
             }
-        });
+        }).fail(function() { alert(strings.error); });
     });
 
     // Feature row management
     function addFeatureRow(value) {
         var row = $('<div class="bv-feature-row">' +
-            '<input type="text" placeholder="Enter feature..." value="' + (value || '') + '">' +
+            '<input type="text" placeholder="Enter feature..." value="' + bvEscapeAttr(value || '') + '">' +
             '<button type="button" class="bv-remove-feature">&times;</button>' +
             '</div>');
         $('#bv-features-list').append(row);
@@ -383,7 +388,7 @@
             } else {
                 alert(response.data.message || strings.error);
             }
-        });
+        }).fail(function() { alert(strings.error); });
     });
 
     /* ============================================
@@ -412,7 +417,7 @@
                     $btn.attr('title', 'Click to show');
                 }
             }
-        });
+        }).fail(function() { alert(strings.error); });
     });
 
     /* ============================================
@@ -446,7 +451,7 @@
                             $(this).find('td').effect('highlight', { color: '#D4AF37' }, 300);
                         });
                     }
-                });
+                }).fail(function() { /* reorder failed silently, DOM already reflects user intent */ });
             }
         });
     }
@@ -753,6 +758,260 @@
 
     $(document).on('dblclick', '#bv-svc-add-doc-req', function() {
         $(this).next('#bv-svc-add-doc-req-btn').trigger('click');
+    });
+
+})(jQuery);
+
+/* ============================================
+   Icon Manager Page Scripts
+   Extracted from inline <script> in class-bv-icon-manager.php.
+   Only runs when bvAdmin.page === 'icons'.
+   ============================================ */
+(function($) {
+    'use strict';
+
+    if (typeof bvAdmin === 'undefined') return;
+    if (bvAdmin.page !== 'icons') return;
+
+    var strings = bvAdmin.strings || {};
+    var currentSource = 'upload';
+
+    // Open modal for adding new icon
+    $('#bv-add-icon-btn').on('click', function() {
+        $('#bv-icon-edit-id').val(0);
+        $('#bv-icon-modal-title').text(strings.add_icon_title || 'Add Custom Icon');
+        $('#bv-icon-save-btn').text(strings.save_btn || 'Save Icon');
+        $('#bv-icon-label').val('');
+        $('#bv-icon-name').val('');
+        $('#bv-icon-file').val('');
+        $('#bv-icon-svg-code').val('');
+        $('#bv-icon-viewbox').val('0 0 24 24');
+        $('#bv-icon-svg-inner').val('');
+        $('#bv-icon-preview').html('<span style="color:#999;">' + (strings.preview_placeholder || 'Icon preview will appear here') + '</span>');
+        $('#bv-icon-preview-group').hide();
+        switchSourceTab('upload');
+        $('#bv-icon-modal').show();
+    });
+
+    // Edit icon button
+    $(document).on('click', '.bv-icon-edit-btn', function() {
+        var id = $(this).data('id');
+        $.ajax({
+            url: bvAdmin.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'bv_get_custom_icon',
+                nonce: bvAdmin.nonce,
+                id: id
+            },
+            success: function(response) {
+                if (response.success) {
+                    var icon = response.data;
+                    $('#bv-icon-edit-id').val(icon.id);
+                    $('#bv-icon-modal-title').text(strings.edit_icon_title || 'Edit Custom Icon');
+                    $('#bv-icon-save-btn').text(strings.update_btn || 'Update Icon');
+                    $('#bv-icon-label').val(icon.label);
+                    $('#bv-icon-name').val(icon.name);
+                    $('#bv-icon-svg-inner').val(icon.svg_inner);
+                    $('#bv-icon-viewbox').val(icon.view_box || '0 0 24 24');
+                    $('#bv-icon-file').val('');
+                    $('#bv-icon-svg-code').val('');
+                    switchSourceTab('paste');
+                    $('#bv-icon-svg-code').val('<svg viewBox="' + (icon.view_box || '0 0 24 24') + '" xmlns="http://www.w3.org/2000/svg">' + icon.svg_inner + '</svg>');
+                    showPreview(icon.svg_inner, icon.view_box || '0 0 24 24');
+                    $('#bv-icon-modal').show();
+                } else {
+                    alert(response.data.message || (strings.load_failed || 'Failed to load icon.'));
+                }
+            }
+        });
+    });
+
+    // Delete icon button
+    $(document).on('click', '.bv-icon-delete-btn', function() {
+        var btn = $(this);
+        var id = btn.data('id');
+        var name = btn.data('name');
+        if (!confirm(strings.delete_confirm || 'Are you sure you want to delete this icon?')) {
+            return;
+        }
+        $.ajax({
+            url: bvAdmin.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'bv_delete_custom_icon',
+                nonce: bvAdmin.nonce,
+                id: id
+            },
+            success: function(response) {
+                if (response.success) {
+                    if (response.data.warning) {
+                        alert(response.data.warning);
+                    }
+                    btn.closest('.bv-icon-card').fadeOut(300, function() { $(this).remove(); });
+                } else {
+                    alert(response.data.message || (strings.delete_failed || 'Failed to delete icon.'));
+                }
+            }
+        });
+    });
+
+    // Close modal
+    $('#bv-icon-modal-close, #bv-icon-modal-cancel, .bv-icon-modal__overlay').on('click', function() {
+        $('#bv-icon-modal').hide();
+    });
+
+    // Source tabs
+    $('.bv-icon-source-tab').on('click', function() {
+        switchSourceTab($(this).data('source'));
+    });
+
+    function switchSourceTab(source) {
+        currentSource = source;
+        $('.bv-icon-source-tab').removeClass('active');
+        $('.bv-icon-source-tab[data-source="' + source + '"]').addClass('active');
+        if (source === 'upload') {
+            $('#bv-icon-upload-group').show();
+            $('#bv-icon-paste-group').hide();
+        } else {
+            $('#bv-icon-upload-group').hide();
+            $('#bv-icon-paste-group').show();
+        }
+    }
+
+    // Auto-generate slug from label
+    $('#bv-icon-label').on('input', function() {
+        var editId = parseInt($('#bv-icon-edit-id').val());
+        if (editId === 0) {
+            var slug = $(this).val().toLowerCase()
+                .replace(/[^a-z0-9\s-]/g, '')
+                .replace(/[\s-]+/g, '-')
+                .replace(/^-+|-+$/g, '')
+                .replace(/^-/, 'custom-');
+            if (!slug) slug = 'custom-icon';
+            $('#bv-icon-name').val(slug);
+        }
+    });
+
+    // Handle file upload
+    $('#bv-icon-file').on('change', function(e) {
+        var file = e.target.files[0];
+        if (!file) return;
+        if (!file.name.toLowerCase().endsWith('.svg')) {
+            alert(strings.select_svg || 'Please select an SVG file.');
+            $(this).val('');
+            return;
+        }
+        var reader = new FileReader();
+        reader.onload = function(ev) {
+            processSvgContent(ev.target.result);
+        };
+        reader.readAsText(file);
+    });
+
+    // Handle paste of SVG code
+    $('#bv-icon-svg-code').on('input', function() {
+        var code = $(this).val().trim();
+        if (code.indexOf('<svg') !== -1) {
+            processSvgContent(code);
+        }
+    });
+
+    function processSvgContent(svgString) {
+        var innerMatch = svgString.match(/<svg[^>]*>([\s\S]*)<\/svg>/i);
+        if (!innerMatch) {
+            if (svgString.indexOf('<svg') === -1 && (svgString.indexOf('<path') !== -1 || svgString.indexOf('<circle') !== -1 || svgString.indexOf('<rect') !== -1)) {
+                $('#bv-icon-svg-inner').val(svgString.trim());
+                showPreview(svgString.trim(), '0 0 24 24');
+            }
+            return;
+        }
+
+        var svgTag = svgString.match(/<svg[^>]*>/i)[0];
+        var inner = innerMatch[1].trim();
+
+        var vbMatch = svgTag.match(/viewBox\s*=\s*["']([^"']+)["']/i);
+        var viewBox = vbMatch ? vbMatch[1] : '0 0 24 24';
+
+        $('#bv-icon-svg-inner').val(inner);
+        $('#bv-icon-viewbox').val(viewBox);
+        showPreview(inner, viewBox);
+    }
+
+    function sanitizeSvgForPreview(svgString) {
+        var dangerousElements = ['script', 'foreignObject'];
+        dangerousElements.forEach(function(tag) {
+            var regex = new RegExp('<\\/?\\s*' + tag + '[^>]*>', 'gi');
+            svgString = svgString.replace(regex, '');
+        });
+        svgString = svgString.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+        svgString = svgString.replace(/href\s*=\s*(?:"javascript:[^"]*"|'javascript:[^']*')/gi, 'href=""');
+        return svgString;
+    }
+
+    function showPreview(inner, viewBox) {
+        var cleanInner = sanitizeSvgForPreview(inner);
+        var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="' + viewBox + '" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + cleanInner + '</svg>';
+        $('#bv-icon-preview').html(svg);
+        $('#bv-icon-preview-group').show();
+    }
+
+    // Save icon
+    $('#bv-icon-save-btn').on('click', function() {
+        var label = $('#bv-icon-label').val().trim();
+        var name = $('#bv-icon-name').val().trim();
+        var svgInner = $('#bv-icon-svg-inner').val().trim();
+        var editId = parseInt($('#bv-icon-edit-id').val());
+
+        if (!label) {
+            alert(strings.label_required || 'Icon label is required.');
+            $('#bv-icon-label').focus();
+            return;
+        }
+        if (!name) {
+            alert(strings.name_required || 'Icon name is required.');
+            $('#bv-icon-name').focus();
+            return;
+        }
+        if (!/^[a-z0-9-]+$/.test(name)) {
+            alert(strings.name_format || 'Icon name must contain only lowercase letters, numbers, and hyphens.');
+            $('#bv-icon-name').focus();
+            return;
+        }
+        if (!svgInner) {
+            alert(strings.svg_required || 'Please upload an SVG file or paste SVG code.');
+            return;
+        }
+
+        var btn = $(this);
+        btn.prop('disabled', true).text(strings.saving_btn || 'Saving...');
+
+        $.ajax({
+            url: bvAdmin.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'bv_save_custom_icon',
+                nonce: bvAdmin.nonce,
+                id: editId,
+                name: name,
+                label: label,
+                svg_inner: svgInner,
+                view_box: $('#bv-icon-viewbox').val().trim(),
+                source: currentSource
+            },
+            success: function(response) {
+                btn.prop('disabled', false).text(editId ? (strings.update_btn || 'Update Icon') : (strings.save_btn || 'Save Icon'));
+                if (response.success) {
+                    location.reload();
+                } else {
+                    alert(response.data.message || (strings.generic_error || 'An error occurred. Please try again.'));
+                }
+            },
+            error: function() {
+                btn.prop('disabled', false).text(editId ? (strings.update_btn || 'Update Icon') : (strings.save_btn || 'Save Icon'));
+                alert(strings.generic_error || 'An error occurred. Please try again.');
+            }
+        });
     });
 
 })(jQuery);
