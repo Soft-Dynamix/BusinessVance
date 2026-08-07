@@ -33,6 +33,8 @@ class BV_Questionnaire_Admin {
         add_action( 'wp_ajax_bv_qt_import_questionnaires', array( $this, 'ajax_import_questionnaires' ) );
         add_action( 'wp_ajax_bv_qt_import_json', array( $this, 'ajax_import_json' ) );
         add_action( 'wp_ajax_bv_qt_export_json', array( $this, 'ajax_export_json' ) );
+        add_action( 'wp_ajax_bv_qt_parse_document', array( $this, 'ajax_parse_document' ) );
+        add_action( 'wp_ajax_bv_qt_import_document', array( $this, 'ajax_import_document' ) );
     }
 
     /**
@@ -613,20 +615,14 @@ class BV_Questionnaire_Admin {
                         <span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span>
                         Import Pre-built Questionnaires
                     </button>
-                    <button type="button" id="bv-qt-import-json-btn" class="button button-secondary" style="margin-left:8px;">
-                        <span class="dashicons dashicons-upload" style="margin-top:4px;margin-right:3px;"></span>
-                        Import from JSON
+                    <button type="button" id="bv-qt-import-doc-btn" class="button button-primary" style="margin-left:8px;background:#D4AF37;border-color:#c4a030;color:#fff;">
+                        <span class="dashicons dashicons-media-document" style="margin-top:4px;margin-right:3px;"></span>
+                        Import from PDF/Word
                     </button>
-                    <button type="button" id="bv-qt-export-json-btn" class="button button-secondary" style="margin-left:8px;">
-                        <span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span>
-                        Export to JSON
-                    </button>
-                    <input type="file" id="bv-qt-json-file" accept=".json" style="display:none;" />
+                    <input type="file" id="bv-qt-doc-file" accept=".pdf,.docx" style="display:none;" />
                     <p style="margin:8px 0 0 0;color:#646970;font-size:12px;">
-                        <a href="javascript:void(0)" id="bv-qt-sample-json-link" title="Download a sample JSON file showing the expected import format">
-                            Download sample JSON template
-                        </a>
-                        &nbsp;— Use Export to get the format from an existing template, or download this sample.
+                        <span class="dashicons dashicons-info" style="font-size:16px;vertical-align:middle;margin-right:2px;color:#D4AF37;"></span>
+                        Upload a PDF or Word (.docx) questionnaire — the system will auto-detect sections and questions for your review.
                     </p>
                 </div>
 
@@ -811,6 +807,77 @@ class BV_Questionnaire_Admin {
                     </p>
                     <input type="hidden" class="bv-qt-q-edit-id" value="0" />
                     <input type="hidden" class="bv-qt-q-section-id" value="0" />
+                </div>
+            </div>
+
+            <!-- ==================== DOCUMENT IMPORT MODAL ==================== -->
+            <div id="bv-qt-doc-modal" class="bv-qt-modal-overlay" style="display:none;">
+                <div class="bv-qt-modal" style="max-width:800px;max-height:85vh;">
+                    <!-- Step 1: Upload -->
+                    <div id="bv-qt-doc-step-upload">
+                        <div class="bv-qt-modal-header">
+                            <h2><span class="dashicons dashicons-media-document" style="margin-right:8px;"></span>Import from PDF/Word</h2>
+                            <button type="button" class="bv-qt-modal-close button-link" onclick="bvQTDocCloseModal()">&times;</button>
+                        </div>
+                        <div class="bv-qt-modal-body" style="text-align:center;padding:60px 40px;">
+                            <div id="bv-qt-doc-drop-zone" style="border:2px dashed #c3c4c7;border-radius:12px;padding:50px 30px;cursor:pointer;transition:all 0.2s;background:#fafafa;">
+                                <span class="dashicons dashicons-upload" style="font-size:48px;width:48px;height:48px;color:#8c8f94;"></span>
+                                <p style="margin-top:16px;font-size:16px;font-weight:600;color:#1d2327;">
+                                    Drop your file here or click to browse
+                                </p>
+                                <p style="margin-top:8px;color:#646970;font-size:13px;">
+                                    Accepts PDF and Word (.docx) files up to 10MB
+                                </p>
+                            </div>
+                            <input type="file" id="bv-qt-doc-upload-input" accept=".pdf,.docx" style="display:none;" />
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Parsing -->
+                    <div id="bv-qt-doc-step-parsing" style="display:none;">
+                        <div class="bv-qt-modal-header">
+                            <h2><span class="dashicons dashicons-media-document" style="margin-right:8px;"></span>Parsing Document</h2>
+                        </div>
+                        <div class="bv-qt-modal-body" style="text-align:center;padding:60px 40px;">
+                            <span class="spinner is-active" style="float:none;width:30px;height:30px;"></span>
+                            <p style="margin-top:20px;font-size:16px;color:#1d2327;">Analyzing document structure...</p>
+                            <p style="margin-top:8px;color:#646970;font-size:13px;">Detecting sections, questions, and question types</p>
+                        </div>
+                    </div>
+
+                    <!-- Step 3: Review & Confirm -->
+                    <div id="bv-qt-doc-step-review" style="display:none;">
+                        <div class="bv-qt-modal-header">
+                            <h2><span class="dashicons dashicons-yes-alt" style="margin-right:8px;color:#00a32a;"></span>Review & Import</h2>
+                            <button type="button" class="bv-qt-modal-close button-link" onclick="bvQTDocCloseModal()">&times;</button>
+                        </div>
+                        <div class="bv-qt-modal-body" style="padding:20px;">
+                            <!-- Template details -->
+                            <div style="margin-bottom:20px;">
+                                <label for="bv-qt-doc-name" style="font-weight:600;">Template Name</label>
+                                <input type="text" id="bv-qt-doc-name" class="large-text" style="margin-top:4px;" />
+                                <p style="margin-top:4px;">
+                                    <label for="bv-qt-doc-desc" style="font-weight:600;font-size:13px;">Description</label>
+                                    <textarea id="bv-qt-doc-desc" rows="2" class="large-text" style="margin-top:4px;font-size:13px;"></textarea>
+                                </p>
+                            </div>
+
+                            <!-- Stats -->
+                            <div id="bv-qt-doc-stats" style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;"></div>
+
+                            <!-- Sections & Questions -->
+                            <div id="bv-qt-doc-sections" style="max-height:350px;overflow-y:auto;border:1px solid #c3c4c7;border-radius:4px;"></div>
+
+                            <!-- Actions -->
+                            <div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+                                <button type="button" class="button button-secondary" onclick="bvQTDocCloseModal()">Cancel</button>
+                                <button type="button" id="bv-qt-doc-confirm-btn" class="button button-primary" style="background:#00a32a;border-color:#009525;">
+                                    <span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span>
+                                    Import Questionnaire
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1177,6 +1244,152 @@ class BV_Questionnaire_Admin {
             'filename'   => 'questionnaire-templates-' . date( 'Y-m-d' ) . '.json',
             'count'      => count( $export['questionnaires'] ),
         ) );
+    }
+
+    /* ==========================================================================
+     * AJAX: Parse uploaded PDF/Word document for questionnaire preview
+     * ========================================================================== */
+
+    /**
+     * Upload and parse a PDF or Word document, returning the detected structure
+     * for user review before import.
+     *
+     * @since 2.7.1
+     */
+    public function ajax_parse_document() {
+        $this->verify_nonce();
+
+        set_time_limit( 120 );
+
+        if ( empty( $_FILES['file'] ) ) {
+            wp_send_json_error( array( 'message' => 'No file uploaded.' ) );
+        }
+
+        $file = $_FILES['file'];
+
+        // Validate file type
+        $allowed_ext = array( 'pdf', 'docx' );
+        $ext = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
+        if ( ! in_array( $ext, $allowed_ext, true ) ) {
+            wp_send_json_error( array( 'message' => 'Unsupported file type. Please upload a PDF or .docx file.' ) );
+        }
+
+        // Validate file size (10MB max)
+        if ( $file['size'] > 10 * 1024 * 1024 ) {
+            wp_send_json_error( array( 'message' => 'File is too large. Maximum upload size is 10MB.' ) );
+        }
+
+        // Check for upload errors
+        if ( $file['error'] !== UPLOAD_ERR_OK ) {
+            $error_messages = array(
+                UPLOAD_ERR_INI_SIZE   => 'The uploaded file exceeds the maximum upload size.',
+                UPLOAD_ERR_FORM_SIZE  => 'The uploaded file exceeds the form maximum size.',
+                UPLOAD_ERR_PARTIAL    => 'The file was only partially uploaded.',
+                UPLOAD_ERR_NO_FILE     => 'No file was uploaded.',
+                UPLOAD_ERR_NO_TMP_DIR  => 'Missing temporary folder.',
+                UPLOAD_ERR_CANT_WRITE  => 'Failed to write file to disk.',
+                UPLOAD_ERR_EXTENSION   => 'A PHP extension stopped the file upload.',
+            );
+            $error_msg = isset( $error_messages[ $file['error'] ] )
+                ? $error_messages[ $file['error'] ]
+                : 'Upload error occurred.';
+            wp_send_json_error( array( 'message' => $error_msg ) );
+        }
+
+        // Load parser
+        if ( ! class_exists( 'BV_Document_Parser' ) ) {
+            require_once BV_PLUGIN_DIR . 'includes/class-bv-document-parser.php';
+        }
+
+        try {
+            $parser = new BV_Document_Parser();
+            $result = $parser->parse_file( $file['tmp_name'], $file['name'] );
+        } catch ( \Exception $e ) {
+            wp_send_json_error( array( 'message' => 'Parse error: ' . $e->getMessage() ) );
+        }
+
+        // Sanitize the parsed data for safe output
+        $result['name']        = sanitize_text_field( $result['name'] );
+        $result['description'] = sanitize_textarea_field( $result['description'] );
+
+        foreach ( $result['sections'] as &$section ) {
+            $section['title']       = sanitize_text_field( $section['title'] );
+            $section['description'] = sanitize_textarea_field( $section['description'] );
+            foreach ( $section['questions'] as &$question ) {
+                $question['label']       = sanitize_text_field( $question['label'] );
+                $question['placeholder'] = sanitize_text_field( $question['placeholder'] );
+                $question['help_text']   = sanitize_text_field( $question['help_text'] );
+                // Ensure type is valid
+                if ( ! in_array( $question['type'], self::$allowed_question_types, true ) ) {
+                    $question['type'] = 'text';
+                }
+                // Sanitize options
+                if ( ! empty( $question['options'] ) && is_array( $question['options'] ) ) {
+                    $cleaned_opts = array();
+                    foreach ( $question['options'] as $opt ) {
+                        if ( is_array( $opt ) ) {
+                            $cleaned_opts[] = array(
+                                'value' => sanitize_title( $opt['value'] ),
+                                'label' => sanitize_text_field( $opt['label'] ),
+                            );
+                        }
+                    }
+                    $question['options'] = $cleaned_opts;
+                }
+            }
+            unset( $question );
+        }
+        unset( $section );
+
+        wp_send_json_success( array(
+            'message'    => 'Document parsed successfully.',
+            'data'       => $result,
+        ) );
+    }
+
+    /* ==========================================================================
+     * AJAX: Import parsed document data into the database
+     * ========================================================================== */
+
+    /**
+     * Receive confirmed/edited questionnaire data from the preview step
+     * and import it as a template.
+     *
+     * @since 2.7.1
+     */
+    public function ajax_import_document() {
+        $this->verify_nonce();
+
+        set_time_limit( 300 );
+
+        $raw_data = isset( $_POST['template_data'] ) ? wp_unslash( $_POST['template_data'] ) : '';
+        if ( empty( $raw_data ) ) {
+            wp_send_json_error( array( 'message' => 'No template data received.' ) );
+        }
+
+        $tpl_data = json_decode( $raw_data, true );
+        if ( json_last_error() !== JSON_ERROR_NONE ) {
+            wp_send_json_error( array( 'message' => 'Invalid template data format.' ) );
+        }
+
+        // Use existing import_single_template method
+        global $wpdb;
+        $t = $this->get_tables();
+
+        $result = $this->import_single_template( $wpdb, $t, $tpl_data, 1 );
+
+        if ( $result['status'] === 'imported' ) {
+            wp_send_json_success( array(
+                'message'      => 'Questionnaire imported successfully!',
+                'template_id'  => $wpdb->insert_id,
+                'sections'     => $result['sections'],
+                'questions'    => $result['questions'],
+            ) );
+        } elseif ( $result['status'] === 'skipped' ) {
+            wp_send_json_error( array( 'message' => $result['message'] ) );
+        } else {
+            wp_send_json_error( array( 'message' => $result['message'] ) );
+        }
     }
 
     /**

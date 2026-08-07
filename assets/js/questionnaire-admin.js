@@ -470,206 +470,6 @@
             });
         };
 
-        // ── Import from JSON ──
-        $('#bv-qt-import-json-btn').on('click', function() {
-            $('#bv-qt-json-file').val('').trigger('click');
-        });
-
-        $('#bv-qt-json-file').on('change', function() {
-            var fileInput = this;
-            if (!fileInput.files || !fileInput.files[0]) return;
-            var file = fileInput.files[0];
-            if (!file.name.toLowerCase().endsWith('.json')) {
-                alert('Please select a .json file.');
-                fileInput.value = '';
-                return;
-            }
-            if (!confirm('Import questionnaire templates from "' + escHtml(file.name) + '"?\n\nExisting templates with the same slug will be skipped.')) {
-                fileInput.value = '';
-                return;
-            }
-            var $btn = $('#bv-qt-import-json-btn').prop('disabled', true).html('<span class="dashicons dashicons-update-alt spin" style="margin-top:4px;margin-right:3px;"></span> Importing...');
-            var fd = new FormData();
-            fd.append('file', file);
-            fd.append('action', 'bv_qt_import_json');
-            fd.append('nonce', BVQT.nonce);
-            $.ajax({
-                url: ajaxurl,
-                type: 'POST',
-                data: fd,
-                processData: false,
-                contentType: false,
-                success: function(res) {
-                    $btn.prop('disabled', false).html('<span class="dashicons dashicons-upload" style="margin-top:4px;margin-right:3px;"></span> Import from JSON');
-                    if (res.success) {
-                        var msg = res.data.message + '\n\nDetails:';
-                        if (res.data.results && res.data.results.details) {
-                            $.each(res.data.results.details, function(i, d) {
-                                msg += '\n• ' + d.message + (d.sections > 0 ? ' (' + d.sections + ' sections, ' + d.questions + ' questions)' : '');
-                            });
-                        }
-                        alert(msg);
-                        loadTemplates();
-                    } else {
-                        var errMsg = res.data && res.data.message ? res.data.message : 'Unknown error';
-                        alert('Import failed: ' + errMsg);
-                    }
-                },
-                error: function(xhr, status, error) {
-                    $btn.prop('disabled', false).html('<span class="dashicons dashicons-upload" style="margin-top:4px;margin-right:3px;"></span> Import from JSON');
-                    alert('Request failed: ' + (error || status || 'Network error') + '. Please try again.');
-                }
-            });
-            fileInput.value = '';
-        });
-
-        // ── Export to JSON ──
-        $('#bv-qt-export-json-btn').on('click', function() {
-            var $btn = $(this).prop('disabled', true).html('<span class="dashicons dashicons-update-alt spin" style="margin-top:4px;margin-right:3px;"></span> Exporting...');
-            $.post(ajaxurl, { action: 'bv_qt_export_json', nonce: BVQT.nonce }, function(res) {
-                $btn.prop('disabled', false).html('<span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span> Export to JSON');
-                if (res.success) {
-                    var data = res.data.data;
-                    var jsonStr = JSON.stringify(data, null, 2);
-                    var filename = res.data.filename || 'questionnaire-templates.json';
-                    bvQTDownloadJson(jsonStr, filename);
-                    alert('Exported ' + res.data.count + ' template(s) as ' + filename);
-                } else {
-                    var errMsg = res.data && res.data.message ? res.data.message : 'Unknown error';
-                    alert('Export failed: ' + errMsg);
-                }
-            }).fail(function(xhr, status, error) {
-                $btn.prop('disabled', false).html('<span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span> Export to JSON');
-                alert('Export failed: ' + (error || status || 'Network error'));
-            });
-        });
-
-        // ── Download sample JSON template ──
-        $('#bv-qt-sample-json-link').on('click', function(e) {
-            e.preventDefault();
-            var sample = {
-                "questionnaires": [
-                    {
-                        "name": "My Custom Questionnaire",
-                        "slug": "my-custom-questionnaire",
-                        "description": "A sample questionnaire template showing the expected JSON format.",
-                        "version": "1.0",
-                        "status": "published",
-                        "sections": [
-                            {
-                                "title": "Section One",
-                                "description": "First section of the questionnaire.",
-                                "order": 1,
-                                "questions": [
-                                    {
-                                        "type": "text",
-                                        "label": "Your full name",
-                                        "required": true,
-                                        "placeholder": "e.g. John Doe",
-                                        "help_text": "Enter your legal full name.",
-                                        "options": []
-                                    },
-                                    {
-                                        "type": "email",
-                                        "label": "Email address",
-                                        "required": true,
-                                        "placeholder": "you@example.com",
-                                        "help_text": "",
-                                        "options": []
-                                    },
-                                    {
-                                        "type": "select",
-                                        "label": "Preferred contact method",
-                                        "required": false,
-                                        "placeholder": "",
-                                        "help_text": "How would you like us to contact you?",
-                                        "options": [
-                                            { "value": "email", "label": "Email" },
-                                            { "value": "phone", "label": "Phone" },
-                                            { "value": "whatsapp", "label": "WhatsApp" }
-                                        ]
-                                    },
-                                    {
-                                        "type": "textarea",
-                                        "label": "Tell us about your business",
-                                        "required": true,
-                                        "placeholder": "Describe your business...",
-                                        "help_text": "Include what products/services you offer.",
-                                        "options": []
-                                    },
-                                    {
-                                        "type": "checkbox",
-                                        "label": "Which services are you interested in?",
-                                        "required": false,
-                                        "placeholder": "",
-                                        "help_text": "Select all that apply.",
-                                        "options": [
-                                            { "value": "market-research", "label": "Market Research Report" },
-                                            { "value": "business-plan", "label": "Business Plan" },
-                                            { "value": "financial-analysis", "label": "Financial Analysis" }
-                                        ]
-                                    },
-                                    {
-                                        "type": "heading",
-                                        "label": "Additional Information",
-                                        "required": false,
-                                        "placeholder": "",
-                                        "help_text": "",
-                                        "options": []
-                                    },
-                                    {
-                                        "type": "paragraph",
-                                        "label": "Please provide any additional information that may help us understand your requirements better.",
-                                        "required": false,
-                                        "placeholder": "",
-                                        "help_text": "",
-                                        "options": []
-                                    },
-                                    {
-                                        "type": "radio",
-                                        "label": "How did you hear about us?",
-                                        "required": false,
-                                        "placeholder": "",
-                                        "help_text": "",
-                                        "options": [
-                                            { "value": "google", "label": "Google Search" },
-                                            { "value": "referral", "label": "Referral" },
-                                            { "value": "social", "label": "Social Media" },
-                                            { "value": "other", "label": "Other" }
-                                        ]
-                                    }
-                                ]
-                            },
-                            {
-                                "title": "Section Two",
-                                "description": "Second section.",
-                                "order": 2,
-                                "questions": [
-                                    {
-                                        "type": "number",
-                                        "label": "Annual revenue (ZAR)",
-                                        "required": false,
-                                        "placeholder": "e.g. 500000",
-                                        "help_text": "Approximate annual revenue.",
-                                        "options": []
-                                    },
-                                    {
-                                        "type": "date",
-                                        "label": "When did you start your business?",
-                                        "required": false,
-                                        "placeholder": "",
-                                        "help_text": "",
-                                        "options": []
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                ]
-            };
-            bvQTDownloadJson(JSON.stringify(sample, null, 2), 'sample-questionnaire-template.json');
-        });
-
         // Helper: download JSON as file
         function bvQTDownloadJson(jsonStr, filename) {
             var blob = new Blob([jsonStr], { type: 'application/json' });
@@ -682,6 +482,393 @@
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
         }
+
+        // ════════════════════════════════════════════════════════════════════
+        // DOCUMENT IMPORT (PDF/Word) — Two-step: Upload → Preview → Confirm
+        // ════════════════════════════════════════════════════════════════════
+
+        // Question type labels for preview
+        var bvDocTypeLabels = {
+            'text': 'Text', 'textarea': 'Textarea', 'number': 'Number',
+            'email': 'Email', 'phone': 'Phone', 'date': 'Date',
+            'select': 'Dropdown', 'radio': 'Radio', 'checkbox': 'Checkbox',
+            'heading': 'Heading', 'paragraph': 'Paragraph', 'file': 'File Upload'
+        };
+
+        // Question type colors for preview badges
+        var bvDocTypeColors = {
+            'text': '#2271b1', 'textarea': '#2271b1', 'number': '#7e5bf0',
+            'email': '#2271b1', 'phone': '#2271b1', 'date': '#7e5bf0',
+            'select': '#0e7732', 'radio': '#0e7732', 'checkbox': '#0e7732',
+            'heading': '#646970', 'paragraph': '#646970', 'file': '#b32d2e'
+        };
+
+        // Store parsed data for import confirmation
+        var bvQTDocParsedData = null;
+
+        // Open document import modal
+        $('#bv-qt-import-doc-btn').on('click', function() {
+            bvQTDocShowStep('upload');
+            $('#bv-qt-doc-modal').fadeIn(200);
+        });
+
+        // Close modal
+        window.bvQTDocCloseModal = function() {
+            $('#bv-qt-doc-modal').fadeOut(150);
+            bvQTDocParsedData = null;
+        };
+
+        // Close on overlay click
+        $('#bv-qt-doc-modal').on('click', function(e) {
+            if ($(e.target).hasClass('bv-qt-modal-overlay')) {
+                bvQTDocCloseModal();
+            }
+        });
+
+        // Close on Escape key
+        $(document).on('keydown', function(e) {
+            if (e.key === 'Escape' && $('#bv-qt-doc-modal').is(':visible')) {
+                bvQTDocCloseModal();
+            }
+        });
+
+        // Show a specific modal step
+        function bvQTDocShowStep(step) {
+            $('#bv-qt-doc-step-upload, #bv-qt-doc-step-parsing, #bv-qt-doc-step-review').hide();
+            $('#bv-qt-doc-step-' + step).show();
+        }
+
+        // Drop zone click opens file input
+        $('#bv-qt-doc-drop-zone').on('click', function() {
+            $('#bv-qt-doc-upload-input').val('').trigger('click');
+        });
+
+        // Drop zone drag events
+        var $dropZone = $('#bv-qt-doc-drop-zone');
+        $dropZone.on('dragover dragenter', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            $(this).css({ 'border-color': '#D4AF37', 'background': '#fef8e0' });
+        });
+        $dropZone.on('dragleave drop', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            $(this).css({ 'border-color': '#c3c4c7', 'background': '#fafafa' });
+        });
+        $dropZone.on('drop', function(e) {
+            var files = e.originalEvent.dataTransfer.files;
+            if (files.length > 0) {
+                bvQTDocUploadFile(files[0]);
+            }
+        });
+
+        // File input change
+        $('#bv-qt-doc-upload-input').on('change', function() {
+            if (this.files && this.files[0]) {
+                bvQTDocUploadFile(this.files[0]);
+                this.value = '';
+            }
+        });
+
+        // Upload file and parse
+        function bvQTDocUploadFile(file) {
+            var ext = file.name.split('.').pop().toLowerCase();
+            if (ext !== 'pdf' && ext !== 'docx') {
+                alert('Please upload a PDF or .docx file.\n\nGot: .' + ext);
+                return;
+            }
+            if (file.size > 10 * 1024 * 1024) {
+                alert('File is too large. Maximum size is 10MB.\n\nYour file: ' + (file.size / 1024 / 1024).toFixed(1) + 'MB');
+                return;
+            }
+
+            bvQTDocShowStep('parsing');
+
+            var fd = new FormData();
+            fd.append('file', file);
+            fd.append('action', 'bv_qt_parse_document');
+            fd.append('nonce', BVQT.nonce);
+
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: fd,
+                processData: false,
+                contentType: false,
+                timeout: 120000,
+                success: function(res) {
+                    if (res.success) {
+                        bvQTDocParsedData = res.data.data;
+                        bvQTDocRenderPreview(res.data.data);
+                        bvQTDocShowStep('review');
+                    } else {
+                        bvQTDocShowStep('upload');
+                        var errMsg = res.data && res.data.message ? res.data.message : 'Unknown error parsing document.';
+                        alert('Parse Error: ' + errMsg + '\n\nTips:\n• PDF must contain selectable text (not scanned images)\n• .docx files must be saved in Word format (not .doc)\n• Try re-saving the file and uploading again.');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    bvQTDocShowStep('upload');
+                    alert('Upload failed: ' + (error || status || 'Network error') + '\n\nThe file may be too large or the server timed out. Try a smaller file.');
+                }
+            });
+        }
+
+        // Render the preview step with editable sections/questions
+        function bvQTDocRenderPreview(data) {
+            // Template name and description
+            $('#bv-qt-doc-name').val(data.name || '');
+            $('#bv-qt-doc-desc').val(data.description || '');
+
+            // Stats
+            var formatLabel = (data.format || 'unknown').toUpperCase();
+            var statsHtml = ''
+                + '<div class="bv-qt-stat" style="min-width:100px;"><div class="bv-qt-stat-num">' + formatLabel + '</div><div class="bv-qt-stat-label">Format</div></div>'
+                + '<div class="bv-qt-stat" style="min-width:100px;"><div class="bv-qt-stat-num">' + (data.total_sections || 0) + '</div><div class="bv-qt-stat-label">Sections</div></div>'
+                + '<div class="bv-qt-stat" style="min-width:100px;"><div class="bv-qt-stat-num">' + (data.total_questions || 0) + '</div><div class="bv-qt-stat-label">Questions</div></div>';
+            $('#bv-qt-doc-stats').html(statsHtml);
+
+            // Sections & Questions
+            var html = '';
+            $.each(data.sections || [], function(si, section) {
+                html += '<div class="bv-qt-doc-section" data-section-idx="' + si + '" style="border-bottom:1px solid #e0e0e0;">';
+                html += '<div style="display:flex;align-items:center;gap:8px;padding:12px 16px;background:#f6f7f7;cursor:pointer;" onclick="bvQTDocToggleSection(' + si + ')">';
+                html += '<span class="dashicons dashicons-arrow-down-alt2 bv-qt-doc-section-arrow" id="bv-qt-doc-arrow-' + si + '" style="font-size:18px;transition:transform 0.2s;"></span>';
+                html += '<strong style="flex:1;">' + escHtml(section.title || 'Untitled Section') + '</strong>';
+                html += '<span class="bv-qt-meta">' + (section.questions ? section.questions.length : 0) + ' questions</span>';
+                html += '</div>';
+                html += '<div class="bv-qt-doc-section-body" id="bv-qt-doc-section-' + si + '" style="padding:0 16px 12px;">';
+                // Editable section title
+                html += '<div style="margin:8px 0;"><input type="text" class="large-text bv-qt-doc-sec-title" data-section-idx="' + si + '" value="' + escAttr(section.title || '') + '" placeholder="Section title" style="font-size:13px;" /></div>';
+
+                // Questions
+                $.each(section.questions || [], function(qi, q) {
+                    var typeColor = bvDocTypeColors[q.type] || '#646970';
+                    var typeLabel = bvDocTypeLabels[q.type] || q.type;
+                    html += '<div class="bv-qt-doc-question" style="display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-top:1px dashed #e0e0e0;flex-wrap:wrap;" data-section-idx="' + si + '" data-question-idx="' + qi + '">';
+                    html += '<span style="color:#646970;font-size:12px;min-width:24px;text-align:right;margin-top:2px;">' + (qi + 1) + '.</span>';
+                    html += '<div style="flex:1;min-width:200px;">';
+                    html += '<input type="text" class="large-text bv-qt-doc-q-label" data-s="' + si + '" data-q="' + qi + '" value="' + escAttr(q.label || '') + '" placeholder="Question label" style="font-size:13px;margin-bottom:4px;" />';
+                    // Show options for select/radio/checkbox
+                    if (q.options && q.options.length > 0) {
+                        html += '<div style="font-size:12px;color:#646970;margin-left:4px;">';
+                        html += 'Options: ';
+                        $.each(q.options, function(oi, opt) {
+                            html += '<span style="background:#e8e8e8;padding:1px 6px;border-radius:8px;margin-right:4px;">' + escHtml(opt.label) + '</span>';
+                        });
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                    html += '<select class="bv-qt-doc-q-type" data-s="' + si + '" data-q="' + qi + '" style="width:120px;padding:2px 4px;font-size:12px;border:1px solid #8c8f94;border-radius:4px;">';
+                    $.each(bvDocTypeLabels, function(val, label) {
+                        html += '<option value="' + val + '"' + (q.type === val ? ' selected' : '') + '>' + label + '</option>';
+                    });
+                    html += '</select>';
+                    html += '<span style="font-size:11px;padding:2px 8px;border-radius:10px;color:#fff;background:' + typeColor + ';white-space:nowrap;">' + typeLabel + '</span>';
+                    // Delete button
+                    html += '<button type="button" class="button bv-qt-doc-q-delete" data-s="' + si + '" data-q="' + qi + '" style="font-size:11px;padding:1px 6px;height:auto;line-height:1.5;" title="Remove question"><span class="dashicons dashicons-trash" style="font-size:14px;margin:0;"></span></button>';
+                    html += '</div>';
+                });
+
+                // Add question button for this section
+                html += '<div style="padding-top:8px;"><button type="button" class="button button-small bv-qt-doc-add-q" data-section-idx="' + si + '" style="font-size:11px;">+ Add Question</button></div>';
+
+                html += '</div>'; // .bv-qt-doc-section-body
+                html += '</div>'; // .bv-qt-doc-section
+            });
+
+            // Add section button
+            html += '<div style="padding:12px 16px;text-align:center;border-top:2px solid #D4AF37;">';
+            html += '<button type="button" class="button" id="bv-qt-doc-add-section-btn" style="font-size:13px;"><span class="dashicons dashicons-plus-alt2" style="margin-top:3px;margin-right:3px;"></span> Add Section</button>';
+            html += '</div>';
+
+            $('#bv-qt-doc-sections').html(html);
+
+            // Bind events
+            bvQTDocBindPreviewEvents();
+        }
+
+        // Bind all interactive events in the preview
+        function bvQTDocBindPreviewEvents() {
+            // Toggle section collapse
+            window.bvQTDocToggleSection = function(idx) {
+                var $body = $('#bv-qt-doc-section-' + idx);
+                var $arrow = $('#bv-qt-doc-arrow-' + idx);
+                $body.slideToggle(200);
+                if ($body.is(':visible')) {
+                    $arrow.css('transform', 'rotate(0deg)');
+                } else {
+                    $arrow.css('transform', 'rotate(-90deg)');
+                }
+            };
+
+            // Type change updates badge color
+            $(document).off('change.bvDocType').on('change.bvDocType', '.bv-qt-doc-q-type', function() {
+                var $sel = $(this);
+                var newType = $sel.val();
+                var $badge = $sel.next('span');
+                $badge.text(bvDocTypeLabels[newType] || newType);
+                $badge.css('background', bvDocTypeColors[newType] || '#646970');
+            });
+
+            // Delete question
+            $(document).off('click.bvDocDelQ').on('click.bvDocDelQ', '.bv-qt-doc-q-delete', function() {
+                var si = $(this).data('s');
+                var qi = $(this).data('q');
+                $(this).closest('.bv-qt-doc-question').fadeOut(150, function() { $(this).remove(); });
+                // Update parsed data
+                if (bvQTDocParsedData && bvQTDocParsedData.sections[si]) {
+                    bvQTDocParsedData.sections[si].questions.splice(qi, 1);
+                }
+            });
+
+            // Add question to section
+            $(document).off('click.bvDocAddQ').on('click.bvDocAddQ', '.bv-qt-doc-add-q', function() {
+                var si = $(this).data('section-idx');
+                var qCount = $('#bv-qt-doc-section-' + si + ' .bv-qt-doc-question').length;
+                var html = '<div class="bv-qt-doc-question" style="display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-top:1px dashed #e0e0e0;flex-wrap:wrap;" data-section-idx="' + si + '" data-question-idx="' + qCount + '">'
+                    + '<span style="color:#646970;font-size:12px;min-width:24px;text-align:right;margin-top:2px;">' + (qCount + 1) + '.</span>'
+                    + '<div style="flex:1;min-width:200px;"><input type="text" class="large-text bv-qt-doc-q-label" data-s="' + si + '" data-q="' + qCount + '" value="" placeholder="Enter question label" style="font-size:13px;margin-bottom:4px;" /></div>'
+                    + '<select class="bv-qt-doc-q-type" data-s="' + si + '" data-q="' + qCount + '" style="width:120px;padding:2px 4px;font-size:12px;border:1px solid #8c8f94;border-radius:4px;">';
+                $.each(bvDocTypeLabels, function(val, label) {
+                    html += '<option value="' + val + '">' + label + '</option>';
+                });
+                html += '</select><span style="font-size:11px;padding:2px 8px;border-radius:10px;color:#fff;background:#2271b1;white-space:nowrap;">Text</span>'
+                    + '<button type="button" class="button bv-qt-doc-q-delete" data-s="' + si + '" data-q="' + qCount + '" style="font-size:11px;padding:1px 6px;height:auto;line-height:1.5;" title="Remove question"><span class="dashicons dashicons-trash" style="font-size:14px;margin:0;"></span></button>'
+                    + '</div>';
+                $('#bv-qt-doc-section-' + si).find('.bv-qt-doc-add-q').parent().before(html);
+                if (bvQTDocParsedData && bvQTDocParsedData.sections[si]) {
+                    bvQTDocParsedData.sections[si].questions.push({
+                        type: 'text', label: '', placeholder: '', required: true, help_text: '', options: []
+                    });
+                }
+            });
+
+            // Add section
+            $('#bv-qt-doc-add-section-btn').off('click').on('click', function() {
+                var si = bvQTDocParsedData ? bvQTDocParsedData.sections.length : 0;
+                var html = '<div class="bv-qt-doc-section" data-section-idx="' + si + '" style="border-bottom:1px solid #e0e0e0;">'
+                    + '<div style="display:flex;align-items:center;gap:8px;padding:12px 16px;background:#f6f7f7;cursor:pointer;" onclick="bvQTDocToggleSection(' + si + ')">'
+                    + '<span class="dashicons dashicons-arrow-down-alt2 bv-qt-doc-section-arrow" id="bv-qt-doc-arrow-' + si + '" style="font-size:18px;transition:transform 0.2s;"></span>'
+                    + '<strong style="flex:1;">New Section</strong>'
+                    + '<span class="bv-qt-meta">0 questions</span>'
+                    + '</div>'
+                    + '<div class="bv-qt-doc-section-body" id="bv-qt-doc-section-' + si + '" style="padding:0 16px 12px;">'
+                    + '<div style="margin:8px 0;"><input type="text" class="large-text bv-qt-doc-sec-title" data-section-idx="' + si + '" value="" placeholder="Section title" style="font-size:13px;" /></div>'
+                    + '<div style="padding-top:8px;"><button type="button" class="button button-small bv-qt-doc-add-q" data-section-idx="' + si + '" style="font-size:11px;">+ Add Question</button></div>'
+                    + '</div></div>';
+                $(this).parent().before(html);
+                if (bvQTDocParsedData) {
+                    bvQTDocParsedData.sections.push({ title: '', description: '', questions: [] });
+                }
+            });
+        }
+
+        // Collect data from the preview and send to import
+        $('#bv-qt-doc-confirm-btn').on('click', function() {
+            var $btn = $(this).prop('disabled', true).html('<span class="spinner is-active" style="margin:0 4px;"></span> Importing...');
+
+            // Build template data from the preview form
+            var templateData = {
+                name: $('#bv-qt-doc-name').val().trim(),
+                slug: '', // will be auto-generated from name on server
+                description: $('#bv-qt-doc-desc').val().trim(),
+                version: '1.0',
+                status: 'draft',
+                sections: []
+            };
+
+            if (!templateData.name) {
+                alert('Please enter a template name.');
+                $btn.prop('disabled', false).html('<span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span> Import Questionnaire');
+                return;
+            }
+
+            // Collect sections
+            $('.bv-qt-doc-section').each(function(si) {
+                var $section = $(this);
+                var secTitle = $section.find('.bv-qt-doc-sec-title').val().trim();
+                var questions = [];
+
+                $section.find('.bv-qt-doc-question').each(function(qi) {
+                    var $q = $(this);
+                    var qLabel = $q.find('.bv-qt-doc-q-label').val().trim();
+                    var qType = $q.find('.bv-qt-doc-q-type').val();
+
+                    // Get existing options from parsed data
+                    var qOptions = [];
+                    if (bvQTDocParsedData && bvQTDocParsedData.sections[si] && bvQTDocParsedData.sections[si].questions[qi]) {
+                        qOptions = bvQTDocParsedData.sections[si].questions[qi].options || [];
+                    }
+
+                    questions.push({
+                        type: qType,
+                        label: qLabel,
+                        placeholder: '',
+                        required: true,
+                        help_text: '',
+                        options: qOptions
+                    });
+                });
+
+                templateData.sections.push({
+                    title: secTitle,
+                    description: '',
+                    order: si + 1,
+                    questions: questions
+                });
+            });
+
+            // Validate at least one question exists
+            var totalQ = 0;
+            $.each(templateData.sections, function(i, s) { totalQ += s.questions.length; });
+            if (totalQ === 0) {
+                alert('Please add at least one question. You can add questions to each section using the "+ Add Question" button.');
+                $btn.prop('disabled', false).html('<span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span> Import Questionnaire');
+                return;
+            }
+
+            // Remove sections with empty titles
+            templateData.sections = $.grep(templateData.sections, function(s) {
+                return s.title !== '';
+            });
+
+            if (templateData.sections.length === 0) {
+                alert('All sections have empty titles. Please name at least one section.');
+                $btn.prop('disabled', false).html('<span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span> Import Questionnaire');
+                return;
+            }
+
+            // Send to server
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'bv_qt_import_document',
+                    nonce: BVQT.nonce,
+                    template_data: JSON.stringify(templateData)
+                },
+                success: function(res) {
+                    if (res.success) {
+                        var msg = 'Questionnaire "' + escHtml(templateData.name) + '" imported successfully!\n\n'
+                            + '• ' + res.data.sections + ' sections\n'
+                            + '• ' + res.data.questions + ' questions\n\n'
+                            + 'The template is saved as "Draft". You can edit it from the templates list.';
+                        bvQTDocCloseModal();
+                        alert(msg);
+                        loadTemplates();
+                    } else {
+                        var errMsg = res.data && res.data.message ? res.data.message : 'Unknown error';
+                        alert('Import failed: ' + errMsg);
+                    }
+                    $btn.prop('disabled', false).html('<span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span> Import Questionnaire');
+                },
+                error: function(xhr, status, error) {
+                    alert('Import failed: ' + (error || status || 'Network error'));
+                    $btn.prop('disabled', false).html('<span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span> Import Questionnaire');
+                }
+            });
+        });
 
     });
 
