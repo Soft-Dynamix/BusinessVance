@@ -1260,6 +1260,7 @@ class BV_Questionnaire_Admin {
         $this->verify_nonce();
 
         set_time_limit( 120 );
+        @ini_set( 'memory_limit', '256M' );
 
         if ( empty( $_FILES['file'] ) ) {
             wp_send_json_error( array( 'message' => 'No file uploaded.' ) );

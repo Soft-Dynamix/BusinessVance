@@ -129,6 +129,12 @@ class BV_Document_Parser {
     }
 
     /**
+     * Maximum raw stream size to process (bytes). Streams larger than this
+     * are images or fonts, never text content. Keep memory safe.
+     */
+    const MAX_STREAM_SIZE = 524288; // 512 KB
+
+    /**
      * Extract and decode all PDF content streams using /Length-based boundaries.
      *
      * This method properly handles:
@@ -136,24 +142,14 @@ class BV_Document_Parser {
      * - Indirect /Length references (e.g., /Length 12 0 R)
      * - Filter arrays with multiple filters applied in order
      * - ASCII85Decode + FlateDecode double-filter chains
+     * - Skips large streams (> 512KB) that are images/fonts
      *
      * @param string $content Raw PDF file content.
      * @return array Array of decompressed stream strings.
      */
+
     private function extract_pdf_streams( $content ) {
         $decoded_streams = array();
-
-        // Build a lookup table for indirect object byte offsets
-        $obj_offsets = array();
-        if ( preg_match_all( '/(\d+)\s+\d+\s+obj\b/', $content, $m, PREG_OFFSET_CAPTURE ) ) {
-            foreach ( $m[0] as $match ) {
-                $obj_num = (int) $m[1][0][ array_search( $match[1], array_column( $m[1], 1 ) ) ];
-                // Simpler approach: store all offsets
-            }
-            foreach ( $m[0] as $idx => $match ) {
-                $obj_offsets[ (int) $m[1][ $idx ][0] ] = $match[1];
-            }
-        }
 
         // Find all indirect objects
         $obj_count = preg_match_all( '/(\d+)\s+\d+\s+obj\b/s', $content, $obj_matches, PREG_OFFSET_CAPTURE );
@@ -187,6 +183,12 @@ class BV_Document_Parser {
                 continue;
             }
 
+            // Skip font objects
+            if ( preg_match( '/\/Subtype\s*\/(?:Type1|Type2|Type3|CIDFontType0|CIDFontType2|TrueType)/', $dict_part )
+                 || preg_match( '/\/Type\s*\/Font/', $dict_part ) ) {
+                continue;
+            }
+
             // Detect filter(s)
             $filters = array();
 
@@ -201,7 +203,7 @@ class BV_Document_Parser {
                 $filters = array( $filter_single_match[1] );
             }
 
-            // Skip image filter
+            // Skip image-related filters
             if ( in_array( 'DCTDecode', $filters, true ) || in_array( 'JPXDecode', $filters, true ) ) {
                 continue;
             }
@@ -250,6 +252,12 @@ class BV_Document_Parser {
             }
 
             if ( empty( $raw_data ) ) {
+                continue;
+            }
+
+            // Skip large streams — they are images/fonts, never text content.
+            // Text content streams in PDFs are typically < 50 KB even for complex pages.
+            if ( strlen( $raw_data ) > self::MAX_STREAM_SIZE ) {
                 continue;
             }
 
