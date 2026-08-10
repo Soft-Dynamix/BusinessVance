@@ -26,6 +26,7 @@ class BV_Activator {
                 self::create_tables();
                 self::seed_data();
                 self::cleanup_demo_data();
+                self::seed_default_services();
         }
 
         /**
@@ -1005,6 +1006,147 @@ class BV_Activator {
                                         "DELETE FROM {$table_services} WHERE name IN ({$svc_placeholders})",
                                         ...$demo_service_names
                                 )
+                        );
+                }
+        }
+
+        /**
+         * Seed the default services configured for BusinessVance.
+         *
+         * Idempotent: skips any service whose name already exists in the database,
+         * so it is safe to call on both fresh installs and upgrades.
+         *
+         * @since 2.7.5
+         * @return void
+         */
+        private static function seed_default_services() {
+                global $wpdb;
+
+                $table_services = $wpdb->prefix . 'bv_services';
+
+                $defaults = array(
+                        array(
+                                'name'          => 'BUSINESS FEASIBILITY REPORT',
+                                'description'   => 'Determine if your idea is practical and has potential.',
+                                'price'         => '299.00',
+                                'price_display' => 'R299',
+                                'icon'          => 'file-search',
+                                'service_type'  => 'onceoff',
+                                'display_order' => 1,
+                        ),
+                        array(
+                                'name'          => 'START-UP COST ESTIMATE REPORT',
+                                'description'   => 'Get a clear estimate of the costs to start your business.',
+                                'price'         => '299.00',
+                                'price_display' => 'R299',
+                                'icon'          => 'calculator',
+                                'service_type'  => 'onceoff',
+                                'display_order' => 2,
+                        ),
+                        array(
+                                'name'          => 'COMPETITOR ANALYSIS REPORT',
+                                'description'   => 'Understand your competitors and find your advantage.',
+                                'price'         => '399.00',
+                                'price_display' => 'R399',
+                                'icon'          => 'bar-chart-3',
+                                'service_type'  => 'onceoff',
+                                'display_order' => 3,
+                        ),
+                        array(
+                                'name'          => 'RISK ASSESSMENT REPORT',
+                                'description'   => 'Identify risks and practical mitigation strategies.',
+                                'price'         => '399.00',
+                                'price_display' => 'R399',
+                                'icon'          => 'shield-alert',
+                                'service_type'  => 'onceoff',
+                                'display_order' => 4,
+                        ),
+                        array(
+                                'name'          => 'MARKET RESEARCH REPORT',
+                                'description'   => 'Understand your market and customer demand.',
+                                'price'         => '499.00',
+                                'price_display' => 'R499',
+                                'icon'          => 'trending-up',
+                                'service_type'  => 'onceoff',
+                                'display_order' => 5,
+                        ),
+                        array(
+                                'name'          => 'MARKETING STRATEGY REPORT',
+                                'description'   => 'A practical marketing plan for your business.',
+                                'price'         => '599.00',
+                                'price_display' => 'R599',
+                                'icon'          => 'megaphone',
+                                'service_type'  => 'onceoff',
+                                'display_order' => 6,
+                        ),
+                        array(
+                                'name'          => 'FINANCIAL FORECAST REPORT',
+                                'description'   => 'Estimated financial forecast based on your information.',
+                                'price'         => '699.00',
+                                'price_display' => 'R699',
+                                'icon'          => 'chart-line',
+                                'service_type'  => 'onceoff',
+                                'display_order' => 7,
+                        ),
+                        array(
+                                'name'          => 'BUSINESS HEALTH CHECK REPORT',
+                                'description'   => 'Evaluate your business and identify areas to improve.',
+                                'price'         => '799.00',
+                                'price_display' => 'R799',
+                                'icon'          => 'heart-pulse',
+                                'service_type'  => 'onceoff',
+                                'display_order' => 8,
+                        ),
+                        array(
+                                'name'          => 'INVESTOR READINESS REPORT',
+                                'description'   => 'Find out if your business is ready for investors.',
+                                'price'         => '899.00',
+                                'price_display' => 'R899',
+                                'icon'          => 'target',
+                                'service_type'  => 'onceoff',
+                                'display_order' => 9,
+                        ),
+                        array(
+                                'name'          => 'COMPLETE BUSINESS PLAN',
+                                'description'   => 'A full business plan based on your detailed information.',
+                                'price'         => '1499.00',
+                                'price_display' => 'R1 499',
+                                'icon'          => 'clipboard-list',
+                                'service_type'  => 'onceoff',
+                                'display_order' => 10,
+                        ),
+                );
+
+                foreach ( $defaults as $svc ) {
+                        $exists = $wpdb->get_var(
+                                $wpdb->prepare(
+                                        "SELECT COUNT(*) FROM {$table_services} WHERE name = %s",
+                                        $svc['name']
+                                )
+                        );
+                        if ( $exists ) {
+                                continue;
+                        }
+
+                        $wpdb->insert(
+                                $table_services,
+                                array(
+                                        'name'           => $svc['name'],
+                                        'description'    => $svc['description'],
+                                        'price'          => $svc['price'],
+                                        'price_display'  => $svc['price_display'],
+                                        'icon'           => $svc['icon'],
+                                        'button_label'   => 'Get Started',
+                                        'service_type'   => $svc['service_type'],
+                                        'woo_product_id' => 0,
+                                        'category_id'    => 0,
+                                        'is_visible'     => 1,
+                                        'is_featured'    => 0,
+                                        'display_order'  => $svc['display_order'],
+                                        'created_at'     => current_time( 'mysql' ),
+                                        'updated_at'     => current_time( 'mysql' ),
+                                ),
+                                array( '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d', '%d', '%s', '%s' )
                         );
                 }
         }
