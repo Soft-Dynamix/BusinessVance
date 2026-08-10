@@ -275,7 +275,7 @@ class BV_Document_Parser {
         $doc_xml = $zip->getFromName( 'word/document.xml' );
         if ( $doc_xml === false ) {
             $zip->close();
-            throw new \Exception( 'Invalid .docx file — word/document.xml not found inside.' );
+            throw new \Exception( 'Invalid .docx file - word/document.xml not found inside.' );
         }
 
         // Also read styles for bold/size detection
@@ -283,7 +283,7 @@ class BV_Document_Parser {
 
         $zip->close();
 
-        // Parse XML — suppress warnings for malformed XML
+        // Parse XML - suppress warnings for malformed XML
         $doc = @simplexml_load_string( $doc_xml );
         if ( $doc === false ) {
             throw new \Exception( 'Could not parse the document XML structure.' );
@@ -646,7 +646,7 @@ class BV_Document_Parser {
         $last_kept = -5;
         foreach ( $section_starts as $ss ) {
             if ( $ss['index'] - $last_kept < 2 ) {
-                // Too close — keep the one with higher score
+                // Too close - keep the one with higher score
                 if ( ! empty( $filtered ) ) {
                     $last = end( $filtered );
                     if ( $ss['score'] > $last['score'] ) {
@@ -677,7 +677,7 @@ class BV_Document_Parser {
             $description = '';
             if ( $start + 1 < $end ) {
                 $next_text = trim( $normalized[ $start + 1 ]['text'] );
-                if ( strlen( $next_text ) > 20 && ! preg_match( '/[?？]$/', $next_text )
+                if ( strlen( $next_text ) > 20 && ! preg_match( '/[?？]$/u', $next_text )
                      && ! preg_match( '/^[\d.]+[\).]/', $next_text )
                      && ! preg_match( '/^(please|provide|enter|list|describe|state|give|write)/i', $next_text ) ) {
                     $description = $next_text;
@@ -714,7 +714,7 @@ class BV_Document_Parser {
         }
 
         // Must NOT end with a question mark (those are questions)
-        if ( preg_match( '/[?？]\s*$/', $text ) ) {
+        if ( preg_match( '/[?？]\s*$/u', $text ) ) {
             return 0;
         }
 
@@ -858,7 +858,7 @@ class BV_Document_Parser {
         // --- Strong question signals ---
 
         // Ends with question mark
-        $is_question = preg_match( '/[?？]\s*$/', $text );
+        $is_question = preg_match( '/[?？]\s*$/u', $text );
 
         // Starts with numbered pattern: "1.", "1)", "Q1.", "Q.1", "Question 1:"
         $numbered = preg_match( '/^\s*(\d+[\.\)]|Q\.?\s*\d+[\.\)]?|(?:question|q)\s*\d+[\.\):]?)/i', $text, $num_match );
@@ -947,7 +947,7 @@ class BV_Document_Parser {
             $q_type = 'number';
         } elseif ( preg_match( '/\b(?:describe|explain|elaborate|tell\s*us|provide\s*details?|details?|comments?|notes?|remarks?|additional\s*information|further\s*information|background|history|narrative|summary|overview|why\s+(?:is|are|did|do|does|was|were|have)|how\s+(?:do|does|did|is|are|would|could|has|have))\b/i', $text ) ) {
             $q_type = 'textarea';
-        } elseif ( preg_match( '/\b(?:list|enumerate|all|each|every|multiple|various|types?\s+of|kinds?\s+of|names?\s+of)\b/i', $text ) && preg_match( '/[?？]\s*$/', $text ) ) {
+        } elseif ( preg_match( '/\b(?:list|enumerate|all|each|every|multiple|various|types?\s+of|kinds?\s+of|names?\s+of)\b/i', $text ) && preg_match( '/[?？]\s*$/u', $text ) ) {
             $q_type = 'textarea';
         } elseif ( preg_match( '/\b(?:attach|upload|provide\s+document|submit|send|enclose|include\s+(?:a\s+)?(?:copy|copies|document|file|cv|resume|certificate|proof|evidence|reference))\b/i', $text ) ) {
             $q_type = 'file';
@@ -1032,7 +1032,7 @@ class BV_Document_Parser {
             }
 
             // If it's a short line and doesn't look like a question, might be an option
-            if ( strlen( $trimmed ) <= 60 && ! preg_match( '/[?？]/', $trimmed )
+            if ( strlen( $trimmed ) <= 60 && ! preg_match( '/[?？]/u', $trimmed )
                  && ! preg_match( '/^\s*\d+[\.\)]\s+/', $trimmed ) ) {
                 // Only accept if it follows a pattern (we already detected 1+ option)
                 if ( count( $options ) > 0 ) {

@@ -622,7 +622,7 @@ class BV_Questionnaire_Admin {
                     <input type="file" id="bv-qt-doc-file" accept=".pdf,.docx" style="display:none;" />
                     <p style="margin:8px 0 0 0;color:#646970;font-size:12px;">
                         <span class="dashicons dashicons-info" style="font-size:16px;vertical-align:middle;margin-right:2px;color:#D4AF37;"></span>
-                        Upload a PDF or Word (.docx) questionnaire — the system will auto-detect sections and questions for your review.
+                        Upload a PDF or Word (.docx) questionnaire - the system will auto-detect sections and questions for your review.
                     </p>
                 </div>
 
