@@ -598,12 +598,12 @@
 }
 
 /* ---- RESPONSIVE ---- */
-/* .bv-desktop-only { display: block; } */
-/* .bv-mobile-only { display: none; } */
+.bv-desktop-only { display: block; }
+.bv-mobile-only { display: none; }
 
 @media (max-width: 768px) {
-    /* .bv-desktop-only { display: none !important; } */
-    /* .bv-mobile-only { display: block !important; } */
+    .bv-desktop-only { display: none !important; }
+    .bv-mobile-only { display: block !important; }
 
     /* .bv-header-inner { padding: 32px 16px 28px; } */
     /* .bv-shield-logo { width: 56px; height: 56px; } */
