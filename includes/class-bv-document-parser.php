@@ -117,6 +117,7 @@ class BV_Document_Parser {
             $streams[] = $content;
         }
 
+        // First pass: extract text from BT-containing streams only (clean, fast)
         $lines = array();
         foreach ( $streams as $stream ) {
             $text = $this->extract_pdf_text_from_stream( $stream );
@@ -125,7 +126,22 @@ class BV_Document_Parser {
             }
         }
 
-        return $this->clean_lines( $lines );
+        $cleaned = $this->clean_lines( $lines );
+
+        // Fallback: if first pass yielded zero readable lines, try ALL streams
+        // (some PDFs may not use BT/ET text blocks or use unusual encoding).
+        // clean_lines() binary filter will catch any garbage.
+        if ( empty( $cleaned ) ) {
+            foreach ( $streams as $stream ) {
+                $text = $this->extract_pdf_text_from_stream( $stream, false );
+                if ( ! empty( $text ) ) {
+                    $lines = array_merge( $lines, $this->split_into_lines( $text ) );
+                }
+            }
+            $cleaned = $this->clean_lines( $lines );
+        }
+
+        return $cleaned;
     }
 
     /**
@@ -384,6 +400,9 @@ class BV_Document_Parser {
             case 'RunLengthDecode':
                 return $this->decode_run_length( $data );
 
+            case 'LZWDecode':
+                return $this->decode_lzw( $data );
+
             default:
                 // Unknown/unsupported filter — skip this stream entirely
                 return false;
@@ -429,6 +448,94 @@ class BV_Document_Parser {
         }
 
         return $result;
+    }
+
+    /**
+     * Decode LZW (Lempel-Ziv-Welch) encoded data as used in PDFs.
+     *
+     * Implements the PDF variant of LZW with clear code (256) and EOD code (257).
+     *
+     * @param string $data LZW-encoded data.
+     * @return string|false Decoded data, or false on failure.
+     */
+    private function decode_lzw( $data ) {
+        $CLEAR = 256;
+        $EOD   = 257;
+
+        $table     = array();
+        $tableSize = 258;
+        for ( $i = 0; $i < 256; $i++ ) {
+            $table[ $i ] = chr( $i );
+        }
+
+        $codeSize = 9;
+        $bitBuf   = 0;
+        $bitCount = 0;
+        $byteIdx  = 0;
+        $dataLen  = strlen( $data );
+        $output   = '';
+        $oldCode  = null;
+
+        while ( $byteIdx < $dataLen ) {
+            while ( $bitCount < $codeSize && $byteIdx < $dataLen ) {
+                $bitBuf   += ord( $data[ $byteIdx++ ] ) << $bitCount;
+                $bitCount += 8;
+            }
+
+            if ( $bitCount < $codeSize ) {
+                break;
+            }
+
+            $code     = $bitBuf & ( ( 1 << $codeSize ) - 1 );
+            $bitBuf  >>= $codeSize;
+            $bitCount -= $codeSize;
+
+            if ( $code === $CLEAR ) {
+                $tableSize = 258;
+                $codeSize  = 9;
+                $table     = array();
+                for ( $i = 0; $i < 256; $i++ ) {
+                    $table[ $i ] = chr( $i );
+                }
+                $oldCode = null;
+                continue;
+            }
+
+            if ( $code === $EOD ) {
+                break;
+            }
+
+            if ( $oldCode === null ) {
+                if ( ! isset( $table[ $code ] ) ) {
+                    return false;
+                }
+                $output  .= $table[ $code ];
+                $oldCode  = $code;
+                continue;
+            }
+
+            if ( isset( $table[ $code ] ) ) {
+                $entry = $table[ $code ];
+            } elseif ( $code === $tableSize ) {
+                $entry = $table[ $oldCode ] . $table[ $oldCode ][0];
+            } else {
+                return false;
+            }
+
+            $output .= $entry;
+
+            if ( $tableSize < 4096 ) {
+                $table[ $tableSize ] = $table[ $oldCode ] . $entry[0];
+                $tableSize++;
+                if ( $tableSize > ( 1 << $codeSize ) && $codeSize < 12 ) {
+                    $codeSize++;
+                }
+            }
+
+            $oldCode = $code;
+        }
+
+        return $output;
     }
 
     /**
@@ -514,13 +621,14 @@ class BV_Document_Parser {
      * and line-break operators (T*, ET) by their byte offsets, sorts them by
      * position, and reconstructs the text with newlines at the correct boundaries.
      *
-     * @param string $stream Decompressed PDF stream content.
+     * @param string $stream      Decompressed PDF stream content.
+     * @param bool   $require_bt Whether to require BT operator (default true).
      * @return string Extracted text with \n at line boundaries.
      */
-    private function extract_pdf_text_from_stream( $stream ) {
+    private function extract_pdf_text_from_stream( $stream, $require_bt = true ) {
         // Only process streams that contain text operators (BT = Begin Text).
         // Non-content streams (fonts, CMaps, metadata) will be skipped entirely.
-        if ( ! preg_match( '/\\bBT\\b/', $stream ) ) {
+        if ( $require_bt && ! preg_match( '/\\bBT\\b/', $stream ) ) {
             return '';
         }
 
