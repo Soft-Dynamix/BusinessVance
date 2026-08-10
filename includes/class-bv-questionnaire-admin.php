@@ -853,7 +853,7 @@ class BV_Questionnaire_Admin {
                         </div>
                         <div class="bv-qt-modal-body" style="padding:20px;">
                             <!-- Template details -->
-                            <div style="margin-bottom:20px;">
+                            <div style="margin-bottom:16px;">
                                 <label for="bv-qt-doc-name" style="font-weight:600;">Template Name</label>
                                 <input type="text" id="bv-qt-doc-name" class="large-text" style="margin-top:4px;" />
                                 <p style="margin-top:4px;">
@@ -863,13 +863,13 @@ class BV_Questionnaire_Admin {
                             </div>
 
                             <!-- Stats -->
-                            <div id="bv-qt-doc-stats" style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;"></div>
+                            <div id="bv-qt-doc-stats" style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;"></div>
 
                             <!-- Sections & Questions -->
-                            <div id="bv-qt-doc-sections" style="max-height:350px;overflow-y:auto;border:1px solid #c3c4c7;border-radius:4px;"></div>
+                            <div id="bv-qt-doc-sections"></div>
 
                             <!-- Actions -->
-                            <div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+                            <div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;padding-top:16px;border-top:1px solid #c3c4c7;">
                                 <button type="button" class="button button-secondary" onclick="bvQTDocCloseModal()">Cancel</button>
                                 <button type="button" id="bv-qt-doc-confirm-btn" class="button button-primary" style="background:#00a32a;border-color:#009525;">
                                     <span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span>
