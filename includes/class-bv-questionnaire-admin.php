@@ -812,9 +812,9 @@ class BV_Questionnaire_Admin {
 
             <!-- ==================== DOCUMENT IMPORT MODAL ==================== -->
             <div id="bv-qt-doc-modal" class="bv-qt-modal-overlay" style="display:none;">
-                <div class="bv-qt-modal" style="max-width:800px;max-height:85vh;">
+                <div class="bv-qt-modal" style="max-width:800px;">
                     <!-- Step 1: Upload -->
-                    <div id="bv-qt-doc-step-upload">
+                    <div id="bv-qt-doc-step-upload" style="display:flex;">
                         <div class="bv-qt-modal-header">
                             <h2><span class="dashicons dashicons-media-document" style="margin-right:8px;"></span>Import from PDF/Word</h2>
                             <button type="button" class="bv-qt-modal-close button-link" onclick="bvQTDocCloseModal()">&times;</button>

@@ -120,6 +120,17 @@
     max-height: 90vh;
 }
 
+/* Each step inside the modal must also be flex-column so the body can shrink & scroll */
+#bv-qt-doc-step-upload,
+#bv-qt-doc-step-parsing,
+#bv-qt-doc-step-review {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+    overflow: hidden;
+}
+
 .bv-qt-modal-header {
     display: flex;
     align-items: center;

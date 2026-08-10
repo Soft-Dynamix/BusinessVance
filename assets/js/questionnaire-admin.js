@@ -535,7 +535,7 @@
         // Show a specific modal step
         function bvQTDocShowStep(step) {
             $('#bv-qt-doc-step-upload, #bv-qt-doc-step-parsing, #bv-qt-doc-step-review').hide();
-            $('#bv-qt-doc-step-' + step).show();
+            $('#bv-qt-doc-step-' + step).css('display', 'flex');
         }
 
         // Drop zone click opens file input
