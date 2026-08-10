@@ -177,7 +177,9 @@ class BV_Shortcodes {
      * Render the full services page
      */
     public function render_full_page( $atts ) {
-        $atts = shortcode_atts( array(), $atts, 'businessvance_services' );
+        $atts = shortcode_atts( array(
+            'category' => '',
+        ), $atts, 'businessvance_services' );
         $settings = BV_Settings::get_settings();
 
         ob_start();
@@ -315,16 +317,26 @@ class BV_Shortcodes {
      */
     public function render_services_section( $atts ) {
         global $wpdb;
+        $atts = is_array( $atts ) ? $atts : array();
         $tables = array(
             'services'   => $wpdb->prefix . 'bv_services',
             'categories' => $wpdb->prefix . 'bv_categories',
         );
 
+        $where = "s.is_visible = 1";
+        $category_slug = ! empty( $atts['category'] ) ? sanitize_text_field( $atts['category'] ) : '';
+        if ( $category_slug ) {
+            $cat_slugs   = array_map( 'trim', explode( ',', $category_slug ) );
+            $cat_slugs   = array_map( 'sanitize_title', $cat_slugs );
+            $cat_placeholders = implode( ',', array_fill( 0, count( $cat_slugs ), '%s' ) );
+            $where .= $wpdb->prepare( " AND c.slug IN ({$cat_placeholders})", ...$cat_slugs );
+        }
+
         $services = $wpdb->get_results(
             "SELECT s.*, c.name as category_name, c.color as category_color
              FROM {$tables['services']} s
              LEFT JOIN {$tables['categories']} c ON s.category_id = c.id
-             WHERE s.is_visible = 1
+             WHERE {$where}
              ORDER BY s.display_order ASC, s.id ASC"
         );
 
@@ -442,15 +454,27 @@ class BV_Shortcodes {
      */
     public function render_plans_section( $atts ) {
         global $wpdb;
+        $atts = is_array( $atts ) ? $atts : array();
         $tables = array(
-            'plans'    => $wpdb->prefix . 'bv_plans',
-            'features' => $wpdb->prefix . 'bv_plan_features',
+            'plans'      => $wpdb->prefix . 'bv_plans',
+            'features'   => $wpdb->prefix . 'bv_plan_features',
+            'categories' => $wpdb->prefix . 'bv_categories',
         );
 
+        $where = "p.is_visible = 1";
+        $category_slug = ! empty( $atts['category'] ) ? sanitize_text_field( $atts['category'] ) : '';
+        if ( $category_slug ) {
+            $cat_slugs   = array_map( 'trim', explode( ',', $category_slug ) );
+            $cat_slugs   = array_map( 'sanitize_title', $cat_slugs );
+            $cat_placeholders = implode( ',', array_fill( 0, count( $cat_slugs ), '%s' ) );
+            $where .= $wpdb->prepare( " AND c.slug IN ({$cat_placeholders})", ...$cat_slugs );
+        }
+
         $plans = $wpdb->get_results(
-            "SELECT * FROM {$tables['plans']}
-             WHERE is_visible = 1
-             ORDER BY display_order ASC, id ASC"
+            "SELECT p.* FROM {$tables['plans']} p
+             LEFT JOIN {$tables['categories']} c ON p.category_id = c.id
+             WHERE {$where}
+             ORDER BY p.display_order ASC, p.id ASC"
         );
 
         if ( empty( $plans ) ) {
