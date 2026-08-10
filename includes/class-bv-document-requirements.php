@@ -373,6 +373,6 @@ class BV_Document_Requirements {
                 </form>
             </div>
         </div>
-
+        <?php
     }
 }
