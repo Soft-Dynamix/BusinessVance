@@ -22,12 +22,12 @@ class BV_Document_Parser {
     /**
      * Minimum confidence score (0-1) for a line to be considered a section heading.
      */
-    const SECTION_HEADING_CONFIDENCE = 0.55;
+    const SECTION_HEADING_CONFIDENCE = 0.35;
 
     /**
      * Minimum confidence score for a line to be considered a question.
      */
-    const QUESTION_CONFIDENCE = 0.4;
+    const QUESTION_CONFIDENCE = 0.3;
 
     /**
      * Maximum file size in bytes (10MB).
@@ -97,9 +97,8 @@ class BV_Document_Parser {
     /**
      * Extract text lines from a PDF file.
      *
-     * Parses PDF objects to detect filter chains (e.g., ASCII85Decode + FlateDecode),
-     * applies them in order, then extracts text using Tj/TJ operators.
-     * Handles most common PDF formats (non-encrypted, standard text encoding).
+     * Uses /Length-based stream extraction for accurate boundaries and supports
+     * multi-filter chains (e.g., ASCII85Decode + FlateDecode).
      *
      * @param string $filepath Path to PDF file.
      * @return array Array of extracted text lines.
@@ -130,12 +129,13 @@ class BV_Document_Parser {
     }
 
     /**
-     * Extract and decode all PDF content streams from raw file content.
+     * Extract and decode all PDF content streams using /Length-based boundaries.
      *
-     * Finds each object with a stream, reads its /Filter dictionary entry,
-     * and applies the filter chain to produce decompressed content.
-     *
-     * Supported filters: FlateDecode, ASCII85Decode, ASCIIHexDecode.
+     * This method properly handles:
+     * - /Length dictionary entries for accurate stream boundaries
+     * - Indirect /Length references (e.g., /Length 12 0 R)
+     * - Filter arrays with multiple filters applied in order
+     * - ASCII85Decode + FlateDecode double-filter chains
      *
      * @param string $content Raw PDF file content.
      * @return array Array of decompressed stream strings.
@@ -143,50 +143,121 @@ class BV_Document_Parser {
     private function extract_pdf_streams( $content ) {
         $decoded_streams = array();
 
-        // Match each indirect object that contains a stream
-        // Pattern: N M obj ... << ... /Filter ... >> stream\r?\n ... endstream ... endobj
-        if ( ! preg_match_all( '/(\d+)\s+\d+\s+obj\s*(.*?)endobj/s', $content, $obj_matches ) ) {
-            // Fallback: try simple stream/endstream without object context
+        // Build a lookup table for indirect object byte offsets
+        $obj_offsets = array();
+        if ( preg_match_all( '/(\d+)\s+\d+\s+obj\b/', $content, $m, PREG_OFFSET_CAPTURE ) ) {
+            foreach ( $m[0] as $match ) {
+                $obj_num = (int) $m[1][0][ array_search( $match[1], array_column( $m[1], 1 ) ) ];
+                // Simpler approach: store all offsets
+            }
+            foreach ( $m[0] as $idx => $match ) {
+                $obj_offsets[ (int) $m[1][ $idx ][0] ] = $match[1];
+            }
+        }
+
+        // Find all indirect objects
+        $obj_count = preg_match_all( '/(\d+)\s+\d+\s+obj\b/s', $content, $obj_matches, PREG_OFFSET_CAPTURE );
+        if ( ! $obj_count ) {
             return $this->extract_pdf_streams_simple( $content );
         }
 
-        foreach ( $obj_matches[2] as $obj_body ) {
-            // Check if this object has a stream
-            if ( ! preg_match( '/stream\r?\n(.*?)\r?\nendstream/s', $obj_body, $stream_match ) ) {
-                if ( ! preg_match( '/stream\r?\n(.*?)endstream/s', $obj_body, $stream_match ) ) {
-                    continue;
-                }
+        for ( $i = 0; $i < $obj_count; $i++ ) {
+            $obj_num  = (int) $obj_matches[1][ $i ][0];
+            $obj_start = $obj_matches[0][ $i ][1];
+
+            // Find the matching endobj
+            $endobj_pos = strpos( $content, 'endobj', $obj_start );
+            if ( $endobj_pos === false ) {
+                continue;
             }
 
-            $raw_data = $stream_match[1];
+            $obj_body = substr( $content, $obj_start, $endobj_pos - $obj_start );
+
+            // Check if this object contains a stream
+            $stream_keyword_pos = strpos( $obj_body, 'stream' );
+            if ( $stream_keyword_pos === false ) {
+                continue;
+            }
+
+            // Dictionary is everything before 'stream'
+            $dict_part = substr( $obj_body, 0, $stream_keyword_pos );
+
+            // Skip image objects
+            if ( preg_match( '/\/Subtype\s*\/Image/', $dict_part ) ) {
+                continue;
+            }
 
             // Detect filter(s)
             $filters = array();
 
             // Array of filters: /Filter [ /ASCII85Decode /FlateDecode ]
-            if ( preg_match( '/\/Filter\s*\[\s*(.*?)\s*\]/s', $obj_body, $filter_array_match ) ) {
+            if ( preg_match( '/\/Filter\s*\[\s*(.*?)\s*\]/s', $dict_part, $filter_array_match ) ) {
                 $filter_str = $filter_array_match[1];
                 preg_match_all( '/\/(\w+)/', $filter_str, $filter_names );
                 $filters = $filter_names[1];
             }
             // Single filter: /Filter /FlateDecode
-            elseif ( preg_match( '/\/Filter\s*\/(\w+)/', $obj_body, $filter_single_match ) ) {
+            elseif ( preg_match( '/\/Filter\s*\/(\w+)/', $dict_part, $filter_single_match ) ) {
                 $filters = array( $filter_single_match[1] );
             }
 
-            // Skip image objects — they don't contain text operators
-            if ( in_array( 'Image', $filters, true ) ) {
-                continue;
-            }
-            if ( preg_match( '/\/Subtype\s*\/Image/', $obj_body ) ) {
+            // Skip image filter
+            if ( in_array( 'DCTDecode', $filters, true ) || in_array( 'JPXDecode', $filters, true ) ) {
                 continue;
             }
 
-            // Apply filter chain
-            $data = trim( $raw_data );
+            // Get /Length for accurate stream boundary
+            $stream_length = false;
+
+            // Direct: /Length N
+            if ( preg_match( '/\/Length\s+(\d+)/', $dict_part, $len_match ) ) {
+                $stream_length = (int) $len_match[1];
+            }
+
+            // Indirect: /Length N 0 R — resolve the reference
+            if ( $stream_length === false && preg_match( '/\/Length\s+(\d+)\s+(\d+)\s+R/', $dict_part, $len_indirect ) ) {
+                $ref_obj = (int) $len_indirect[1];
+                $ref_gen = (int) $len_indirect[2];
+                // Find the referenced object and extract its numeric value
+                $stream_length = $this->resolve_indirect_length( $content, $ref_obj, $ref_gen );
+            }
+
+            // Calculate absolute stream data start position in $content
+            $stream_data_offset = $obj_start + $stream_keyword_pos + strlen( 'stream' );
+
+            // Skip the newline(s) after 'stream'
+            if ( substr( $content, $stream_data_offset, 2 ) === "\r\n" ) {
+                $stream_data_offset += 2;
+            } elseif ( substr( $content, $stream_data_offset, 1 ) === "\n" ) {
+                $stream_data_offset += 1;
+            } elseif ( substr( $content, $stream_data_offset, 1 ) === "\r" ) {
+                $stream_data_offset += 1;
+            }
+
+            // Extract stream data using /Length
+            if ( $stream_length !== false && $stream_length > 0 ) {
+                $raw_data = substr( $content, $stream_data_offset, $stream_length );
+            } else {
+                // Fallback: use regex to find endstream
+                $remaining = substr( $content, $stream_data_offset );
+                if ( preg_match( '/(.*?)\r?\nendstream/s', $remaining, $endstream_match ) ) {
+                    $raw_data = $endstream_match[1];
+                } elseif ( preg_match( '/(.*?)endstream/s', $remaining, $endstream_match ) ) {
+                    $raw_data = $endstream_match[1];
+                } else {
+                    continue;
+                }
+            }
+
+            if ( empty( $raw_data ) ) {
+                continue;
+            }
+
+            // Apply filter chain in order
+            $data = $raw_data;
 
             if ( empty( $filters ) ) {
-                // No filter — raw data (might be plain text or uncompressed)
+                // No filter — raw data
                 $decoded_streams[] = $data;
                 continue;
             }
@@ -204,6 +275,24 @@ class BV_Document_Parser {
         }
 
         return $decoded_streams;
+    }
+
+    /**
+     * Resolve an indirect object reference to get its numeric value.
+     *
+     * For /Length references, the referenced object typically contains just a number.
+     *
+     * @param string $content Raw PDF content.
+     * @param int    $obj_num Object number.
+     * @param int    $gen_num Generation number.
+     * @return int|false The numeric value, or false if not found.
+     */
+    private function resolve_indirect_length( $content, $obj_num, $gen_num ) {
+        $pattern = '/' . preg_quote( $obj_num, '/' ) . '\s+' . preg_quote( $gen_num, '/' ) . '\s+obj\s*(\d+)\s+endobj/s';
+        if ( preg_match( $pattern, $content, $m ) ) {
+            return (int) $m[1];
+        }
+        return false;
     }
 
     /**
@@ -260,9 +349,11 @@ class BV_Document_Parser {
                     return $result;
                 }
                 // Try with max length (strip possible checksum)
-                $result = @gzinflate( substr( $data, 2, -4 ) );
-                if ( $result !== false ) {
-                    return $result;
+                if ( strlen( $data ) > 6 ) {
+                    $result = @gzinflate( substr( $data, 2, -4 ) );
+                    if ( $result !== false ) {
+                        return $result;
+                    }
                 }
                 return false;
 
@@ -360,10 +451,6 @@ class BV_Document_Parser {
      * Walks through the stream finding all text-showing operators (Tj, TJ, ', ")
      * and line-break operators (T*, ET) by their byte offsets, sorts them by
      * position, and reconstructs the text with newlines at the correct boundaries.
-     *
-     * This approach correctly handles PDFs where text blocks are separated by
-     * graphic-state operations (Q/q/cm) between ET and BT, and where T*
-     * (next-line) is used without a following TJ array.
      *
      * @param string $stream Decompressed PDF stream content.
      * @return string Extracted text with \n at line boundaries.
@@ -825,13 +912,18 @@ class BV_Document_Parser {
      */
     private function detect_template_name( $normalized ) {
         // Look at first few lines for a likely title
-        for ( $i = 0; $i < min( 5, count( $normalized ) ); $i++ ) {
+        for ( $i = 0; $i < min( 10, count( $normalized ) ); $i++ ) {
             $line = $normalized[ $i ];
             $text = trim( $line['text'] );
             $meta = $line['meta'];
 
             // Skip very short lines (likely artifacts)
             if ( strlen( $text ) < 3 ) {
+                continue;
+            }
+
+            // Skip common noise lines (headers, footers, branding)
+            if ( preg_match( '/\|.*Page\s+\d+/i', $text ) ) {
                 continue;
             }
 
@@ -849,13 +941,25 @@ class BV_Document_Parser {
             if ( ! empty( $meta['font_size'] ) && $meta['font_size'] >= 28 && strlen( $text ) >= 5 ) {
                 return $text;
             }
+
+            // ALL CAPS lines of reasonable length are likely titles (for PDFs)
+            if ( strlen( $text ) >= 5 && strlen( $text ) <= 80 && $this->uppercase_ratio( $text ) > 0.8 ) {
+                return $text;
+            }
+
+            // Numbered heading like "1. Client Information" — use as title if first heading
+            if ( preg_match( '/^\d+[\.\)]\s+[A-Z]/', $text ) && strlen( $text ) >= 5 && strlen( $text ) <= 80 ) {
+                return $this->clean_section_title( $text );
+            }
         }
 
         // Fallback: use first meaningful line
         if ( ! empty( $normalized ) ) {
-            $first = trim( $normalized[0]['text'] );
-            if ( strlen( $first ) >= 3 && strlen( $first ) <= 120 ) {
-                return $first;
+            for ( $i = 0; $i < min( 5, count( $normalized ) ); $i++ ) {
+                $first = trim( $normalized[ $i ]['text'] );
+                if ( strlen( $first ) >= 5 && strlen( $first ) <= 120 && ! preg_match( '/\|.*Page\s+\d+/i', $first ) ) {
+                    return $first;
+                }
             }
         }
 
@@ -908,7 +1012,7 @@ class BV_Document_Parser {
             }
         }
 
-        // If we found the first heading within the first 5 lines, it's likely the title,
+        // If we found the first heading within the first 3 lines, it's likely the title,
         // not a section. Skip it as a section heading but we still use it as the template name.
         if ( ! empty( $filtered ) && $filtered[0]['index'] < 3 ) {
             array_shift( $filtered );
@@ -925,7 +1029,7 @@ class BV_Document_Parser {
             if ( $start + 1 < $end ) {
                 $next_text = trim( $normalized[ $start + 1 ]['text'] );
                 if ( strlen( $next_text ) > 20 && ! preg_match( '/[?？]$/u', $next_text )
-                     && ! preg_match( '/^[\d.]+[\).]/', $next_text )
+                     && ! preg_match( '/^\d+(\.\d+)?[\).]/', $next_text )
                      && ! preg_match( '/^(please|provide|enter|list|describe|state|give|write)/i', $next_text ) ) {
                     $description = $next_text;
                 }
@@ -944,6 +1048,8 @@ class BV_Document_Parser {
 
     /**
      * Calculate a score (0-1) for how likely a line is a section heading.
+     *
+     * Optimized for both DOCX (with metadata) and PDF (text-only) documents.
      *
      * @param string $text    Line text.
      * @param array  $meta    Line metadata.
@@ -965,13 +1071,31 @@ class BV_Document_Parser {
             return 0;
         }
 
-        // Must NOT be a numbered question like "2.1 Briefly describe..."
-        // But allow numbered section headings like "1. Client Information"
+        // Check for table header lines (ALL CAPS column headers) — skip these
+        if ( preg_match( '/^[A-Z][A-Z\s\/&]+$/u', $text ) && $len > 5 ) {
+            // Likely a table header row — not a section heading
+            // But allow if it's a single word or very short (like "INTRODUCTION")
+            if ( substr_count( $text, '  ' ) > 0 || preg_match( '/[A-Z]\s{2,}[A-Z]/', $text ) ) {
+                return 0;
+            }
+        }
+
+        // Must NOT be a numbered sub-question like "2.1 Briefly describe..."
+        // Allow numbered section headings like "1. Client Information" or "2. Business Overview"
+        if ( preg_match( '/^\s*\d+\.\d+[\.\s]/', $text ) ) {
+            // Sub-numbered pattern (2.1, 3.2) — always a question, never a heading
+            return 0;
+        }
+
         if ( preg_match( '/^\s*(\d+[\.\)]\s+|Q\d+[\.\)]?\s+)/', $text ) ) {
-            // Allow short numbered headings without question mark (e.g., "1. Client Information")
-            if ( ! ( preg_match( '/^\s*\d+[\.\)]\s+[A-Z][A-Za-z]/', $text )
-                   && ! preg_match( '/[?？]\s*$/u', $text )
-                   && ! preg_match( '/^(please|provide|enter|list|describe|state|give|write|briefly|what|which|who|how|why|when|where|are|is|do|does|have|has|can|could|should|would|will)\b/i', $text ) ) ) {
+            // Numbered pattern — allow only if it looks like a section heading
+            // Section heading: "1. Client Information" (short, Title Case, no question word)
+            $is_question_start = preg_match( '/^\s*\d+[\.\)]\s+(?:please|provide|enter|list|describe|state|give|write|briefly|what|which|who|how|why|when|where|are|is|do|does|have|has|can|could|should|would|will|name|specify|indicate|tell|explain)\b/i', $text );
+            if ( $is_question_start ) {
+                return 0;
+            }
+            // If it's long and contains sentence-like text, it's probably a question
+            if ( strlen( $text ) > 60 && preg_match( '/\b(?:your|the|this|that|a|an|of|in|for|to|with|from|by|at|on|about|into|through)\b/i', $text ) ) {
                 return 0;
             }
         }
@@ -1002,12 +1126,12 @@ class BV_Document_Parser {
             }
         }
 
-        // ALL CAPS text (50%+ uppercase)
+        // ALL CAPS text (70%+ uppercase) — strong signal for PDF headings
         $upper_ratio = $this->uppercase_ratio( $text );
         if ( $upper_ratio > 0.7 && $len >= 5 ) {
-            $score += 0.35;
+            $score += 0.4;
         } elseif ( $upper_ratio > 0.5 && $len >= 5 ) {
-            $score += 0.15;
+            $score += 0.2;
         }
 
         // Section-like keywords
@@ -1025,24 +1149,30 @@ class BV_Document_Parser {
             $score += 0.1;
         }
 
-        // Preceded by a blank line (gap before heading is common)
-        if ( $index > 0 && trim( $lines[ $index - 1 ]['text'] ) === '' ) {
-            $score += 0.1;
-        }
-
-        // Followed by a blank line (gap after heading is common)
-        if ( $index + 1 < count( $lines ) && trim( $lines[ $index + 1 ]['text'] ) === '' ) {
-            $score += 0.1;
-        }
-
-        // Numbered heading pattern like "1. Company Info" (short, no question mark)
-        if ( preg_match( '/^\s*\d+[\.\)]\s+[A-Z]/', $text ) && $len <= 80 ) {
-            $score += 0.25;
+        // Numbered heading pattern like "1. Company Info" (short, no question mark, Title Case)
+        if ( preg_match( '/^\s*\d+[\.\)]\s+[A-Z]/', $text ) && $len <= 80 && $len >= 5 ) {
+            $score += 0.3;
         }
 
         // Roman numeral heading like "I. Executive Summary"
         if ( preg_match( '/^[IVX]+\.\s+[A-Z]/', $text ) && $len <= 80 ) {
             $score += 0.3;
+        }
+
+        // Title Case check: if most words start with uppercase, likely a heading
+        $title_case_ratio = $this->title_case_ratio( $text );
+        if ( $title_case_ratio > 0.7 && $len >= 8 && $len <= 80 ) {
+            $score += 0.15;
+        }
+
+        // Context: if previous line was empty (gap before heading)
+        if ( $index > 0 && trim( $lines[ $index - 1 ]['text'] ) === '' ) {
+            $score += 0.1;
+        }
+
+        // Context: if next line is empty (gap after heading)
+        if ( $index + 1 < count( $lines ) && trim( $lines[ $index + 1 ]['text'] ) === '' ) {
+            $score += 0.1;
         }
 
         return min( $score, 1.0 );
@@ -1076,6 +1206,18 @@ class BV_Document_Parser {
                 continue;
             }
 
+            // Skip lines that are clearly section headings (high confidence)
+            if ( $this->calculate_section_heading_score( $text, $meta, $section_lines, $i ) >= 0.5 ) {
+                $i++;
+                continue;
+            }
+
+            // Skip known noise lines
+            if ( $this->is_noise_line( $text ) ) {
+                $i++;
+                continue;
+            }
+
             // Try to detect a question
             $question = $this->try_detect_question( $text, $section_lines, $i );
 
@@ -1093,7 +1235,50 @@ class BV_Document_Parser {
     }
 
     /**
+     * Check if a line is noise (headers, footers, table headers, etc.).
+     *
+     * @param string $text Line text.
+     * @return bool True if noise.
+     */
+    private function is_noise_line( $text ) {
+        // Page footer patterns
+        if ( preg_match( '/\|.*Page\s+\d+/i', $text ) ) {
+            return true;
+        }
+        if ( preg_match( '/^\s*Page\s+\d+\s*$/i', $text ) ) {
+            return true;
+        }
+
+        // Repeated branding lines
+        if ( preg_match( '/^BusinessVance\s*\|.*\|.*Page\s+\d+/i', $text ) ) {
+            return true;
+        }
+        if ( $text === 'BUSINESSVANCE' || $text === 'COMPETITOR ANALYSIS QUESTIONNAIRE' ) {
+            return true;
+        }
+
+        // Standalone ALL CAPS short labels that are table column headers
+        // e.g., "PRODUCT OR SERVICE", "DESCRIPTION", "YOUR PRICE"
+        if ( preg_match( '/^[A-Z][A-Z\s\/&]+$/u', $text ) && strlen( $text ) > 3 && strlen( $text ) <= 30 ) {
+            // Single word ALL CAPS could be a section heading — don't filter
+            if ( strpos( $text, ' ' ) !== false && substr_count( $text, ' ' ) >= 1 ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Try to detect if a line is a question and return its structured data.
+     *
+     * Uses multiple heuristic signals:
+     * - Question mark at end
+     * - Numbered pattern (1., 1.1, Q1, etc.)
+     * - Imperative verbs (describe, provide, etc.)
+     * - Field label patterns (Name:, Email:, etc.)
+     * - Lines ending with colon (followed by fill-in space)
+     * - Checkbox groups following the line
      *
      * @param string $text          The line text.
      * @param array  $section_lines All lines in the section.
@@ -1113,28 +1298,42 @@ class BV_Document_Parser {
         // Ends with question mark
         $is_question = preg_match( '/[?？]\s*$/u', $text );
 
-        // Starts with numbered pattern: "1.", "1)", "Q1.", "Q.1", "Question 1:"
-        $numbered = preg_match( '/^\s*(\d+[\.\)]|Q\.?\s*\d+[\.\)]?|(?:question|q)\s*\d+[\.\):]?)/i', $text, $num_match );
+        // Numbered pattern: "1.", "1.1", "1)", "Q1.", "Q.1", "Question 1:"
+        $numbered = preg_match( '/^\s*(\d+\.\d+[\.\s]|\d+[\.\)]|Q\.?\s*\d+[\.\)]?|(?:question|q)\s*\d+[\.\):]?)/i', $text, $num_match );
 
-        // Starts with imperative verb
-        $imperative = preg_match( '/^(?:please|provide|enter|list|describe|state|give|write|name|specify|indicate|tell|explain|share|detail|outline|summarize|brief|note|record|fill)\s/i', $text );
+        // Extract the number for reference
+        $question_number = '';
+        if ( $numbered && isset( $num_match[0] ) ) {
+            $question_number = trim( $num_match[0] );
+        }
+
+        // Starts with imperative verb (possibly after a number)
+        $text_after_number = preg_replace( '/^\s*\d+(\.\d+)?[\.\)]\s*/', '', $text );
+        $imperative = preg_match( '/^(?:please|provide|enter|list|describe|state|give|write|name|specify|indicate|tell|explain|share|detail|outline|summarize|brief|note|record|fill|briefly)\s/i', $text_after_number );
 
         // Field label pattern: "Full Name:", "Email Address:", "Company Name:"
-        $field_label = preg_match( '/^[A-Z][A-Za-z\s&\-]+(?:\s+(?:Name|Address|Number|Phone|Email|Date|Company|Position|Title|City|Country|State|Province|Zip|Postal|Code|Reference|ID|Number|Amount|Percentage|Rate|Website|URL|Fax|Mobile|Gender|Age|DOB|Location|Industry|Sector|Role|Department|Division|Registration|Tax|VAT|Bank|Account|Contact|Occupation|Qualification|Education|Experience|Comments|Notes|Remarks|Signature|Consent|Agreement|Preference|Status|Type|Category|Description|Details|Information|Background|History|Period|Duration|Frequency|Budget|Revenue|Turnover|Employees|Staff|Size|Range|Scale|Volume|Capacity|Quantity|Units|Level|Grade|Score|Rating|Percentage|Proportion|Share|Ownership|Equity|Debt|Loan|Mortgage|Interest|Rate|Term|Period|Duration|Start|End|From|To|Beginning|Ending|Commencement|Termination|Expiry|Renewal))\s*:?\s*$/i', $text );
+        $field_label = preg_match( '/^[A-Z][A-Za-z\s&\-]+(?:\s+(?:Name|Address|Number|Phone|Email|Date|Company|Position|Title|City|Country|State|Province|Zip|Postal|Code|Reference|ID|Amount|Percentage|Rate|Website|URL|Fax|Mobile|Gender|Age|DOB|Location|Industry|Sector|Role|Department|Division|Registration|Tax|VAT|Bank|Account|Contact|Occupation|Qualification|Education|Experience|Comments|Notes|Remarks|Signature|Consent|Agreement|Preference|Status|Type|Category|Description|Details|Information|Background|History|Period|Duration|Frequency|Budget|Revenue|Turnover|Employees|Staff|Size|Range|Scale|Volume|Capacity|Quantity|Units|Level|Grade|Score|Rating|Share|Ownership|Equity|Debt|Loan|Mortgage|Interest|Term|Start|End|From|To|Beginning|Ending|Commencement|Termination|Expiry|Renewal))\s*:?\s*$/i', $text );
 
         // Check for Y/N or Yes/No indicator
         $is_yesno = preg_match( '/\b(?:yes\s*[\/\|]\s*no|y\s*[\/\|]\s*n|yes\s+or\s+no|y\s+or\s+n)\b/i', $text );
 
+        // Line ends with colon — common in questionnaires for fill-in fields
+        $ends_with_colon = preg_match( '/:\s*$/', $text );
+
         // Collect following lines for options detection
         $following_lines = array();
         $next_idx = $index + 1;
-        while ( $next_idx < count( $section_lines ) && $next_idx < $index + 15 ) {
+        while ( $next_idx < count( $section_lines ) && $next_idx < $index + 20 ) {
             $next_text = trim( $section_lines[ $next_idx ]['text'] );
             if ( $next_text === '' ) {
                 break;
             }
             // Stop if the next line looks like a new question or heading
-            if ( preg_match( '/^\s*(\d+[\.\)]|Q\.?\s*\d+[\.\)]?|(?:question|q)\s*\d+[\.\):]?)/i', $next_text ) ) {
+            if ( preg_match( '/^\s*(\d+\.\d+[\.\s]|\d+[\.\)]|Q\.?\s*\d+[\.\)]?|(?:question|q)\s*\d+[\.\):]?)/i', $next_text ) ) {
+                break;
+            }
+            // Stop if the next line is a high-confidence section heading
+            if ( $this->calculate_section_heading_score( $next_text, array(), $section_lines, $next_idx ) >= 0.5 ) {
                 break;
             }
             $following_lines[] = $next_text;
@@ -1147,18 +1346,27 @@ class BV_Document_Parser {
 
         // Score this line as a question
         $score = 0;
-        if ( $is_question )  $score += 0.5;
-        if ( $numbered )     $score += 0.4;
-        if ( $imperative )   $score += 0.35;
-        if ( $field_label )  $score += 0.3;
-        if ( ! empty( $options ) ) $score += 0.25;
+        if ( $is_question )                    $score += 0.5;
+        if ( $numbered )                       $score += 0.35;
+        if ( $imperative )                      $score += 0.35;
+        if ( $field_label )                     $score += 0.4;
+        if ( $is_yesno )                        $score += 0.3;
+        if ( ! empty( $options ) )              $score += 0.25;
+        if ( $ends_with_colon && $len >= 10 )   $score += 0.25;
+        if ( $ends_with_colon && $len < 10 )    $score += 0.15;
+
+        // Bonus: numbered sub-question pattern (2.1, 3.2) is very strong
+        if ( $numbered && preg_match( '/^\s*\d+\.\d+/', $text ) ) {
+            $score += 0.2;
+        }
 
         if ( $score < self::QUESTION_CONFIDENCE ) {
             return null;
         }
 
         // Strip leading number from the label
-        $label = preg_replace( '/^\s*\d+[\.\)]\s+/', '', $text );
+        $label = preg_replace( '/^\s*\d+\.\d+\s+/', '', $text );
+        $label = preg_replace( '/^\s*\d+[\.\)]\s+/', '', $label );
         $label = preg_replace( '/^\s*Q\.?\s*\d+[\.\)]?\s*/i', '', $label );
         $label = preg_replace( '/^\s*(?:question|q)\s*\d+[\.\):]?\s*/i', '', $label );
         $label = trim( $label );
@@ -1229,12 +1437,19 @@ class BV_Document_Parser {
     /**
      * Detect multiple-choice options from following lines.
      *
+     * Handles various option formats:
+     * - Lettered: a), b), c), A., B., C.
+     * - Bulleted: •, ○, ▪, ►, –
+     * - Dashed: - Option text
+     * - Checkbox: ☐ Option, [ ] Option
+     * - PDF checkbox markers: \x01 (SOH control character)
+     *
      * @param array $following_lines Lines after a potential question.
      * @return array Array of option text strings.
      */
     private function detect_options( $following_lines ) {
         $options = array();
-        $max_options = 10;
+        $max_options = 15;
 
         foreach ( $following_lines as $line ) {
             if ( count( $options ) >= $max_options ) {
@@ -1245,6 +1460,11 @@ class BV_Document_Parser {
 
             // Skip very long lines (not options)
             if ( strlen( $trimmed ) > 120 ) {
+                break;
+            }
+
+            // Skip empty lines
+            if ( $trimmed === '' ) {
                 break;
             }
 
@@ -1314,15 +1534,16 @@ class BV_Document_Parser {
 
             // If it's a short line and doesn't look like a question, might be an option
             if ( strlen( $trimmed ) <= 60 && ! preg_match( '/[?？]/u', $trimmed )
-                 && ! preg_match( '/^\s*\d+[\.\)]\s+/', $trimmed ) ) {
+                 && ! preg_match( '/^\s*\d+[\.\)]\s+/', $trimmed )
+                 && ! preg_match( '/^\s*\d+\.\d+/', $trimmed ) ) {
                 // Only accept if it follows a pattern (we already detected 1+ option)
                 if ( count( $options ) > 0 ) {
                     $options[] = $trimmed;
                 }
             }
 
-            // Break on any empty-ish or long line
-            if ( strlen( $trimmed ) > 80 ) {
+            // Break on any line that's clearly a new question
+            if ( preg_match( '/^\s*\d+(\.\d+)?[\.\)]\s+/', $trimmed ) ) {
                 break;
             }
         }
@@ -1407,6 +1628,34 @@ class BV_Document_Parser {
     }
 
     /**
+     * Calculate the ratio of words starting with uppercase (Title Case detection).
+     *
+     * @param string $text Input text.
+     * @return float Ratio 0-1.
+     */
+    private function title_case_ratio( $text ) {
+        // Split into words
+        $words = preg_split( '/[\s\-\/]+/', $text );
+        $total_words = 0;
+        $title_words = 0;
+
+        foreach ( $words as $word ) {
+            if ( strlen( $word ) < 2 ) {
+                continue;
+            }
+            $total_words++;
+            if ( ctype_upper( $word[0] ) && ! ctype_upper( substr( $word, 1 ) ) ) {
+                $title_words++;
+            } elseif ( ctype_upper( $word[0] ) && strlen( $word ) <= 3 ) {
+                // Short words like "Of", "The", "And" are often uppercase in headings
+                $title_words++;
+            }
+        }
+
+        return ( $total_words > 0 ) ? ( $title_words / $total_words ) : 0;
+    }
+
+    /**
      * Clean a section title by removing leading numbers and extra whitespace.
      *
      * @param string $title Raw section title.
@@ -1475,21 +1724,17 @@ class BV_Document_Parser {
                 continue;
             }
 
-            // Skip common PDF header / footer noise (e.g. "Page N", repeated branding)
+            // Skip common PDF header / footer noise
             if ( preg_match( '/^\s*Page\s+\d+\s*$/i', $text ) ) {
                 $prev_text = '';
                 continue;
             }
             if ( preg_match( '/\|.*Page\s+\d+/i', $text ) && preg_match( '/\|.*\d{3}[\s\-]\d{3}\s+\d{4}/', $text ) ) {
-                // Pattern like "BusinessVance | ... | Page 4"
                 $prev_text = '';
                 continue;
             }
 
-            // Lines starting with \x01 (SOH/PDF checkbox marker) are valid — keep them
-            // but trim leading/trailing whitespace around them
-
-            // Skip duplicate consecutive lines (handles repeated PDF headers/footers)
+            // Skip duplicate consecutive lines
             if ( $text === $prev_text ) {
                 continue;
             }
@@ -1499,14 +1744,10 @@ class BV_Document_Parser {
                 $prev = $cleaned[ count( $cleaned ) - 1 ];
                 $prev_text_str = is_array( $prev ) ? $prev['text'] : $prev;
 
-                // If previous line doesn't end with sentence-ending punctuation
-                // and current line is short, merge them — BUT never merge lines
-                // that start with a digit (numbered items) or a control/checkbox
-                // marker, as these are always new questions or options.
+                // Never merge if current line starts with a digit, uppercase, or control marker
                 if ( ! preg_match( '/[\.\?!:;,\-\s]$/', $prev_text_str )
                      && strlen( $text ) < 60
-                     && ! preg_match( '/^[A-Z\d]/', $text )
-                     && ! preg_match( '/^\x01/', $text ) ) {
+                     && ! preg_match( '/^[A-Z\d\x01]/', $text ) ) {
                     // Merge into previous
                     if ( is_array( $prev ) ) {
                         $cleaned[ count( $cleaned ) - 1 ]['text'] = $prev_text_str . ' ' . $text;
