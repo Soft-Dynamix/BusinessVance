@@ -25,6 +25,7 @@ class BV_Activator {
         public static function activate() {
                 self::create_tables();
                 self::seed_data();
+                self::cleanup_demo_data();
         }
 
         /**
@@ -697,305 +698,8 @@ class BV_Activator {
                         $category_ids[ $cat['slug'] ] = $wpdb->insert_id;
                 }
 
-                // ----------------------------------------------------------------
-                // Seed Services
-                // ----------------------------------------------------------------
-                $table_services = $wpdb->prefix . 'bv_services';
-
-                $services = array(
-                        // Research & Analysis
-                        array(
-                                'name'          => 'Business Feasibility Report',
-                                'description'   => 'A comprehensive feasibility analysis evaluating the viability of your business concept, including market potential, financial projections, and risk assessment.',
-                                'price'         => '4500.00',
-                                'price_display' => 'R4,500',
-                                'icon'          => 'file-search',
-                                'button_label'  => 'Get Started',
-                                'service_type'  => 'onceoff',
-                                'category_id'   => $category_ids['research-analysis'],
-                                'is_visible'    => 1,
-                                'is_featured'   => 1,
-                                'display_order' => 1,
-                        ),
-                        array(
-                                'name'          => 'Market Research Report',
-                                'description'   => 'In-depth market analysis covering industry trends, competitor landscape, target audience profiling, and market sizing to inform strategic decisions.',
-                                'price'         => '5500.00',
-                                'price_display' => 'R5,500',
-                                'icon'          => 'bar-chart-3',
-                                'button_label'  => 'Get Started',
-                                'service_type'  => 'onceoff',
-                                'category_id'   => $category_ids['research-analysis'],
-                                'is_visible'    => 1,
-                                'is_featured'   => 1,
-                                'display_order' => 2,
-                        ),
-                        array(
-                                'name'          => 'Financial Analysis',
-                                'description'   => 'Detailed financial assessment including cash flow projections, break-even analysis, profit margin evaluation, and funding requirement analysis.',
-                                'price'         => '3800.00',
-                                'price_display' => 'R3,800',
-                                'icon'          => 'trending-up',
-                                'button_label'  => 'Get Started',
-                                'service_type'  => 'onceoff',
-                                'category_id'   => $category_ids['research-analysis'],
-                                'is_visible'    => 1,
-                                'is_featured'   => 0,
-                                'display_order' => 3,
-                        ),
-                        // Planning & Strategy
-                        array(
-                                'name'          => 'Business Plan Development',
-                                'description'   => 'Professional business plan preparation for funding applications, investor pitches, or internal strategic planning with financial models.',
-                                'price'         => '7500.00',
-                                'price_display' => 'R7,500',
-                                'icon'          => 'clipboard-list',
-                                'button_label'  => 'Get Started',
-                                'service_type'  => 'onceoff',
-                                'category_id'   => $category_ids['planning-strategy'],
-                                'is_visible'    => 1,
-                                'is_featured'   => 1,
-                                'display_order' => 4,
-                        ),
-                        array(
-                                'name'          => 'Strategic Growth Plan',
-                                'description'   => 'A tailored growth strategy outlining expansion opportunities, market penetration tactics, and sustainable scaling pathways.',
-                                'price'         => '6500.00',
-                                'price_display' => 'R6,500',
-                                'icon'          => 'target',
-                                'button_label'  => 'Get Started',
-                                'service_type'  => 'onceoff',
-                                'category_id'   => $category_ids['planning-strategy'],
-                                'is_visible'    => 1,
-                                'is_featured'   => 0,
-                                'display_order' => 5,
-                        ),
-                        array(
-                                'name'          => 'Marketing Strategy',
-                                'description'   => 'Comprehensive marketing plan covering digital and traditional channels, brand positioning, customer acquisition, and campaign frameworks.',
-                                'price'         => '5000.00',
-                                'price_display' => 'R5,000',
-                                'icon'          => 'megaphone',
-                                'button_label'  => 'Get Started',
-                                'service_type'  => 'onceoff',
-                                'category_id'   => $category_ids['planning-strategy'],
-                                'is_visible'    => 1,
-                                'is_featured'   => 0,
-                                'display_order' => 6,
-                        ),
-                        // Advisory & Consulting
-                        array(
-                                'name'          => 'Business Advisory Session',
-                                'description'   => 'One-on-one consulting session with experienced business advisors to address specific challenges, explore opportunities, and gain expert insights.',
-                                'price'         => '1500.00',
-                                'price_display' => 'R1,500',
-                                'icon'          => 'message-circle',
-                                'button_label'  => 'Book Session',
-                                'service_type'  => 'onceoff',
-                                'category_id'   => $category_ids['advisory-consulting'],
-                                'is_visible'    => 1,
-                                'is_featured'   => 1,
-                                'display_order' => 7,
-                        ),
-                        array(
-                                'name'          => 'Compliance Assessment',
-                                'description'   => 'Thorough review of your business compliance status covering regulatory requirements, industry standards, and risk mitigation strategies.',
-                                'price'         => '3200.00',
-                                'price_display' => 'R3,200',
-                                'icon'          => 'shield-check',
-                                'button_label'  => 'Get Started',
-                                'service_type'  => 'onceoff',
-                                'category_id'   => $category_ids['advisory-consulting'],
-                                'is_visible'    => 1,
-                                'is_featured'   => 0,
-                                'display_order' => 8,
-                        ),
-                        array(
-                                'name'          => 'Tax Planning Consultation',
-                                'description'   => 'Expert tax planning advice to optimize your tax position, ensure SARS compliance, and identify legitimate tax-saving opportunities.',
-                                'price'         => '2800.00',
-                                'price_display' => 'R2,800',
-                                'icon'          => 'calculator',
-                                'button_label'  => 'Get Started',
-                                'service_type'  => 'onceoff',
-                                'category_id'   => $category_ids['advisory-consulting'],
-                                'is_visible'    => 1,
-                                'is_featured'   => 0,
-                                'display_order' => 9,
-                        ),
-                        // Implementation
-                        array(
-                                'name'          => 'Company Registration',
-                                'description'   => 'End-to-end company registration service with CIPC, including name reservation, incorporation documents, and registration certificates.',
-                                'price'         => '1750.00',
-                                'price_display' => 'R1,750',
-                                'icon'          => 'building-2',
-                                'button_label'  => 'Get Started',
-                                'service_type'  => 'onceoff',
-                                'category_id'   => $category_ids['implementation'],
-                                'is_visible'    => 1,
-                                'is_featured'   => 1,
-                                'display_order' => 10,
-                        ),
-                        array(
-                                'name'          => 'BEE Certificate Assistance',
-                                'description'   => 'Professional assistance with B-BBEE certification, including scorecard assessment, documentation preparation, and affidavit guidance.',
-                                'price'         => '2500.00',
-                                'price_display' => 'R2,500',
-                                'icon'          => 'award',
-                                'button_label'  => 'Get Started',
-                                'service_type'  => 'onceoff',
-                                'category_id'   => $category_ids['implementation'],
-                                'is_visible'    => 1,
-                                'is_featured'   => 0,
-                                'display_order' => 11,
-                        ),
-                        array(
-                                'name'          => 'Logo & Brand Identity',
-                                'description'   => 'Professional logo design and brand identity package including logo concepts, colour palette, typography, and brand guidelines document.',
-                                'price'         => '4200.00',
-                                'price_display' => 'R4,200',
-                                'icon'          => 'palette',
-                                'button_label'  => 'Get Started',
-                                'service_type'  => 'onceoff',
-                                'category_id'   => $category_ids['implementation'],
-                                'is_visible'    => 1,
-                                'is_featured'   => 0,
-                                'display_order' => 12,
-                        ),
-                );
-
-                $service_ids = array();
-
-                foreach ( $services as $svc ) {
-                        $wpdb->insert(
-                                $table_services,
-                                array(
-                                        'name'           => $svc['name'],
-                                        'description'    => $svc['description'],
-                                        'price'          => $svc['price'],
-                                        'price_display'  => $svc['price_display'],
-                                        'icon'           => $svc['icon'],
-                                        'button_label'   => $svc['button_label'],
-                                        'service_type'   => $svc['service_type'],
-                                        'woo_product_id' => 0,
-                                        'category_id'    => $svc['category_id'],
-                                        'is_visible'     => $svc['is_visible'],
-                                        'is_featured'    => $svc['is_featured'],
-                                        'display_order'  => $svc['display_order'],
-                                        'created_at'     => current_time( 'mysql' ),
-                                        'updated_at'     => current_time( 'mysql' ),
-                                ),
-                                array( '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d', '%d', '%s', '%s' )
-                        );
-                        $service_ids[ $svc['name'] ] = $wpdb->insert_id;
-                }
-
-                // ----------------------------------------------------------------
-                // Seed Plans
-                // ----------------------------------------------------------------
-                $table_plans = $wpdb->prefix . 'bv_plans';
-
-                $plans = array(
-                        array(
-                                'name'          => 'STARTER',
-                                'subtitle'      => 'Perfect for new businesses',
-                                'price'         => '299',
-                                'color'         => '#2A9D8F',
-                                'button_label'  => 'Choose Starter',
-                                'is_visible'    => 1,
-                                'is_featured'   => 0,
-                                'display_order' => 1,
-                        ),
-                        array(
-                                'name'          => 'PROFESSIONAL',
-                                'subtitle'      => 'For growing businesses',
-                                'price'         => '599',
-                                'color'         => '#0A2647',
-                                'button_label'  => 'Choose Professional',
-                                'is_visible'    => 1,
-                                'is_featured'   => 1,
-                                'display_order' => 2,
-                        ),
-                        array(
-                                'name'          => 'BUSINESS PARTNER',
-                                'subtitle'      => 'Enterprise-grade support',
-                                'price'         => '999',
-                                'color'         => '#F4A261',
-                                'button_label'  => 'Choose Business Partner',
-                                'is_visible'    => 1,
-                                'is_featured'   => 0,
-                                'display_order' => 3,
-                        ),
-                );
-
-                $plan_ids = array();
-
-                foreach ( $plans as $plan ) {
-                        $wpdb->insert(
-                                $table_plans,
-                                array(
-                                        'name'           => $plan['name'],
-                                        'subtitle'       => $plan['subtitle'],
-                                        'price'          => $plan['price'],
-                                        'color'          => $plan['color'],
-                                        'button_label'   => $plan['button_label'],
-                                        'woo_product_id' => 0,
-                                        'category_id'    => 0,
-                                        'is_visible'     => $plan['is_visible'],
-                                        'is_featured'    => $plan['is_featured'],
-                                        'display_order'  => $plan['display_order'],
-                                        'created_at'     => current_time( 'mysql' ),
-                                        'updated_at'     => current_time( 'mysql' ),
-                                ),
-                                array( '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d', '%d', '%s', '%s' )
-                        );
-                        $plan_ids[ $plan['name'] ] = $wpdb->insert_id;
-                }
-
-                // ----------------------------------------------------------------
-                // Seed Plan Features
-                // ----------------------------------------------------------------
-                $table_plan_features = $wpdb->prefix . 'bv_plan_features';
-
-                $plan_features = array(
-                        // STARTER features
-                        array( 'plan' => 'STARTER', 'feature' => 'Up to 2 advisory sessions per month', 'order' => 1 ),
-                        array( 'plan' => 'STARTER', 'feature' => 'Basic compliance health check', 'order' => 2 ),
-                        array( 'plan' => 'STARTER', 'feature' => 'Email support (48h response)', 'order' => 3 ),
-                        array( 'plan' => 'STARTER', 'feature' => 'Access to resource library', 'order' => 4 ),
-                        array( 'plan' => 'STARTER', 'feature' => 'Monthly business health report', 'order' => 5 ),
-                        // PROFESSIONAL features
-                        array( 'plan' => 'PROFESSIONAL', 'feature' => 'Up to 5 advisory sessions per month', 'order' => 1 ),
-                        array( 'plan' => 'PROFESSIONAL', 'feature' => 'Full compliance assessment', 'order' => 2 ),
-                        array( 'plan' => 'PROFESSIONAL', 'feature' => 'Priority email & phone support (24h)', 'order' => 3 ),
-                        array( 'plan' => 'PROFESSIONAL', 'feature' => 'Quarterly strategy review session', 'order' => 4 ),
-                        array( 'plan' => 'PROFESSIONAL', 'feature' => 'Discounted à la carte services (15%)', 'order' => 5 ),
-                        array( 'plan' => 'PROFESSIONAL', 'feature' => 'Access to resource library & templates', 'order' => 6 ),
-                        array( 'plan' => 'PROFESSIONAL', 'feature' => 'Dedicated account manager', 'order' => 7 ),
-                        // BUSINESS PARTNER features
-                        array( 'plan' => 'BUSINESS PARTNER', 'feature' => 'Unlimited advisory sessions', 'order' => 1 ),
-                        array( 'plan' => 'BUSINESS PARTNER', 'feature' => 'Full compliance & BEE assessment', 'order' => 2 ),
-                        array( 'plan' => 'BUSINESS PARTNER', 'feature' => 'Dedicated phone line & priority support', 'order' => 3 ),
-                        array( 'plan' => 'BUSINESS PARTNER', 'feature' => 'Monthly strategy review sessions', 'order' => 4 ),
-                        array( 'plan' => 'BUSINESS PARTNER', 'feature' => 'Discounted à la carte services (25%)', 'order' => 5 ),
-                        array( 'plan' => 'BUSINESS PARTNER', 'feature' => 'Full resource library, templates & tools', 'order' => 6 ),
-                        array( 'plan' => 'BUSINESS PARTNER', 'feature' => 'Dedicated senior account manager', 'order' => 7 ),
-                        array( 'plan' => 'BUSINESS PARTNER', 'feature' => 'Annual business audit & review', 'order' => 8 ),
-                        array( 'plan' => 'BUSINESS PARTNER', 'feature' => 'VIP access to events & workshops', 'order' => 9 ),
-                );
-
-                foreach ( $plan_features as $pf ) {
-                        $wpdb->insert(
-                                $table_plan_features,
-                                array(
-                                        'plan_id'       => $plan_ids[ $pf['plan'] ],
-                                        'feature_text'  => $pf['feature'],
-                                        'display_order' => $pf['order'],
-                                ),
-                                array( '%d', '%s', '%d' )
-                        );
-                }
+                // Services and Plans are no longer auto-seeded.
+                // Admin should add only the services and plans they need.
 
                 // ----------------------------------------------------------------
                 // Seed Questionnaire Template
@@ -1234,6 +938,74 @@ class BV_Activator {
                 } catch ( Exception $e ) {
                 $wpdb->query( 'ROLLBACK' );
                 error_log( 'BV_Activator::seed_data failed: ' . $e->getMessage() );
+                }
+        }
+
+        /**
+         * Remove demo/seed services and plans from previous versions.
+         *
+         * On fresh installs seed_data() no longer creates services or plans,
+         * but existing databases may still have the old demo data. This method
+         * removes them so that only admin-configured services and plans appear.
+         *
+         * @since 2.7.5
+         * @return void
+         */
+        private static function cleanup_demo_data() {
+                global $wpdb;
+
+                $demo_service_names = array(
+                        'Business Feasibility Report',
+                        'Market Research Report',
+                        'Financial Analysis',
+                        'Business Plan Development',
+                        'Strategic Growth Plan',
+                        'Marketing Strategy',
+                        'Business Advisory Session',
+                        'Compliance Assessment',
+                        'Tax Planning Consultation',
+                        'Company Registration',
+                        'BEE Certificate Assistance',
+                        'Logo & Brand Identity',
+                );
+
+                $demo_plan_names = array(
+                        'STARTER',
+                        'PROFESSIONAL',
+                        'BUSINESS PARTNER',
+                );
+
+                $table_services = $wpdb->prefix . 'bv_services';
+                $table_plans    = $wpdb->prefix . 'bv_plans';
+                $table_features = $wpdb->prefix . 'bv_plan_features';
+
+                // Delete demo plan features first (cascade)
+                if ( ! empty( $demo_plan_names ) ) {
+                        $plan_placeholders = implode( ',', array_fill( 0, count( $demo_plan_names ), '%s' ) );
+                        $wpdb->query(
+                                $wpdb->prepare(
+                                        "DELETE FROM {$table_features} WHERE plan_id IN (SELECT id FROM {$table_plans} WHERE name IN ({$plan_placeholders}))",
+                                        ...$demo_plan_names
+                                )
+                        );
+                        // Delete demo plans
+                        $wpdb->query(
+                                $wpdb->prepare(
+                                        "DELETE FROM {$table_plans} WHERE name IN ({$plan_placeholders})",
+                                        ...$demo_plan_names
+                                )
+                        );
+                }
+
+                // Delete demo services
+                if ( ! empty( $demo_service_names ) ) {
+                        $svc_placeholders = implode( ',', array_fill( 0, count( $demo_service_names ), '%s' ) );
+                        $wpdb->query(
+                                $wpdb->prepare(
+                                        "DELETE FROM {$table_services} WHERE name IN ({$svc_placeholders})",
+                                        ...$demo_service_names
+                                )
+                        );
                 }
         }
 
