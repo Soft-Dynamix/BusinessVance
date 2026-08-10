@@ -1262,61 +1262,57 @@ class BV_Questionnaire_Admin {
         set_time_limit( 120 );
         @ini_set( 'memory_limit', '256M' );
 
-        // Catch any fatal errors and return as JSON instead of blank 500
-        set_error_handler( function( $errno, $errstr, $errfile, $errline ) {
-            throw new \ErrorException( $errstr, 0, $errno, $errfile, $errline );
-        });
-
-        try {
-            if ( empty( $_FILES['file'] ) ) {
-                wp_send_json_error( array( 'message' => 'No file uploaded.' ) );
-            }
-
-            $file = $_FILES['file'];
-
-            // Validate file type
-            $allowed_ext = array( 'pdf', 'docx' );
-            $ext = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
-            if ( ! in_array( $ext, $allowed_ext, true ) ) {
-                wp_send_json_error( array( 'message' => 'Unsupported file type. Please upload a PDF or .docx file.' ) );
-            }
-
-            // Validate file size (10MB max)
-            if ( $file['size'] > 10 * 1024 * 1024 ) {
-                wp_send_json_error( array( 'message' => 'File is too large. Maximum upload size is 10MB.' ) );
-            }
-
-            // Check for upload errors
-            if ( $file['error'] !== UPLOAD_ERR_OK ) {
-                $error_messages = array(
-                    UPLOAD_ERR_INI_SIZE   => 'The uploaded file exceeds the maximum upload size.',
-                    UPLOAD_ERR_FORM_SIZE  => 'The uploaded file exceeds the form maximum size.',
-                    UPLOAD_ERR_PARTIAL    => 'The file was only partially uploaded.',
-                    UPLOAD_ERR_NO_FILE     => 'No file was uploaded.',
-                    UPLOAD_ERR_NO_TMP_DIR  => 'Missing temporary folder.',
-                    UPLOAD_ERR_CANT_WRITE  => 'Failed to write file to disk.',
-                    UPLOAD_ERR_EXTENSION   => 'A PHP extension stopped the file upload.',
-                );
-                $error_msg = isset( $error_messages[ $file['error'] ] )
-                    ? $error_messages[ $file['error'] ]
-                    : 'Upload error occurred.';
-                wp_send_json_error( array( 'message' => $error_msg ) );
-            }
-
-            // Load parser
-            if ( ! class_exists( 'BV_Document_Parser' ) ) {
-                require_once BV_PLUGIN_DIR . 'includes/class-bv-document-parser.php';
-            }
-
-            $parser  = new BV_Document_Parser();
-            $result  = $parser->parse_file( $file['tmp_name'], $file['name'] );
-
-        } catch ( \Exception $e ) {
-            restore_error_handler();
-            wp_send_json_error( array( 'message' => 'Parse error: ' . $e->getMessage() ) );
+        if ( empty( $_FILES['file'] ) ) {
+            wp_send_json_error( array( 'message' => 'No file uploaded.' ) );
+            return;
         }
 
-        restore_error_handler();
+        $file = $_FILES['file'];
+
+        // Validate file type
+        $allowed_ext = array( 'pdf', 'docx' );
+        $ext = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
+        if ( ! in_array( $ext, $allowed_ext, true ) ) {
+            wp_send_json_error( array( 'message' => 'Unsupported file type. Please upload a PDF or .docx file.' ) );
+            return;
+        }
+
+        // Validate file size (10MB max)
+        if ( $file['size'] > 10 * 1024 * 1024 ) {
+            wp_send_json_error( array( 'message' => 'File is too large. Maximum upload size is 10MB.' ) );
+            return;
+        }
+
+        // Check for upload errors
+        if ( $file['error'] !== UPLOAD_ERR_OK ) {
+            $error_messages = array(
+                UPLOAD_ERR_INI_SIZE   => 'The uploaded file exceeds the maximum upload size.',
+                UPLOAD_ERR_FORM_SIZE  => 'The uploaded file exceeds the form maximum size.',
+                UPLOAD_ERR_PARTIAL    => 'The file was only partially uploaded.',
+                UPLOAD_ERR_NO_FILE     => 'No file was uploaded.',
+                UPLOAD_ERR_NO_TMP_DIR  => 'Missing temporary folder.',
+                UPLOAD_ERR_CANT_WRITE  => 'Failed to write file to disk.',
+                UPLOAD_ERR_EXTENSION   => 'A PHP extension stopped the file upload.',
+            );
+            $error_msg = isset( $error_messages[ $file['error'] ] )
+                ? $error_messages[ $file['error'] ]
+                : 'Upload error occurred.';
+            wp_send_json_error( array( 'message' => $error_msg ) );
+            return;
+        }
+
+        // Load parser
+        if ( ! class_exists( 'BV_Document_Parser' ) ) {
+            require_once BV_PLUGIN_DIR . 'includes/class-bv-document-parser.php';
+        }
+
+        try {
+            $parser  = new BV_Document_Parser();
+            $result  = $parser->parse_file( $file['tmp_name'], $file['name'] );
+        } catch ( \Exception $e ) {
+            wp_send_json_error( array( 'message' => 'Parse error: ' . $e->getMessage() ) );
+            return;
+        }
 
         // Sanitize the parsed data for safe output
         $result['name']        = sanitize_text_field( $result['name'] );
