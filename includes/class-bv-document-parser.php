@@ -189,6 +189,16 @@ class BV_Document_Parser {
                 continue;
             }
 
+            // Skip CMap / ToUnicode streams (character maps, not page content)
+            if ( preg_match( '/\/CIDInit|begincmap|\/CMapName|\/ToUnicode|\/Encoding/', $dict_part ) ) {
+                continue;
+            }
+
+            // Skip XRef streams (binary index tables, not content)
+            if ( preg_match( '/\/Type\s*\/XRef/', $dict_part ) ) {
+                continue;
+            }
+
             // Detect filter(s)
             $filters = array();
 
@@ -371,10 +381,54 @@ class BV_Document_Parser {
             case 'ASCIIHexDecode':
                 return $this->decode_ascii_hex( $data );
 
+            case 'RunLengthDecode':
+                return $this->decode_run_length( $data );
+
             default:
-                // Unknown filter — return data as-is
-                return $data;
+                // Unknown/unsupported filter — skip this stream entirely
+                return false;
         }
+    }
+
+    /**
+     * Decode Run Length Encoding (RLE) used in some PDFs.
+     *
+     * @param string $data RLE-encoded data.
+     * @return string|false Decoded data, or false on failure.
+     */
+    private function decode_run_length( $data ) {
+        $result  = '';
+        $len     = strlen( $data );
+        $i       = 0;
+
+        while ( $i < $len ) {
+            if ( $i >= $len ) {
+                break;
+            }
+            $header = ord( $data[ $i ] );
+            $i++;
+
+            if ( $header < 128 ) {
+                // Literal run of (header + 1) bytes
+                $count = $header + 1;
+                if ( $i + $count > $len ) {
+                    return false;
+                }
+                $result .= substr( $data, $i, $count );
+                $i += $count;
+            } elseif ( $header > 128 ) {
+                // Repeated byte: (257 - header) copies
+                $count = 257 - $header;
+                if ( $i >= $len ) {
+                    return false;
+                }
+                $result .= str_repeat( $data[ $i ], $count );
+                $i++;
+            }
+            // 128 = end-of-data marker
+        }
+
+        return $result;
     }
 
     /**
@@ -464,6 +518,12 @@ class BV_Document_Parser {
      * @return string Extracted text with \n at line boundaries.
      */
     private function extract_pdf_text_from_stream( $stream ) {
+        // Only process streams that contain text operators (BT = Begin Text).
+        // Non-content streams (fonts, CMaps, metadata) will be skipped entirely.
+        if ( ! preg_match( '/\\bBT\\b/', $stream ) ) {
+            return '';
+        }
+
         $tokens = array();
 
         // --- Collect text-showing operators with byte offsets ---
@@ -1730,6 +1790,22 @@ class BV_Document_Parser {
             // Skip very short garbage lines (single characters, symbols)
             if ( strlen( $text ) === 1 && ! ctype_alpha( $text ) ) {
                 continue;
+            }
+
+            // Skip lines that are mostly non-printable/control characters (garbled binary data)
+            if ( strlen( $text ) > 0 ) {
+                $printable = 0;
+                $tlen      = strlen( $text );
+                for ( $k = 0; $k < $tlen; $k++ ) {
+                    $ord_val = ord( $text[ $k ] );
+                    if ( ( $ord_val >= 32 && $ord_val <= 126 ) || $ord_val === 9 || $ord_val === 10 || $ord_val === 13 ) {
+                        $printable++;
+                    }
+                }
+                // If less than 60% printable ASCII, it's binary garbage
+                if ( $tlen > 5 && ( $printable / $tlen ) < 0.6 ) {
+                    continue;
+                }
             }
 
             // Skip common PDF header / footer noise
