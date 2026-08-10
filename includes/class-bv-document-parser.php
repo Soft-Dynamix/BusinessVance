@@ -355,77 +355,119 @@ class BV_Document_Parser {
     }
 
     /**
-     * Extract text from a PDF content stream.
+     * Extract text from a PDF content stream using position-based extraction.
+     *
+     * Walks through the stream finding all text-showing operators (Tj, TJ, ', ")
+     * and line-break operators (T*, ET) by their byte offsets, sorts them by
+     * position, and reconstructs the text with newlines at the correct boundaries.
+     *
+     * This approach correctly handles PDFs where text blocks are separated by
+     * graphic-state operations (Q/q/cm) between ET and BT, and where T*
+     * (next-line) is used without a following TJ array.
      *
      * @param string $stream Decompressed PDF stream content.
-     * @return string Extracted text.
+     * @return string Extracted text with \n at line boundaries.
      */
     private function extract_pdf_text_from_stream( $stream ) {
-        $text = '';
-        $font_sizes = array();
-        $current_font_size = 12;
+        $tokens = array();
 
-        // Extract font size declarations: /F1 12 Tf or similar
-        preg_match_all( '/\/(\w+)\s+([\d.]+)\s+Tf/', $stream, $font_matches, PREG_SET_ORDER );
-        foreach ( $font_matches as $fm ) {
-            $font_sizes[ '/' . $fm[1] ] = (float) $fm[2];
-        }
+        // --- Collect text-showing operators with byte offsets ---
 
-        // Extract text from TJ arrays (most common in modern PDFs)
-        // TJ format: [(text1) -N (text2)] TJ
-        preg_match_all( '/\[((?:\([^)]*\)|[^\])\[\]])*?)\]\s*TJ/s', $stream, $tj_matches );
-        foreach ( $tj_matches[1] as $tj_block ) {
-            $segment_text = '';
-            // Extract individual text segments from TJ array
-            preg_match_all( '/\(([^)]*)\)/', $tj_block, $seg_matches );
-            foreach ( $seg_matches[1] as $segment ) {
-                // Decode PDF string encoding
-                $segment_text .= $this->decode_pdf_string( $segment );
-            }
-
-            if ( trim( $segment_text ) !== '' ) {
-                // Check for font size change before this TJ
-                $pre_context = substr( $stream, 0, strpos( $stream, $tj_block ) );
-                if ( preg_match( '/\/\w+\s+([\d.]+)\s+Tf/', $pre_context, $fs_match ) ) {
-                    $current_font_size = (float) $fs_match[1];
+        // TJ arrays: [(text1) -N (text2)] TJ  (most common in modern PDFs)
+        if ( preg_match_all( '/\[((?:\([^)]*\)|[^\]])*?)\]\s*TJ/s', $stream, $m, PREG_OFFSET_CAPTURE ) ) {
+            foreach ( $m[1] as $match ) {
+                $block   = $match[0];
+                $pos     = $match[1];
+                $decoded = '';
+                preg_match_all( '/\(([^)]*)\)/', $block, $segs );
+                foreach ( $segs[1] as $seg ) {
+                    $decoded .= $this->decode_pdf_string( $seg );
                 }
-                $text .= $segment_text . ' ';
+                $decoded = trim( $decoded );
+                if ( '' !== $decoded ) {
+                    $tokens[] = array( 'pos' => $pos, 'type' => 'text', 'text' => $decoded );
+                }
             }
         }
 
-        // Extract text from Tj operator (simple text showing)
-        preg_match_all( '/\(([^)]*)\)\s*Tj/', $stream, $tj_simple_matches );
-        foreach ( $tj_simple_matches[1] as $segment ) {
-            $decoded = $this->decode_pdf_string( $segment );
-            if ( trim( $decoded ) !== '' ) {
-                $text .= $decoded . ' ';
+        // Tj operator: (text) Tj
+        if ( preg_match_all( '/\(([^)]*)\)\s*Tj/', $stream, $m, PREG_OFFSET_CAPTURE ) ) {
+            foreach ( $m[1] as $match ) {
+                $decoded = trim( $this->decode_pdf_string( $match[0] ) );
+                if ( '' !== $decoded ) {
+                    $tokens[] = array( 'pos' => $match[1], 'type' => 'text', 'text' => $decoded );
+                }
             }
         }
 
-        // Extract text from ' operator (move to next line + show)
-        preg_match_all( '/\(([^)]*)\)\s*\'/', $stream, $quote_matches );
-        foreach ( $quote_matches[1] as $segment ) {
-            $decoded = $this->decode_pdf_string( $segment );
-            if ( trim( $decoded ) !== '' ) {
-                $text .= "\n" . $decoded . ' ';
+        // ' (single-quote) operator: (text) '  — move to next line + show
+        if ( preg_match_all( '/\(([^)]*)\)\s*\'/', $stream, $m, PREG_OFFSET_CAPTURE ) ) {
+            foreach ( $m[1] as $match ) {
+                $decoded = trim( $this->decode_pdf_string( $match[0] ) );
+                if ( '' !== $decoded ) {
+                    $tokens[] = array( 'pos' => $match[1], 'type' => 'text_nl', 'text' => $decoded );
+                }
             }
         }
 
-        // Extract text from " operator (set spacing + show)
-        preg_match_all( '/\(([^)]*)\)\s*"/', $stream, $dquote_matches );
-        foreach ( $dquote_matches[1] as $segment ) {
-            $decoded = $this->decode_pdf_string( $segment );
-            if ( trim( $decoded ) !== '' ) {
-                $text .= ' ' . $decoded . ' ';
+        // " (double-quote) operator: (text) "  — set spacing + show
+        if ( preg_match_all( '/\(([^)]*)\)\s*"/', $stream, $m, PREG_OFFSET_CAPTURE ) ) {
+            foreach ( $m[1] as $match ) {
+                $decoded = trim( $this->decode_pdf_string( $match[0] ) );
+                if ( '' !== $decoded ) {
+                    $tokens[] = array( 'pos' => $match[1], 'type' => 'text', 'text' => $decoded );
+                }
             }
         }
 
-        // Detect line breaks from Td, TD, Tm, T* operators
-        $text = preg_replace( '/\s*T[Dd*]\s*\([^)]*\)\s*TJ/s', "\n", $text );
-        $text = preg_replace( '/\s*Tm\s*[\d.\s-]+\s*TJ/s', "\n", $text );
-        $text = preg_replace( '/\s*ET\s*BT/s', "\n", $text );
+        // --- Collect line-break operators with byte offsets ---
 
-        return $text;
+        // T* — move to start of next line
+        if ( preg_match_all( '/\bT\*(?=[\s\)]|$)/', $stream, $m, PREG_OFFSET_CAPTURE ) ) {
+            foreach ( $m[0] as $match ) {
+                $tokens[] = array( 'pos' => $match[1], 'type' => 'newline' );
+            }
+        }
+
+        // ET — end text object (always followed by a new visual block)
+        if ( preg_match_all( '/\bET\b/', $stream, $m, PREG_OFFSET_CAPTURE ) ) {
+            foreach ( $m[0] as $match ) {
+                $tokens[] = array( 'pos' => $match[1], 'type' => 'newline' );
+            }
+        }
+
+        // --- Sort all tokens by byte offset ---
+        usort( $tokens, function ( $a, $b ) {
+            return $a['pos'] - $b['pos'];
+        } );
+
+        // --- Build output text ---
+        $text  = '';
+        $lines = array();          // collect per-visual-line text
+        $buf   = '';               // current line buffer
+
+        foreach ( $tokens as $tok ) {
+            if ( 'newline' === $tok['type'] ) {
+                if ( '' !== trim( $buf ) ) {
+                    $lines[] = trim( $buf );
+                }
+                $buf = '';
+            } elseif ( 'text_nl' === $tok['type'] ) {
+                // single-quote already implies a new line before the text
+                if ( '' !== trim( $buf ) ) {
+                    $lines[] = trim( $buf );
+                }
+                $buf = $tok['text'] . ' ';
+            } else {
+                $buf .= $tok['text'] . ' ';
+            }
+        }
+        // Flush remaining buffer
+        if ( '' !== trim( $buf ) ) {
+            $lines[] = trim( $buf );
+        }
+
+        return implode( "\n", $lines );
     }
 
     /**
@@ -1433,6 +1475,17 @@ class BV_Document_Parser {
                 continue;
             }
 
+            // Skip common PDF header / footer noise (e.g. "Page N", repeated branding)
+            if ( preg_match( '/^\s*Page\s+\d+\s*$/i', $text ) ) {
+                $prev_text = '';
+                continue;
+            }
+            if ( preg_match( '/\|.*Page\s+\d+/i', $text ) && preg_match( '/\|.*\d{3}[\s\-]\d{3}\s+\d{4}/', $text ) ) {
+                // Pattern like "BusinessVance | ... | Page 4"
+                $prev_text = '';
+                continue;
+            }
+
             // Lines starting with \x01 (SOH/PDF checkbox marker) are valid — keep them
             // but trim leading/trailing whitespace around them
 
@@ -1447,10 +1500,13 @@ class BV_Document_Parser {
                 $prev_text_str = is_array( $prev ) ? $prev['text'] : $prev;
 
                 // If previous line doesn't end with sentence-ending punctuation
-                // and current line is short, merge them
+                // and current line is short, merge them — BUT never merge lines
+                // that start with a digit (numbered items) or a control/checkbox
+                // marker, as these are always new questions or options.
                 if ( ! preg_match( '/[\.\?!:;,\-\s]$/', $prev_text_str )
                      && strlen( $text ) < 60
-                     && ! preg_match( '/^[A-Z]/', $text ) ) {
+                     && ! preg_match( '/^[A-Z\d]/', $text )
+                     && ! preg_match( '/^\x01/', $text ) ) {
                     // Merge into previous
                     if ( is_array( $prev ) ) {
                         $cleaned[ count( $cleaned ) - 1 ]['text'] = $prev_text_str . ' ' . $text;
