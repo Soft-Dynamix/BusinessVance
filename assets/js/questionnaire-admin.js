@@ -609,7 +609,27 @@
                 },
                 error: function(xhr, status, error) {
                     bvQTDocShowStep('upload');
-                    alert('Upload failed: ' + (error || status || 'Network error') + '\n\nThe file may be too large or the server timed out. Try a smaller file.');
+                    var detail = '';
+                    try {
+                        if (xhr.responseText) {
+                            // Try to extract PHP error message from response
+                            var resp = xhr.responseText;
+                            // Look for <b>Fatal error</b>, <b>Warning</b>, or WordPress error
+                            var phpErr = resp.match(/<b>(?:Fatal error|Warning|Parse error|Error)<\/b>:\s*(.+?)(?:<br|<br\/|<\/b>)/);
+                            if (phpErr) {
+                                detail = '\n\nServer error: ' + phpErr[1].trim();
+                            } else if (resp.length < 500) {
+                                detail = '\n\nServer response: ' + resp.substring(0, 300);
+                            } else {
+                                detail = '\n\nHTTP Status: ' + xhr.status + ' ' + (error || status || 'error');
+                            }
+                        } else {
+                            detail = '\n\nHTTP Status: ' + xhr.status + ' ' + (error || status || 'error');
+                        }
+                    } catch(e) {
+                        detail = '\n\nError: ' + (error || status || 'unknown');
+                    }
+                    alert('Upload failed: ' + (error || status || 'Network error') + detail);
                 }
             });
         }
