@@ -97,7 +97,8 @@ class BV_Document_Parser {
     /**
      * Extract text lines from a PDF file.
      *
-     * Uses regex-based extraction from PDF content streams.
+     * Parses PDF objects to detect filter chains (e.g., ASCII85Decode + FlateDecode),
+     * applies them in order, then extracts text using Tj/TJ operators.
      * Handles most common PDF formats (non-encrypted, standard text encoding).
      *
      * @param string $filepath Path to PDF file.
@@ -110,31 +111,10 @@ class BV_Document_Parser {
             return array();
         }
 
-        // Extract all compressed stream objects
-        $streams = array();
-        // Match stream...endstream blocks (between delimiters)
-        if ( preg_match_all( '/stream\s*\r?\n(.*?)\r?\nendstream/s', $content, $matches ) ) {
-            foreach ( $matches[1] as $stream_data ) {
-                $decompressed = @gzuncompress( $stream_data );
-                if ( $decompressed !== false ) {
-                    $streams[] = $decompressed;
-                }
-            }
-        }
-
-        // Also try without leading newline
-        if ( empty( $streams ) && preg_match_all( '/stream\r?\n(.*?)endstream/s', $content, $matches ) ) {
-            foreach ( $matches[1] as $stream_data ) {
-                $stream_data = trim( $stream_data );
-                $decompressed = @gzuncompress( $stream_data );
-                if ( $decompressed !== false ) {
-                    $streams[] = $decompressed;
-                }
-            }
-        }
+        $streams = $this->extract_pdf_streams( $content );
 
         if ( empty( $streams ) ) {
-            // Try raw content for uncompressed PDFs
+            // Last resort: try raw content
             $streams[] = $content;
         }
 
@@ -147,6 +127,231 @@ class BV_Document_Parser {
         }
 
         return $this->clean_lines( $lines );
+    }
+
+    /**
+     * Extract and decode all PDF content streams from raw file content.
+     *
+     * Finds each object with a stream, reads its /Filter dictionary entry,
+     * and applies the filter chain to produce decompressed content.
+     *
+     * Supported filters: FlateDecode, ASCII85Decode, ASCIIHexDecode.
+     *
+     * @param string $content Raw PDF file content.
+     * @return array Array of decompressed stream strings.
+     */
+    private function extract_pdf_streams( $content ) {
+        $decoded_streams = array();
+
+        // Match each indirect object that contains a stream
+        // Pattern: N M obj ... << ... /Filter ... >> stream\r?\n ... endstream ... endobj
+        if ( ! preg_match_all( '/(\d+)\s+\d+\s+obj\s*(.*?)endobj/s', $content, $obj_matches ) ) {
+            // Fallback: try simple stream/endstream without object context
+            return $this->extract_pdf_streams_simple( $content );
+        }
+
+        foreach ( $obj_matches[2] as $obj_body ) {
+            // Check if this object has a stream
+            if ( ! preg_match( '/stream\r?\n(.*?)\r?\nendstream/s', $obj_body, $stream_match ) ) {
+                if ( ! preg_match( '/stream\r?\n(.*?)endstream/s', $obj_body, $stream_match ) ) {
+                    continue;
+                }
+            }
+
+            $raw_data = $stream_match[1];
+
+            // Detect filter(s)
+            $filters = array();
+
+            // Array of filters: /Filter [ /ASCII85Decode /FlateDecode ]
+            if ( preg_match( '/\/Filter\s*\[\s*(.*?)\s*\]/s', $obj_body, $filter_array_match ) ) {
+                $filter_str = $filter_array_match[1];
+                preg_match_all( '/\/(\w+)/', $filter_str, $filter_names );
+                $filters = $filter_names[1];
+            }
+            // Single filter: /Filter /FlateDecode
+            elseif ( preg_match( '/\/Filter\s*\/(\w+)/', $obj_body, $filter_single_match ) ) {
+                $filters = array( $filter_single_match[1] );
+            }
+
+            // Skip image objects — they don't contain text operators
+            if ( in_array( 'Image', $filters, true ) ) {
+                continue;
+            }
+            if ( preg_match( '/\/Subtype\s*\/Image/', $obj_body ) ) {
+                continue;
+            }
+
+            // Apply filter chain
+            $data = trim( $raw_data );
+
+            if ( empty( $filters ) ) {
+                // No filter — raw data (might be plain text or uncompressed)
+                $decoded_streams[] = $data;
+                continue;
+            }
+
+            foreach ( $filters as $filter ) {
+                $data = $this->apply_pdf_filter( $data, $filter );
+                if ( $data === false ) {
+                    break;
+                }
+            }
+
+            if ( $data !== false && ! empty( $data ) ) {
+                $decoded_streams[] = $data;
+            }
+        }
+
+        return $decoded_streams;
+    }
+
+    /**
+     * Fallback: extract PDF streams using simple regex (no filter detection).
+     *
+     * @param string $content Raw PDF file content.
+     * @return array Array of decompressed stream strings.
+     */
+    private function extract_pdf_streams_simple( $content ) {
+        $streams = array();
+
+        // Try FlateDecode (zlib) directly
+        if ( preg_match_all( '/stream\s*\r?\n(.*?)\r?\nendstream/s', $content, $matches ) ) {
+            foreach ( $matches[1] as $stream_data ) {
+                $decompressed = @gzuncompress( $stream_data );
+                if ( $decompressed !== false ) {
+                    $streams[] = $decompressed;
+                }
+            }
+        }
+
+        // Also try without leading newline before endstream
+        if ( empty( $streams ) && preg_match_all( '/stream\r?\n(.*?)endstream/s', $content, $matches ) ) {
+            foreach ( $matches[1] as $stream_data ) {
+                $stream_data = trim( $stream_data );
+                $decompressed = @gzuncompress( $stream_data );
+                if ( $decompressed !== false ) {
+                    $streams[] = $decompressed;
+                }
+            }
+        }
+
+        return $streams;
+    }
+
+    /**
+     * Apply a single PDF filter to data.
+     *
+     * @param string $data   Input data.
+     * @param string $filter Filter name (e.g., FlateDecode, ASCII85Decode).
+     * @return string|false Decoded data, or false on failure.
+     */
+    private function apply_pdf_filter( $data, $filter ) {
+        switch ( $filter ) {
+            case 'FlateDecode':
+                // Try zlib format first (gzuncompress)
+                $result = @gzuncompress( $data );
+                if ( $result !== false ) {
+                    return $result;
+                }
+                // Try raw deflate (gzinflate)
+                $result = @gzinflate( $data );
+                if ( $result !== false ) {
+                    return $result;
+                }
+                // Try with max length (strip possible checksum)
+                $result = @gzinflate( substr( $data, 2, -4 ) );
+                if ( $result !== false ) {
+                    return $result;
+                }
+                return false;
+
+            case 'ASCII85Decode':
+                return $this->decode_ascii85( $data );
+
+            case 'ASCIIHexDecode':
+                return $this->decode_ascii_hex( $data );
+
+            default:
+                // Unknown filter — return data as-is
+                return $data;
+        }
+    }
+
+    /**
+     * Decode ASCII85 encoded data.
+     *
+     * Handles the standard Base85 encoding used in PDFs.
+     * Supports the 'z' shorthand for all-zero groups and EOD marker '~>'.
+     *
+     * @param string $data ASCII85 encoded string.
+     * @return string|false Decoded binary data, or false on failure.
+     */
+    private function decode_ascii85( $data ) {
+        // Remove whitespace and EOD marker
+        $data = preg_replace( '/\s/', '', $data );
+        $data = str_replace( '~>', '', $data );
+        $data = trim( $data );
+
+        if ( $data === '' ) {
+            return '';
+        }
+
+        $result = '';
+        $len = strlen( $data );
+
+        // Pad to a multiple of 5
+        $padding = ( 5 - ( $len % 5 ) ) % 5;
+        $data .= str_repeat( 'u', $padding );
+
+        for ( $i = 0; $i < strlen( $data ); $i += 5 ) {
+            $chunk = substr( $data, $i, 5 );
+
+            // 'z' is shorthand for a group of 4 zero bytes
+            if ( $chunk === 'z' ) {
+                $result .= "\x00\x00\x00\x00";
+                continue;
+            }
+
+            // Decode 5 ASCII85 chars to 4 bytes
+            $num = 0;
+            for ( $j = 0; $j < 5; $j++ ) {
+                $char = ord( $chunk[ $j ] );
+                if ( $char < 33 || $char > 117 ) {
+                    return false; // Invalid character
+                }
+                $num = $num * 85 + ( $char - 33 );
+            }
+
+            $result .= pack( 'N', $num );
+        }
+
+        // Remove padding bytes
+        if ( $padding > 0 ) {
+            $result = substr( $result, 0, strlen( $result ) - $padding );
+        }
+
+        return $result;
+    }
+
+    /**
+     * Decode ASCIIHex encoded data.
+     *
+     * Handles the ASCIIHexDecode filter used in some PDFs.
+     *
+     * @param string $data ASCIIHex encoded string.
+     * @return string Decoded binary data.
+     */
+    private function decode_ascii_hex( $data ) {
+        // Remove whitespace and EOD marker '>'
+        $data = preg_replace( '/\s/', '', $data );
+        $data = rtrim( $data, '>' );
+
+        if ( strlen( $data ) % 2 !== 0 ) {
+            $data .= '0'; // Pad odd-length hex string
+        }
+
+        return pack( 'H*', $data );
     }
 
     /**
@@ -718,9 +923,15 @@ class BV_Document_Parser {
             return 0;
         }
 
-        // Must NOT be a numbered question like "1. What is..."
+        // Must NOT be a numbered question like "2.1 Briefly describe..."
+        // But allow numbered section headings like "1. Client Information"
         if ( preg_match( '/^\s*(\d+[\.\)]\s+|Q\d+[\.\)]?\s+)/', $text ) ) {
-            return 0;
+            // Allow short numbered headings without question mark (e.g., "1. Client Information")
+            if ( ! ( preg_match( '/^\s*\d+[\.\)]\s+[A-Z][A-Za-z]/', $text )
+                   && ! preg_match( '/[?？]\s*$/u', $text )
+                   && ! preg_match( '/^(please|provide|enter|list|describe|state|give|write|briefly|what|which|who|how|why|when|where|are|is|do|does|have|has|can|could|should|would|will)\b/i', $text ) ) ) {
+                return 0;
+            }
         }
 
         // --- Positive signals ---
@@ -888,7 +1099,7 @@ class BV_Document_Parser {
             $next_idx++;
         }
 
-        // Detect multi-choice options
+        // Detect multi-choice options (pass the line itself too, for \x01 checkbox markers)
         $options = $this->detect_options( $following_lines );
         $consumed = count( $options ) > 0 ? count( $this->detect_option_lines( $following_lines ) ) : 0;
 
@@ -1031,6 +1242,34 @@ class BV_Document_Parser {
                 continue;
             }
 
+            // PDF checkbox markers: \x01 (SOH) used as checkbox bullet
+            // e.g., "\x01 English \x01 Afrikaans" or "\x01 Option text"
+            if ( preg_match( '/^\x01\s*(.{1,100})$/u', $trimmed, $m ) ) {
+                // May contain multiple \x01-separated options on one line
+                $parts = preg_split( '/\x01\s*/', $m[1] );
+                foreach ( $parts as $part ) {
+                    $part = trim( $part );
+                    if ( strlen( $part ) >= 1 && strlen( $part ) <= 100 ) {
+                        $options[] = $part;
+                    }
+                }
+                continue;
+            }
+
+            // \x01 mixed with text anywhere in line
+            if ( strpos( $trimmed, "\x01" ) !== false && count( $options ) === 0 ) {
+                $parts = preg_split( '/\x01\s*/', $trimmed );
+                foreach ( $parts as $part ) {
+                    $part = trim( $part );
+                    if ( strlen( $part ) >= 1 && strlen( $part ) <= 100 ) {
+                        $options[] = $part;
+                    }
+                }
+                if ( count( $options ) > 0 ) {
+                    continue;
+                }
+            }
+
             // If it's a short line and doesn't look like a question, might be an option
             if ( strlen( $trimmed ) <= 60 && ! preg_match( '/[?？]/u', $trimmed )
                  && ! preg_match( '/^\s*\d+[\.\)]\s+/', $trimmed ) ) {
@@ -1061,6 +1300,8 @@ class BV_Document_Parser {
             } elseif ( preg_match( '/^\s*(?:i{1,3}v{0,3}[\.\)]|I{1,3}V{0,3}[\.\)])/u', $trimmed ) ) {
                 $count++;
             } elseif ( preg_match( '/^(?:\[[ x]\]|\[?\s*[☐☑]\s*\]?)\s*/u', $trimmed ) ) {
+                $count++;
+            } elseif ( strpos( $trimmed, "\x01" ) !== false ) {
                 $count++;
             } else {
                 break;
@@ -1192,7 +1433,10 @@ class BV_Document_Parser {
                 continue;
             }
 
-            // Skip duplicate consecutive lines
+            // Lines starting with \x01 (SOH/PDF checkbox marker) are valid — keep them
+            // but trim leading/trailing whitespace around them
+
+            // Skip duplicate consecutive lines (handles repeated PDF headers/footers)
             if ( $text === $prev_text ) {
                 continue;
             }
