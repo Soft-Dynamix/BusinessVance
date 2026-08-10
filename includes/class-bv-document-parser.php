@@ -1350,7 +1350,7 @@ class BV_Document_Parser {
 
         // Detect multi-choice options (pass the line itself too, for \x01 checkbox markers)
         $options = $this->detect_options( $following_lines );
-        $consumed = count( $options ) > 0 ? count( $this->detect_option_lines( $following_lines ) ) : 0;
+        $consumed = count( $options ) > 0 ? $this->detect_option_lines( $following_lines ) : 0;
 
         // Score this line as a question
         $score = 0;
