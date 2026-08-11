@@ -88,6 +88,16 @@ class BV_Settings {
         'services_button_style'        => 'primary',       // primary, gold, teal
         'services_footer_text'         => '',
         'services_show_trust_badges'   => 'yes',
+        'services_enable_categories'    => 'yes',
+        'services_button_color'        => 'gold',
+        'services_logo_height'          => '120',
+        'services_logo_max_width'      => '320',
+        'services_button_text'          => 'ADD TO CART',
+        'services_table_header_label'   => 'PRICE (ZAR)',
+        'services_services_title'       => 'PRICE LIST',
+        'services_services_subtitle'    => 'ONE-TIME REPORTS & SERVICES',
+        'services_plans_title'          => 'MONTHLY SUBSCRIPTION PLANS',
+        'services_plans_subtitle'       => 'CHOOSE THE PLAN THAT GROWS WITH YOU',
 
         // Consultant Dashboard
         'cd_enabled'                   => 'yes',
@@ -184,6 +194,12 @@ class BV_Settings {
         }
         if ( isset( $input['favicon_url'] ) ) {
             $sanitized['favicon_url'] = esc_url_raw( $input['favicon_url'] );
+        }
+
+        // Restrict button_color to allowed values
+        $allowed_btn_colors = array( 'gold', 'navy', 'teal' );
+        if ( isset( $sanitized['services_button_color'] ) && ! in_array( $sanitized['services_button_color'], $allowed_btn_colors, true ) ) {
+            $sanitized['services_button_color'] = 'gold';
         }
 
         return $sanitized;
@@ -1208,6 +1224,119 @@ class BV_Settings {
                                    value="yes" <?php checked( $settings['services_show_trust_badges'], 'yes' ); ?> />
                             <span class="bv-toggle-slider"></span>
                             <span class="bv-toggle-label"><?php esc_html_e( 'Show trust badges in footer', 'businessvance-services-manager' ); ?></span>
+                        </label>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_services_logo_height"><?php esc_html_e( 'Logo Height (px)', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <input type="number" id="bv_services_logo_height" name="bv_settings[services_logo_height]"
+                               value="<?php echo esc_attr( $settings['services_logo_height'] ); ?>"
+                               min="20" max="300" class="small-text" style="width:80px;" />
+                        <p class="description"><?php esc_html_e( 'Maximum height for the logo image on the services page header. Default: 120', 'businessvance-services-manager' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_services_logo_max_width"><?php esc_html_e( 'Logo Max Width (px)', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <input type="number" id="bv_services_logo_max_width" name="bv_settings[services_logo_max_width]"
+                               value="<?php echo esc_attr( $settings['services_logo_max_width'] ); ?>"
+                               min="50" max="800" class="small-text" style="width:80px;" />
+                        <p class="description"><?php esc_html_e( 'Maximum width for the logo image. Default: 320', 'businessvance-services-manager' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_services_button_text"><?php esc_html_e( 'Button Text', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <input type="text" id="bv_services_button_text" name="bv_settings[services_button_text]"
+                               value="<?php echo esc_attr( $settings['services_button_text'] ); ?>"
+                               class="regular-text" />
+                        <p class="description"><?php esc_html_e( 'Text shown on service Add to Cart buttons.', 'businessvance-services-manager' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_services_table_header_label"><?php esc_html_e( 'Price Column Header', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <input type="text" id="bv_services_table_header_label" name="bv_settings[services_table_header_label]"
+                               value="<?php echo esc_attr( $settings['services_table_header_label'] ); ?>"
+                               class="regular-text" />
+                        <p class="description"><?php esc_html_e( 'Label for the price column in the services table.', 'businessvance-services-manager' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_services_button_color"><?php esc_html_e( 'Button Color Style', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <select id="bv_services_button_color" name="bv_settings[services_button_color]">
+                            <option value="gold" <?php selected( $settings['services_button_color'], 'gold' ); ?>><?php esc_html_e( 'Gold', 'businessvance-services-manager' ); ?></option>
+                            <option value="navy" <?php selected( $settings['services_button_color'], 'navy' ); ?>><?php esc_html_e( 'Navy', 'businessvance-services-manager' ); ?></option>
+                            <option value="teal" <?php selected( $settings['services_button_color'], 'teal' ); ?>><?php esc_html_e( 'Teal', 'businessvance-services-manager' ); ?></option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_services_services_title"><?php esc_html_e( 'Services Section Title', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <input type="text" id="bv_services_services_title" name="bv_settings[services_services_title]"
+                               value="<?php echo esc_attr( $settings['services_services_title'] ); ?>"
+                               class="regular-text" />
+                        <p class="description"><?php esc_html_e( 'Heading above the services table.', 'businessvance-services-manager' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_services_services_subtitle"><?php esc_html_e( 'Services Section Subtitle', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <input type="text" id="bv_services_services_subtitle" name="bv_settings[services_services_subtitle]"
+                               value="<?php echo esc_attr( $settings['services_services_subtitle'] ); ?>"
+                               class="regular-text" />
+                        <p class="description"><?php esc_html_e( 'Sub-heading below the services section title.', 'businessvance-services-manager' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_services_plans_title"><?php esc_html_e( 'Plans Section Title', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <input type="text" id="bv_services_plans_title" name="bv_settings[services_plans_title]"
+                               value="<?php echo esc_attr( $settings['services_plans_title'] ); ?>"
+                               class="regular-text" />
+                        <p class="description"><?php esc_html_e( 'Heading above the subscription plans.', 'businessvance-services-manager' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_services_plans_subtitle"><?php esc_html_e( 'Plans Section Subtitle', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <input type="text" id="bv_services_plans_subtitle" name="bv_settings[services_plans_subtitle]"
+                               value="<?php echo esc_attr( $settings['services_plans_subtitle'] ); ?>"
+                               class="regular-text" />
+                        <p class="description"><?php esc_html_e( 'Sub-heading below the plans title.', 'businessvance-services-manager' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label><?php esc_html_e( 'Enable Category Filtering', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <label class="bv-toggle">
+                            <input type="checkbox" name="bv_settings[services_enable_categories]"
+                                   value="yes" <?php checked( $settings['services_enable_categories'], 'yes' ); ?> />
+                            <span class="bv-toggle-slider"></span>
+                            <span class="bv-toggle-label"><?php esc_html_e( 'Show category filter tabs on the services page', 'businessvance-services-manager' ); ?></span>
                         </label>
                     </td>
                 </tr>

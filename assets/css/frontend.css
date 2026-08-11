@@ -3,6 +3,18 @@
    Matches reference design: Navy #0A2647, Orange #F4A261, Teal #2A9D8F
    ============================================ */
 
+:root {
+    --bv-primary: #0A2647;
+    --bv-primary-dark: #144272;
+    --bv-primary-darker: #071a33;
+    --bv-accent: #F4A261;
+    --bv-accent-dark: #E76F51;
+    --bv-accent-darker: #E05A3A;
+    --bv-secondary: #2A9D8F;
+    --bv-secondary-dark: #21867A;
+    --bv-secondary-darker: #1A7068;
+}
+
 /* ---- These styles are used by the shortcode renderer, not the services-page template ---- */
 /* Page Wrapper */
 .bv-page-wrapper {
@@ -17,7 +29,7 @@
 
 /* ---- HEADER ---- */
 .bv-header {
-    background: linear-gradient(135deg, #0A2647 0%, #144272 100%);
+    background: linear-gradient(135deg, var(--bv-primary) 0%, var(--bv-primary-dark) 100%);
     padding: 0;
     position: relative;
     overflow: hidden;
@@ -30,7 +42,7 @@
     left: 0;
     right: 0;
     height: 4px;
-    background: linear-gradient(90deg, #F4A261, #2A9D8F, #F4A261);
+    background: linear-gradient(90deg, var(--bv-accent), var(--bv-secondary), var(--bv-accent));
 }
 
 .bv-header-inner {
@@ -48,7 +60,7 @@
 }
 
 .bv-header-stars svg {
-    color: #F4A261;
+    color: var(--bv-accent);
 }
 
 .bv-header-brand {
@@ -64,7 +76,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #F4A261;
+    color: var(--bv-accent);
     position: relative;
 }
 
@@ -77,8 +89,8 @@
 /* Custom logo image - clean rectangular display */
 .bv-shield-logo img {
     width: auto;
-    height: 80px;
-    max-width: 240px;
+    height: var(--bv-logo-height, 120px);
+    max-width: var(--bv-logo-max-width, 320px);
     object-fit: contain;
     border-radius: 8px;
     border: none;
@@ -100,7 +112,7 @@
     margin: 0;
     font-size: 13px;
     font-weight: 700;
-    color: #F4A261;
+    color: var(--bv-accent);
     letter-spacing: 4px;
 }
 
@@ -120,7 +132,7 @@
 
 .bv-section-banner {
     display: inline-block;
-    background: #0A2647;
+    background: var(--bv-primary);
     color: #fff;
     padding: 10px 32px;
     font-size: 18px;
@@ -132,7 +144,7 @@
 
 .bv-section-sub {
     display: inline-block;
-    background: #F4A261;
+    background: var(--bv-accent);
     color: #fff;
     padding: 6px 24px;
     font-size: 12px;
@@ -142,7 +154,7 @@
 }
 
 .bv-section-sub-alt {
-    color: #F4A261;
+    color: var(--bv-accent);
     font-size: 13px;
     font-weight: 700;
     letter-spacing: 2px;
@@ -174,7 +186,7 @@
 }
 
 .bv-services-table thead {
-    background: #0A2647;
+    background: var(--bv-primary);
 }
 
 .bv-services-table thead th {
@@ -225,8 +237,8 @@
     width: 40px;
     height: 40px;
     min-width: 40px;
-    background: linear-gradient(135deg, #0A2647, #144272);
-    color: #F4A261;
+    background: linear-gradient(135deg, var(--bv-primary), var(--bv-primary-dark));
+    color: var(--bv-accent);
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -236,7 +248,7 @@
 .bv-service-name {
     font-size: 14px;
     font-weight: 700;
-    color: #0A2647;
+    color: var(--bv-primary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin: 0;
@@ -247,7 +259,7 @@
 
 .bv-featured-badge {
     display: inline-block;
-    background: linear-gradient(135deg, #F4A261, #E76F51);
+    background: linear-gradient(135deg, var(--bv-accent), var(--bv-accent-dark));
     color: #fff;
     font-size: 9px;
     font-weight: 700;
@@ -281,7 +293,7 @@
 .bv-service-price {
     font-size: 15px;
     font-weight: 800;
-    color: #0A2647;
+    color: var(--bv-primary);
 }
 
 /* ---- BUTTONS ---- */
@@ -302,38 +314,38 @@
 }
 
 .bv-btn-gold {
-    background: linear-gradient(135deg, #F4A261, #E76F51);
+    background: linear-gradient(135deg, var(--bv-accent), var(--bv-accent-dark));
     color: #fff !important;
-    box-shadow: 0 2px 8px rgba(244, 162, 97, 0.35);
+    box-shadow: 0 2px 8px rgba(244, 162, 97, 0.35); /* --bv-accent with alpha */
 }
 
 .bv-btn-gold:hover {
-    background: linear-gradient(135deg, #E76F51, #E05A3A);
-    box-shadow: 0 4px 14px rgba(244, 162, 97, 0.45);
+    background: linear-gradient(135deg, var(--bv-accent-dark), var(--bv-accent-darker));
+    box-shadow: 0 4px 14px rgba(244, 162, 97, 0.45); /* --bv-accent with alpha */
     transform: translateY(-1px);
     color: #fff !important;
 }
 
 .bv-btn-teal {
-    background: linear-gradient(135deg, #2A9D8F, #21867A);
+    background: linear-gradient(135deg, var(--bv-secondary), var(--bv-secondary-dark));
     color: #fff !important;
-    box-shadow: 0 2px 8px rgba(42, 157, 143, 0.3);
+    box-shadow: 0 2px 8px rgba(42, 157, 143, 0.3); /* --bv-secondary with alpha */
 }
 
 .bv-btn-teal:hover {
-    background: linear-gradient(135deg, #21867A, #1A7068);
+    background: linear-gradient(135deg, var(--bv-secondary-dark), var(--bv-secondary-darker));
     transform: translateY(-1px);
     color: #fff !important;
 }
 
 .bv-btn-navy {
-    background: linear-gradient(135deg, #0A2647, #144272);
+    background: linear-gradient(135deg, var(--bv-primary), var(--bv-primary-dark));
     color: #fff !important;
-    box-shadow: 0 2px 8px rgba(10, 38, 71, 0.3);
+    box-shadow: 0 2px 8px rgba(10, 38, 71, 0.3); /* --bv-primary with alpha */
 }
 
 .bv-btn-navy:hover {
-    background: linear-gradient(135deg, #144272, #1a5276);
+    background: linear-gradient(135deg, var(--bv-primary-dark), #1a5276);
     transform: translateY(-1px);
     color: #fff !important;
 }
@@ -384,8 +396,8 @@
     width: 40px;
     height: 40px;
     min-width: 40px;
-    background: linear-gradient(135deg, #0A2647, #144272);
-    color: #F4A261;
+    background: linear-gradient(135deg, var(--bv-primary), var(--bv-primary-dark));
+    color: var(--bv-accent);
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -395,7 +407,7 @@
 .bv-card-name {
     font-size: 13px;
     font-weight: 700;
-    color: #0A2647;
+    color: var(--bv-primary);
     text-transform: uppercase;
     letter-spacing: 0.3px;
     margin: 0;
@@ -424,7 +436,7 @@
 .bv-card-price {
     font-size: 15px;
     font-weight: 800;
-    color: #0A2647;
+    color: var(--bv-primary);
 }
 
 /* ---- PLANS SECTION ---- */
@@ -460,8 +472,8 @@
 }
 
 .bv-plan-featured {
-    box-shadow: 0 4px 20px rgba(10, 38, 71, 0.15);
-    border-color: #264653;
+    box-shadow: 0 4px 20px rgba(10, 38, 71, 0.15); /* --bv-primary with alpha */
+    border-color: var(--bv-primary-dark);
 }
 
 .bv-plan-popular {
@@ -508,7 +520,7 @@
 .bv-plan-price {
     font-size: 32px;
     font-weight: 900;
-    color: #0A2647;
+    color: var(--bv-primary);
     letter-spacing: -0.5px;
 }
 
@@ -538,7 +550,7 @@
 }
 
 .bv-plan-features li svg {
-    color: #2A9D8F;
+    color: var(--bv-secondary);
     flex-shrink: 0;
 }
 
@@ -548,7 +560,7 @@
 
 /* ---- FOOTER ---- */
 .bv-footer {
-    background: linear-gradient(135deg, #0A2647 0%, #071a33 100%);
+    background: linear-gradient(135deg, var(--bv-primary) 0%, var(--bv-primary-darker) 100%);
     color: #fff;
     margin-top: auto;
 }
@@ -580,7 +592,7 @@
 }
 
 .bv-trust-badge svg {
-    color: #F4A261;
+    color: var(--bv-accent);
 }
 
 .bv-footer-contact {
@@ -618,13 +630,13 @@
     .bv-desktop-only { display: none !important; }
     .bv-mobile-only { display: block !important; }
 
-    /* .bv-header-inner { padding: 32px 16px 28px; } */
-    /* .bv-shield-logo { width: 56px; height: 56px; } */
-    /* .bv-brand-name { font-size: 26px; letter-spacing: 2px; } */
-    /* .bv-brand-tagline { font-size: 10px; letter-spacing: 3px; } */
-    /* .bv-brand-description { font-size: 13px; } */
-    /* .bv-section-banner { font-size: 14px; padding: 8px 20px; } */
-    /* .bv-section-sub { font-size: 10px; padding: 5px 16px; } */
+    .bv-header-inner { padding: 32px 16px 28px; }
+    .bv-shield-logo { width: 56px; height: 56px; }
+    .bv-brand-name { font-size: 26px; letter-spacing: 2px; }
+    .bv-brand-tagline { font-size: 10px; letter-spacing: 3px; }
+    .bv-brand-description { font-size: 13px; }
+    .bv-section-banner { font-size: 14px; padding: 8px 20px; }
+    .bv-section-sub { font-size: 10px; padding: 5px 16px; }
 
     .bv-services-section,
     .bv-plans-section {
@@ -644,8 +656,8 @@
         font-size: 26px;
     }
 
-    /* .bv-trust-badges { gap: 20px 32px; flex-direction: column; align-items: center; } */
-    /* .bv-footer-contact p { font-size: 12px; word-break: break-all; } */
+    .bv-trust-badges { gap: 20px 32px; flex-direction: column; align-items: center; }
+    .bv-footer-contact p { font-size: 12px; word-break: break-all; }
 }
 
 @media (min-width: 769px) and (max-width: 1024px) {
@@ -668,7 +680,7 @@
    ============================================ */
 .bv-frontend *:focus-visible,
 .bv-services-section *:focus-visible {
-    outline: 2px solid #D4AF37;
+    outline: 2px solid var(--bv-accent);
     outline-offset: 2px;
 }
 

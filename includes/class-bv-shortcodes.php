@@ -135,7 +135,7 @@ class BV_Shortcodes {
 
             // Dynamic CSS from settings
             $settings = BV_Settings::get_settings();
-            $dynamic_css = ':root{--bv-primary:' . esc_attr( $settings['primary_color'] ) . ';--bv-secondary:' . esc_attr( $settings['secondary_color'] ) . ';--bv-accent:' . esc_attr( $settings['accent_color'] ) . ';}';
+            $dynamic_css = ':root{--bv-primary:' . esc_attr( $settings['primary_color'] ) . ';--bv-secondary:' . esc_attr( $settings['secondary_color'] ) . ';--bv-accent:' . esc_attr( $settings['accent_color'] ) . ';--bv-logo-height:' . intval( $settings['services_logo_height'] ) . 'px;--bv-logo-max-width:' . intval( $settings['services_logo_max_width'] ) . 'px;}';
             if ( $settings['services_enable_animations'] !== 'yes' ) {
                 $dynamic_css .= '.bv-animate{opacity:1!important;transform:none!important;}';
             }
@@ -346,10 +346,11 @@ class BV_Shortcodes {
 
         ob_start();
         ?>
+        <?php $svc_settings = BV_Settings::get_settings(); ?>
         <section class="bv-services-section">
             <div class="bv-section-header">
-                <div class="bv-section-banner">PRICE LIST</div>
-                <div class="bv-section-sub">ONE-TIME REPORTS &amp; SERVICES</div>
+                <div class="bv-section-banner"><?php echo esc_html( $svc_settings['services_services_title'] ); ?></div>
+                <div class="bv-section-sub"><?php echo esc_html( $svc_settings['services_services_subtitle'] ); ?></div>
             </div>
 
             <!-- Desktop Table -->
@@ -359,7 +360,7 @@ class BV_Shortcodes {
                         <tr>
                             <th style="width:28%;">SERVICE</th>
                             <th style="width:47%;">DESCRIPTION</th>
-                            <th class="bv-col-price" style="width:25%;"><?php esc_html_e( 'PRICE (ZAR)', 'businessvance-services-manager' ); ?></th>
+                            <th class="bv-col-price" style="width:25%;"><?php echo esc_html( $svc_settings['services_table_header_label'] ); ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -388,8 +389,8 @@ class BV_Shortcodes {
                                         <span class="bv-service-price">
                                             <?php echo esc_html( ! empty( $service->price_display ) ? $service->price_display : $service->price ); ?>
                                         </span>
-                                        <a href="<?php echo $this->get_service_url( $service ); ?>" class="bv-btn bv-btn-gold bv-btn-sm">
-                                            <?php esc_html_e( 'ADD TO CART', 'businessvance-services-manager' ); ?>
+                                        <a href="<?php echo $this->get_service_url( $service ); ?>" class="bv-btn bv-btn-<?php echo esc_attr( $svc_settings['services_button_color'] ); ?> bv-btn-sm">
+                                            <?php echo esc_html( $svc_settings['services_button_text'] ); ?>
                                         </a>
                                     </div>
                                 </td>
@@ -421,8 +422,8 @@ class BV_Shortcodes {
                             <span class="bv-card-price">
                                 <?php echo esc_html( ! empty( $service->price_display ) ? $service->price_display : $service->price ); ?>
                             </span>
-                            <a href="<?php echo $this->get_service_url( $service ); ?>" class="bv-btn bv-btn-gold bv-btn-sm">
-                                <?php esc_html_e( 'ADD TO CART', 'businessvance-services-manager' ); ?>
+                            <a href="<?php echo $this->get_service_url( $service ); ?>" class="bv-btn bv-btn-<?php echo esc_attr( $svc_settings['services_button_color'] ); ?> bv-btn-sm">
+                                <?php echo esc_html( $svc_settings['services_button_text'] ); ?>
                             </a>
                         </div>
                     </div>
@@ -511,13 +512,14 @@ class BV_Shortcodes {
 
         ob_start();
         ?>
+        <?php $plan_settings = BV_Settings::get_settings(); ?>
         <section class="bv-plans-section">
             <div class="bv-section-header">
                 <div class="bv-section-banner">
                     <?php echo $this->get_icon_svg( 'crown', 18 ); ?>
-                    &nbsp; <?php esc_html_e( 'MONTHLY SUBSCRIPTION PLANS', 'businessvance-services-manager' ); ?>
+                    &nbsp; <?php echo esc_html( $plan_settings['services_plans_title'] ); ?>
                 </div>
-                <div class="bv-section-sub-alt"><?php esc_html_e( 'CHOOSE THE PLAN THAT GROWS WITH YOU', 'businessvance-services-manager' ); ?></div>
+                <div class="bv-section-sub-alt"><?php echo esc_html( $plan_settings['services_plans_subtitle'] ); ?></div>
             </div>
 
             <div class="bv-plans-grid">
