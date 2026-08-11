@@ -92,7 +92,7 @@
     height: var(--bv-logo-height, 150px);
     max-width: var(--bv-logo-max-width, 400px);
     object-fit: contain;
-    border-radius: var(--bv-logo-radius, 8px);
+    border-radius: var(--bv-logo-radius, 0);
     border: none;
 }
 

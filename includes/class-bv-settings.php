@@ -92,7 +92,7 @@ class BV_Settings {
         'services_button_color'        => 'gold',
         'services_logo_height'          => '150',
         'services_logo_max_width'      => '400',
-        'services_logo_shape'          => 'rounded',    // square, rounded, circle
+        'services_logo_shape'          => 'none',      // none, square, rounded, circle
         'services_logo_border_radius'  => '8',
         'services_button_text'          => 'ADD TO CART',
         'services_table_header_label'   => 'PRICE (ZAR)',
@@ -1257,11 +1257,12 @@ class BV_Settings {
                     </th>
                     <td>
                         <select id="bv_services_logo_shape" name="bv_settings[services_logo_shape]">
-                            <option value="square" <?php selected( $settings['services_logo_shape'], 'square' ); ?>><?php esc_html_e( 'Square', 'businessvance-services-manager' ); ?></option>
+                            <option value="none" <?php selected( $settings['services_logo_shape'], 'none' ); ?>><?php esc_html_e( 'None (Original)', 'businessvance-services-manager' ); ?></option>
                             <option value="rounded" <?php selected( $settings['services_logo_shape'], 'rounded' ); ?>><?php esc_html_e( 'Rounded Corners', 'businessvance-services-manager' ); ?></option>
+                            <option value="square" <?php selected( $settings['services_logo_shape'], 'square' ); ?>><?php esc_html_e( 'Square (Sharp Edges)', 'businessvance-services-manager' ); ?></option>
                             <option value="circle" <?php selected( $settings['services_logo_shape'], 'circle' ); ?>><?php esc_html_e( 'Circle', 'businessvance-services-manager' ); ?></option>
                         </select>
-                        <p class="description"><?php esc_html_e( 'Choose the shape of your logo. "Rounded Corners" uses the border-radius below.', 'businessvance-services-manager' ); ?></p>
+                        <p class="description"><?php esc_html_e( 'Choose the shape of your logo. "None" shows the logo as uploaded. "Rounded Corners" uses the border-radius value below.', 'businessvance-services-manager' ); ?></p>
                     </td>
                 </tr>
                 <tr>

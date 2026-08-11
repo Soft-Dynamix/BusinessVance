@@ -137,11 +137,11 @@ class BV_Shortcodes {
             $settings = BV_Settings::get_settings();
 
             // Calculate border-radius from shape setting
-            $logo_shape  = isset( $settings['services_logo_shape'] ) ? $settings['services_logo_shape'] : 'rounded';
+            $logo_shape  = isset( $settings['services_logo_shape'] ) ? $settings['services_logo_shape'] : 'none';
             $logo_radius = intval( $settings['services_logo_border_radius'] );
             if ( $logo_shape === 'circle' ) {
                 $logo_radius = 9999;
-            } elseif ( $logo_shape === 'square' ) {
+            } elseif ( $logo_shape === 'square' || $logo_shape === 'none' ) {
                 $logo_radius = 0;
             }
 
