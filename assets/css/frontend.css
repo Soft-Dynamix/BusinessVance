@@ -55,20 +55,33 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
 }
 
 .bv-shield-logo {
-    width: 72px;
-    height: 72px;
-    background: rgba(244, 162, 97, 0.12);
-    border: 2px solid #F4A261;
-    border-radius: 50%;
+    width: auto;
+    height: auto;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #F4A261;
     position: relative;
+}
+
+/* When showing the fallback shield icon (no custom logo) */
+.bv-shield-logo svg {
+    width: 48px;
+    height: 48px;
+}
+
+/* Custom logo image - clean rectangular display */
+.bv-shield-logo img {
+    width: auto;
+    height: 80px;
+    max-width: 240px;
+    object-fit: contain;
+    border-radius: 8px;
+    border: none;
 }
 
 .bv-brand-text {

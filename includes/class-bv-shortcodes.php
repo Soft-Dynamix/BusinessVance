@@ -234,7 +234,7 @@ class BV_Shortcodes {
                     <div class="bv-header-brand">
                         <div class="bv-shield-logo">
                             <?php if ( $logo_url ) : ?>
-                                <img src="<?php echo $logo_url; ?>" alt="<?php echo $company_name; ?>" style="width:48px;height:48px;border-radius:50%;object-fit:cover;">
+                                <img src="<?php echo $logo_url; ?>" alt="<?php echo $company_name; ?>">
                             <?php else : ?>
                                 <?php echo $this->get_icon_svg( 'shield', 36 ); ?>
                             <?php endif; ?>
