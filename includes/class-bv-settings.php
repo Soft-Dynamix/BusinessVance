@@ -90,8 +90,10 @@ class BV_Settings {
         'services_show_trust_badges'   => 'yes',
         'services_enable_categories'    => 'yes',
         'services_button_color'        => 'gold',
-        'services_logo_height'          => '120',
-        'services_logo_max_width'      => '320',
+        'services_logo_height'          => '150',
+        'services_logo_max_width'      => '400',
+        'services_logo_shape'          => 'rounded',    // square, rounded, circle
+        'services_logo_border_radius'  => '8',
         'services_button_text'          => 'ADD TO CART',
         'services_table_header_label'   => 'PRICE (ZAR)',
         'services_services_title'       => 'PRICE LIST',
@@ -1234,8 +1236,8 @@ class BV_Settings {
                     <td>
                         <input type="number" id="bv_services_logo_height" name="bv_settings[services_logo_height]"
                                value="<?php echo esc_attr( $settings['services_logo_height'] ); ?>"
-                               min="20" max="300" class="small-text" style="width:80px;" />
-                        <p class="description"><?php esc_html_e( 'Maximum height for the logo image on the services page header. Default: 120', 'businessvance-services-manager' ); ?></p>
+                               min="20" max="500" class="small-text" style="width:80px;" />
+                        <p class="description"><?php esc_html_e( 'Height for the logo image on the services page header. Default: 150px', 'businessvance-services-manager' ); ?></p>
                     </td>
                 </tr>
                 <tr>
@@ -1245,8 +1247,32 @@ class BV_Settings {
                     <td>
                         <input type="number" id="bv_services_logo_max_width" name="bv_settings[services_logo_max_width]"
                                value="<?php echo esc_attr( $settings['services_logo_max_width'] ); ?>"
-                               min="50" max="800" class="small-text" style="width:80px;" />
-                        <p class="description"><?php esc_html_e( 'Maximum width for the logo image. Default: 320', 'businessvance-services-manager' ); ?></p>
+                               min="50" max="1200" class="small-text" style="width:80px;" />
+                        <p class="description"><?php esc_html_e( 'Maximum width for the logo image. Default: 400px', 'businessvance-services-manager' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_services_logo_shape"><?php esc_html_e( 'Logo Shape', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <select id="bv_services_logo_shape" name="bv_settings[services_logo_shape]">
+                            <option value="square" <?php selected( $settings['services_logo_shape'], 'square' ); ?>><?php esc_html_e( 'Square', 'businessvance-services-manager' ); ?></option>
+                            <option value="rounded" <?php selected( $settings['services_logo_shape'], 'rounded' ); ?>><?php esc_html_e( 'Rounded Corners', 'businessvance-services-manager' ); ?></option>
+                            <option value="circle" <?php selected( $settings['services_logo_shape'], 'circle' ); ?>><?php esc_html_e( 'Circle', 'businessvance-services-manager' ); ?></option>
+                        </select>
+                        <p class="description"><?php esc_html_e( 'Choose the shape of your logo. "Rounded Corners" uses the border-radius below.', 'businessvance-services-manager' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="bv_services_logo_border_radius"><?php esc_html_e( 'Logo Border Radius (px)', 'businessvance-services-manager' ); ?></label>
+                    </th>
+                    <td>
+                        <input type="number" id="bv_services_logo_border_radius" name="bv_settings[services_logo_border_radius]"
+                               value="<?php echo esc_attr( $settings['services_logo_border_radius'] ); ?>"
+                               min="0" max="100" class="small-text" style="width:80px;" />
+                        <p class="description"><?php esc_html_e( 'Border radius when Logo Shape is set to "Rounded Corners". Ignored for Square and Circle. Default: 8px', 'businessvance-services-manager' ); ?></p>
                     </td>
                 </tr>
                 <tr>

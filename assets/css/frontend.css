@@ -89,10 +89,10 @@
 /* Custom logo image - clean rectangular display */
 .bv-shield-logo img {
     width: auto;
-    height: var(--bv-logo-height, 120px);
-    max-width: var(--bv-logo-max-width, 320px);
+    height: var(--bv-logo-height, 150px);
+    max-width: var(--bv-logo-max-width, 400px);
     object-fit: contain;
-    border-radius: 8px;
+    border-radius: var(--bv-logo-radius, 8px);
     border: none;
 }
 
@@ -631,7 +631,7 @@
     .bv-mobile-only { display: block !important; }
 
     .bv-header-inner { padding: 32px 16px 28px; }
-    .bv-shield-logo { width: 56px; height: 56px; }
+    .bv-shield-logo img { height: var(--bv-logo-height, 150px); max-width: var(--bv-logo-max-width, 400px); }
     .bv-brand-name { font-size: 26px; letter-spacing: 2px; }
     .bv-brand-tagline { font-size: 10px; letter-spacing: 3px; }
     .bv-brand-description { font-size: 13px; }

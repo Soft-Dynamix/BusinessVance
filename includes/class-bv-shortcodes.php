@@ -135,7 +135,17 @@ class BV_Shortcodes {
 
             // Dynamic CSS from settings
             $settings = BV_Settings::get_settings();
-            $dynamic_css = ':root{--bv-primary:' . esc_attr( $settings['primary_color'] ) . ';--bv-secondary:' . esc_attr( $settings['secondary_color'] ) . ';--bv-accent:' . esc_attr( $settings['accent_color'] ) . ';--bv-logo-height:' . intval( $settings['services_logo_height'] ) . 'px;--bv-logo-max-width:' . intval( $settings['services_logo_max_width'] ) . 'px;}';
+
+            // Calculate border-radius from shape setting
+            $logo_shape  = isset( $settings['services_logo_shape'] ) ? $settings['services_logo_shape'] : 'rounded';
+            $logo_radius = intval( $settings['services_logo_border_radius'] );
+            if ( $logo_shape === 'circle' ) {
+                $logo_radius = 9999;
+            } elseif ( $logo_shape === 'square' ) {
+                $logo_radius = 0;
+            }
+
+            $dynamic_css = ':root{--bv-primary:' . esc_attr( $settings['primary_color'] ) . ';--bv-secondary:' . esc_attr( $settings['secondary_color'] ) . ';--bv-accent:' . esc_attr( $settings['accent_color'] ) . ';--bv-logo-height:' . intval( $settings['services_logo_height'] ) . 'px;--bv-logo-max-width:' . intval( $settings['services_logo_max_width'] ) . 'px;--bv-logo-radius:' . $logo_radius . 'px;}';
             if ( $settings['services_enable_animations'] !== 'yes' ) {
                 $dynamic_css .= '.bv-animate{opacity:1!important;transform:none!important;}';
             }
