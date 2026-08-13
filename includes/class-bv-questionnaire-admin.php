@@ -1328,9 +1328,25 @@ class BV_Questionnaire_Admin {
             $debug_log( 'Parse complete. Sections: ' . count( $result['sections'] ) . ' Questions: ' . $result['total_questions'] );
 
         } catch ( \Throwable $e ) {
-            // Catch ALL errors including TypeError, Error, etc.
-            $debug_log( 'ERROR: ' . get_class( $e ) . ': ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine() );
-            wp_send_json_error( array( 'message' => 'Parse error: ' . $e->getMessage() ) );
+            // Catch ALL errors including TypeError, Error, ParseError, etc.
+            $err_class  = get_class( $e );
+            $err_file   = $e->getFile();
+            $err_line   = $e->getLine();
+            $err_msg    = $e->getMessage();
+            $php_ver    = phpversion();
+            $debug_log( "ERROR: {$err_class}: {$err_msg} in {$err_file}:{$err_line} | PHP {$php_ver}" );
+
+            // Build a user-friendly error message with diagnostics
+            $user_msg = $err_msg;
+            if ( $err_class === 'ParseError' ) {
+                $user_msg .= sprintf(
+                    ' (in %s line %d — PHP version %s; this plugin requires PHP 7.4+)',
+                    basename( $err_file ),
+                    $err_line,
+                    $php_ver
+                );
+            }
+            wp_send_json_error( array( 'message' => $user_msg ) );
             return;
         }
 

@@ -810,7 +810,7 @@ class BV_Document_Parser {
         }
 
         $lines = array();
-        $this->extract_docx_paragraphs( $doc, $w_ns, $lines );
+        $this->extract_docx_paragraphs( $doc, $w_ns, $namespaces, $lines );
 
         return $this->clean_lines( $lines );
     }
@@ -820,10 +820,11 @@ class BV_Document_Parser {
      *
      * @param \SimpleXMLElement $node  XML node.
      * @param string           $w_ns  Word namespace prefix.
+     * @param array            $namespaces  Registered XML namespaces.
      * @param array            &$lines Accumulated lines.
      * @param int              $depth Current depth for nested elements.
      */
-    private function extract_docx_paragraphs( $node, $w_ns, &$lines, $depth = 0 ) {
+    private function extract_docx_paragraphs( $node, $w_ns, $namespaces, &$lines, $depth = 0 ) {
         $prefix = $w_ns ? $w_ns . ':' : '';
 
         // Look for paragraph elements
@@ -831,7 +832,7 @@ class BV_Document_Parser {
             $local_name = $child->getName();
 
             if ( $local_name === 'body' || $local_name === 'sectPr' || $local_name === 'document' ) {
-                $this->extract_docx_paragraphs( $child, $w_ns, $lines, $depth );
+                $this->extract_docx_paragraphs( $child, $w_ns, $namespaces, $lines, $depth );
                 continue;
             }
 
@@ -842,7 +843,15 @@ class BV_Document_Parser {
                 $style_name = '';
 
                 // Check paragraph style
-                $p_pr = $child->children( $w_ns ? $namespaces[$w_ns] : null )->pPr;
+                $ns_uri    = ( $w_ns && isset( $namespaces[ $w_ns ] ) ) ? $namespaces[ $w_ns ] : null;
+                $p_children = $child->children( $ns_uri );
+                $p_pr = null;
+                foreach ( $p_children as $p_child ) {
+                    if ( $p_child->getName() === 'pPr' ) {
+                        $p_pr = $p_child;
+                        break;
+                    }
+                }
                 if ( ! $p_pr ) {
                     // Try with no namespace
                     foreach ( $child->children() as $p_child ) {
@@ -927,7 +936,7 @@ class BV_Document_Parser {
                 }
             } else {
                 // Recurse into other container elements
-                $this->extract_docx_paragraphs( $child, $w_ns, $lines, $depth + 1 );
+                $this->extract_docx_paragraphs( $child, $w_ns, $namespaces, $lines, $depth + 1 );
             }
         }
     }

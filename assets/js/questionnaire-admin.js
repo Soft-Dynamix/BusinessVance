@@ -604,7 +604,8 @@
                     } else {
                         bvQTDocShowStep('upload');
                         var errMsg = res.data && res.data.message ? res.data.message : 'Unknown error parsing document.';
-                        alert('Parse Error: ' + errMsg + '\n\nTips:\n• PDF must contain selectable text (not scanned images)\n• .docx files must be saved in Word format (not .doc)\n• Try re-saving the file and uploading again.');
+                        var tips = '\n\nTips:\n• PDF must contain selectable text (not scanned images)\n• .docx files must be saved in Word format (not .doc)\n• This plugin requires PHP 7.4 or higher\n• Try re-saving the file and uploading again.';
+                        alert('Document Import Error:\n\n' + errMsg + tips);
                     }
                 },
                 error: function(xhr, status, error) {
