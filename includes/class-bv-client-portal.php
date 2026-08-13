@@ -755,11 +755,17 @@ class BV_Client_Portal {
         // Find the first incomplete step
         foreach ( $step_info as $step ) {
             if ( ! $step['done'] ) {
-                $label = strtolower( $step['label'] );
+                $label      = strtolower( $step['label'] );
+                $step_title = sprintf(
+                    /* translators: %1$d: step number, %2$s: step label */
+                    esc_html__( 'Step %1$d: %2$s', 'businessvance-services-manager' ),
+                    $step['num'],
+                    $step['label']
+                );
                 switch ( $label ) {
                     case 'agreement':
                         $next_action = array(
-                            'title'       => esc_html__( 'Step 1: Sign the Agreement', 'businessvance-services-manager' ),
+                            'title'       => $step_title,
                             'description' => esc_html__( 'Please read through the agreement carefully and sign it by entering your full legal name. This must be completed before you can proceed to the next step.', 'businessvance-services-manager' ),
                             'button'      => esc_html__( 'Go to Agreement', 'businessvance-services-manager' ),
                             'tab'         => 'agreement',
@@ -767,7 +773,7 @@ class BV_Client_Portal {
                         break 2;
                     case 'questionnaire':
                         $next_action = array(
-                            'title'       => esc_html__( 'Step 2: Complete the Questionnaire', 'businessvance-services-manager' ),
+                            'title'       => $step_title,
                             'description' => esc_html__( 'Please fill out the questionnaire with accurate details about your business. This information is essential for preparing your report. You can save and return later if needed.', 'businessvance-services-manager' ),
                             'button'      => esc_html__( 'Go to Questionnaire', 'businessvance-services-manager' ),
                             'tab'         => 'questionnaire',
@@ -775,7 +781,7 @@ class BV_Client_Portal {
                         break 2;
                     case 'documents':
                         $next_action = array(
-                            'title'       => esc_html__( 'Step 3: Upload Required Documents', 'businessvance-services-manager' ),
+                            'title'       => $step_title,
                             'description' => esc_html__( 'Please upload all the required documents listed. These may include ID copies, registration certificates, financial statements, etc. Make sure each file meets the format and size requirements shown.', 'businessvance-services-manager' ),
                             'button'      => esc_html__( 'Go to Documents', 'businessvance-services-manager' ),
                             'tab'         => 'documents',
@@ -783,7 +789,7 @@ class BV_Client_Portal {
                         break 2;
                     default:
                         $next_action = array(
-                            'title'       => sprintf( /* translators: %s: step label */ esc_html__( 'Complete: %s', 'businessvance-services-manager' ), $step['label'] ),
+                            'title'       => $step_title,
                             'description' => esc_html__( 'Please complete this step to continue with your project.', 'businessvance-services-manager' ),
                             'button'      => sprintf( /* translators: %s: step label */ esc_html__( 'Go to %s', 'businessvance-services-manager' ), $step['label'] ),
                             'tab'         => $label,
@@ -873,10 +879,12 @@ class BV_Client_Portal {
         $next_action = $guidance['next_action'];
 
         // Consultant contact details from settings
-        $settings = BV_Settings::get_settings();
+        $settings         = BV_Settings::get_settings();
+        $company_name     = $settings['company_name'] ?? '';
         $consultant_email = $settings['consultant_email'] ?? '';
         $consultant_phone = $settings['phone_number'] ?? '';
         $consultant_address = $settings['physical_address'] ?? '';
+        $has_contact_info = ( $consultant_email || $consultant_phone || $consultant_address );
 
         ob_start();
         ?>
@@ -924,7 +932,7 @@ class BV_Client_Portal {
                 <div class="bv-guidance-content">
                     <h3><?php echo esc_html__( 'All Information Submitted!', 'businessvance-services-manager' ); ?></h3>
                     <p><?php echo esc_html__( 'Thank you for completing all the required steps. Your consultant will now review your information and prepare your report. No further action is needed from your side at this time.', 'businessvance-services-manager' ); ?></p>
-                    <?php if ( $consultant_email || $consultant_phone || $consultant_address ) : ?>
+                    <?php if ( $has_contact_info ) : ?>
                     <div class="bv-guidance-contact">
                         <h4><?php echo esc_html__( 'Need to contact us?', 'businessvance-services-manager' ); ?></h4>
                         <?php if ( $consultant_email ) : ?>
@@ -979,6 +987,33 @@ class BV_Client_Portal {
                     <?php endif; ?>
                 </div>
             </div>
+
+            <?php if ( $has_contact_info ) : ?>
+            <!-- Always-visible contact card -->
+            <div class="bv-contact-card">
+                <h4><?php echo esc_html( $company_name ?: esc_html__( 'Consultant Contact', 'businessvance-services-manager' ) ); ?></h4>
+                <div class="bv-contact-card-body">
+                    <?php if ( $consultant_email ) : ?>
+                    <div class="bv-contact-item">
+                        <span class="bv-contact-icon">✉</span>
+                        <a href="mailto:<?php echo esc_attr( $consultant_email ); ?>"><?php echo esc_html( $consultant_email ); ?></a>
+                    </div>
+                    <?php endif; ?>
+                    <?php if ( $consultant_phone ) : ?>
+                    <div class="bv-contact-item">
+                        <span class="bv-contact-icon">📞</span>
+                        <a href="tel:<?php echo esc_attr( $consultant_phone ); ?>"><?php echo esc_html( $consultant_phone ); ?></a>
+                    </div>
+                    <?php endif; ?>
+                    <?php if ( $consultant_address ) : ?>
+                    <div class="bv-contact-item">
+                        <span class="bv-contact-icon">📍</span>
+                        <span><?php echo esc_html( $consultant_address ); ?></span>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <?php if ( $project->notes ) : ?>
             <div class="bv-notes-section">
