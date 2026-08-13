@@ -1394,14 +1394,47 @@ class BV_Document_Parser {
                 continue;
             }
 
+            // ── Multi-line field joining ──
+            // PDF forms sometimes split a single field label across two lines:
+            //   "City / Province / Preferred"  +  "Country language"
+            // Join them into one line so they get parsed as a single question.
+            $merged_next = false;
+            if ( preg_match( '/\s*\/\s*$/', $text ) && $i + 1 < $total ) {
+                $next_text = trim( $section_lines[ $i + 1 ]['text'] );
+                if ( $next_text !== '' && strlen( $next_text ) <= 40 && ! preg_match( '/^\d/', $next_text ) && ! preg_match( '/^[☐☑\x01]/u', $next_text ) ) {
+                    // Merge and let the merged line be processed
+                    $text = trim( $text ) . ' ' . $next_text;
+                    $line['text'] = $text;
+                    $merged_next = true;
+                }
+            }
+
             // Try to detect a question
             $question = $this->try_detect_question( $text, $section_lines, $i );
 
             if ( $question ) {
                 $questions[] = $question;
-                // If this question consumed following option lines, skip them
-                $i += 1 + $question['_consumed_lines'];
+                $consumed = $question['_consumed_lines'] ?? 0;
+                $extra = $merged_next ? 1 : 0; // Consume the joined line too
+                $i += 1 + $consumed + $extra;
+
+                // If this was a split multi-field line, inject the second field
+                // so it gets detected as a separate question on the next iteration.
+                if ( ! empty( $question['_split_remainder'] ) ) {
+                    $remainder = trim( $question['_split_remainder'] );
+                    if ( $remainder ) {
+                        // Insert as a virtual line at current position
+                        array_splice( $section_lines, $i, 0, array(
+                            array( 'text' => $remainder, 'meta' => array( 'bold' => false ) )
+                        );
+                        $total = count( $section_lines ); // Update total
+                    }
+                }
+
                 unset( $question['_consumed_lines'] );
+                if ( isset( $question['_split_remainder'] ) ) {
+                    unset( $question['_split_remainder'] );
+                }
             } else {
                 $i++;
             }
@@ -1461,12 +1494,135 @@ class BV_Document_Parser {
      * @param int    $index         Index of this line in section_lines.
      * @return array|null Question data or null if not a question.
      */
+    /**
+     * Try to split a multi-field line into two separate questions.
+     *
+     * PDF forms often put two labels side-by-side: "Full name Date",
+     * "Business name Client reference", "Email address Contact number".
+     *
+     * @since 2.7.9
+     * @param string $text The line text.
+     * @return array|null Question data for the FIRST field, or null if not a multi-field line.
+     */
+    private function try_split_multi_field_line( $text ) {
+        $text = trim( $text );
+        if ( strlen( $text ) < 8 ) {
+            return null;
+        }
+
+        // Known field-label suffixes that commonly appear in PDF forms
+        $field_suffixes = array(
+            'name', 'Name', 'date', 'Date', 'address', 'Address',
+            'number', 'Number', 'phone', 'Phone', 'email', 'Email',
+            'reference', 'Reference', 'city', 'City', 'country', 'Country',
+            'province', 'Province', 'language', 'Language',
+            'description', 'Description', 'details', 'Details',
+            'comments', 'Comments', 'notes', 'Notes',
+            'position', 'Position', 'title', 'Title',
+            'company', 'Company', 'business', 'Business',
+            'amount', 'Amount', 'percentage', 'Percentage',
+            'status', 'Status', 'type', 'Type',
+        );
+
+        // Pattern: Two capitalized words at split points (e.g. "Full name Date")
+        // Match: capitalized word(s) followed by another capitalized word that matches a field suffix
+        $pattern = '/^([A-Z][A-Za-z\s\-&\/]+?\s+(?:' . implode( '|', $field_suffixes ) . '))\s{2,}([A-Z][A-Za-z\s\-&\/]+?\s*(?:' . implode( '|', $field_suffixes ) . ')?)\s*$/u';
+
+        if ( preg_match( $pattern, $text, $m ) ) {
+            $first  = trim( $m[1] );
+            $second = trim( $m[2] );
+            // Only split if both parts are reasonable lengths (3-40 chars)
+            if ( strlen( $first ) >= 3 && strlen( $first ) <= 40 && strlen( $second ) >= 3 && strlen( $second ) <= 40 ) {
+                // Return only the FIRST field; the second will be detected on the next pass
+                // (we can't return two questions at once)
+                return array(
+                    'type'        => $this->infer_field_type( $first ),
+                    'label'       => $first,
+                    'placeholder' => $this->generate_placeholder( 'text', $first ),
+                    'required'    => true,
+                    'help_text'   => '',
+                    'options'     => array(),
+                    '_consumed_lines' => 0,
+                    '_split_remainder' => $second,
+                );
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Infer question type from a field label string.
+     *
+     * @since 2.7.9
+     * @param string $label The field label.
+     * @return string Question type.
+     */
+    private function infer_field_type( $label ) {
+        if ( preg_match( '/\b(?:email|e-mail|email\s*address)\b/i', $label ) ) {
+            return 'email';
+        }
+        if ( preg_match( '/\b(?:phone|telephone|mobile|cell|contact\s*number)\b/i', $label ) ) {
+            return 'phone';
+        }
+        if ( preg_match( '/\b(?:date|dob|when)\b/i', $label ) ) {
+            return 'date';
+        }
+        if ( preg_match( '/\b(?:website|url|link|web)\b/i', $label ) ) {
+            return 'text';
+        }
+        return 'text';
+    }
+
     private function try_detect_question( $text, $section_lines, $index ) {
         $len = strlen( $text );
 
         // Must be at least 3 chars
         if ( $len < 3 ) {
             return null;
+        }
+
+        // ── Standalone checkbox/radio group detection ──
+        // Lines like "☐ English ☐ Afrikaans" or "☐ Idea stage ☐ Research stage"
+        // These are their own questions, not options for a preceding field.
+        $checkbox_count = substr_count( $text, '☐' ) + substr_count( $text, '☑' ) + substr_count( $text, "\x01" );
+        if ( $checkbox_count >= 2 && ( preg_match( '/^[☐\x01\s]+/u', $text ) || preg_match( '/^\s*[☐\x01]/u', $text ) ) ) {
+            // Extract options from the line
+            $raw = trim( $text );
+            $parts = preg_split( '/[☐☑\x01]\s*/u', $raw );
+            $opts = array();
+            foreach ( $parts as $part ) {
+                $part = trim( $part );
+                if ( strlen( $part ) >= 1 && strlen( $part ) <= 100 ) {
+                    $opts[] = $part;
+                }
+            }
+            if ( count( $opts ) >= 2 ) {
+                // Determine if it should be checkbox (multi-select) or radio (single-select)
+                // Language selection → radio; Stage/Type checkboxes → checkbox
+                $is_language = preg_match( '/\b(?:English|Afrikaans|language|taal|prefer)\b/i', implode( ' ', $opts ) );
+                $q_type = $is_language ? 'radio' : 'checkbox';
+                return array(
+                    'type'        => $q_type,
+                    'label'       => $opts[0] === 'English' || $opts[0] === 'Afrikaans'
+                                     ? 'Preferred language' : 'Select all that apply',
+                    'placeholder' => '',
+                    'required'    => false,
+                    'help_text'   => '',
+                    'options'     => array_map( function( $o ) {
+                        return array( 'value' => sanitize_title( $o ), 'label' => $o );
+                    }, $opts ),
+                    '_consumed_lines' => 0,
+                );
+            }
+        }
+
+        // ── Multi-field line splitting ──
+        // PDF forms often put two labels side-by-side: "Full name Date"
+        // Split into separate questions when both parts look like field labels.
+        $multi_fields = $this->try_split_multi_field_line( $text );
+        if ( $multi_fields !== null ) {
+            return $multi_fields;
         }
 
         // --- Strong question signals ---
@@ -1644,6 +1800,16 @@ class BV_Document_Parser {
                 break;
             }
 
+            // ── Standalone checkbox group detection ──
+            // If a line starts with ☐ (or \x01) and contains 2+ checkbox items,
+            // it's a standalone question group (e.g. "☐ English ☐ Afrikaans"),
+            // NOT options for the preceding question. Return empty to let it
+            // be detected as its own question in the next iteration.
+            $checkbox_count = substr_count( $trimmed, '☐' ) + substr_count( $trimmed, '☑' ) + substr_count( $trimmed, "\x01" );
+            if ( $checkbox_count >= 2 && ( preg_match( '/^[☐\x01]/u', $trimmed ) || preg_match( '/^\s*[☐\x01]/u', $trimmed ) ) ) {
+                return array(); // Standalone group — not options for this question
+            }
+
             // Bullet point or lettered options: a), b), c), A., B., C., a., b., c.
             if ( preg_match( '/^\s*(?:[a-z][\.\)]|[A-Z][\.\)]|•|○|◦|▪|▫|►|▸|–|—|·|‣)\s*(.{1,100})$/u', $trimmed, $m ) ) {
                 $opt_text = trim( $m[1] );
@@ -1671,7 +1837,7 @@ class BV_Document_Parser {
                 continue;
             }
 
-            // Simple checkbox-style: "[ ] Option" or "☐ Option"
+            // Single checkbox: "[ ] Option" or "☐ Option" (single checkbox per line = one option)
             if ( preg_match( '/^(?:\[[ x]\]|\[?\s*[☐☑☒✓✗]\s*\]?)\s*(.{1,100})$/u', $trimmed, $m ) ) {
                 $opt_text = trim( $m[1] );
                 if ( strlen( $opt_text ) >= 1 && strlen( $opt_text ) <= 100 ) {
@@ -1681,7 +1847,7 @@ class BV_Document_Parser {
             }
 
             // PDF checkbox markers: \x01 (SOH) used as checkbox bullet
-            // e.g., "\x01 English \x01 Afrikaans" or "\x01 Option text"
+            // e.g., "\x01 English \x01 Afrikaans" — already handled by standalone check above
             if ( preg_match( '/^\x01\s*(.{1,100})$/u', $trimmed, $m ) ) {
                 // May contain multiple \x01-separated options on one line
                 $parts = preg_split( '/\x01\s*/', $m[1] );
@@ -1711,7 +1877,8 @@ class BV_Document_Parser {
             // If it's a short line and doesn't look like a question, might be an option
             if ( strlen( $trimmed ) <= 60 && ! preg_match( '/[?？]/u', $trimmed )
                  && ! preg_match( '/^\s*\d+[\.\)]\s+/', $trimmed )
-                 && ! preg_match( '/^\s*\d+\.\d+/', $trimmed ) ) {
+                 && ! preg_match( '/^\s*\d+\.\d+/', $trimmed )
+                 && ! preg_match( '/^[A-Z][a-z]+\s+(?:name|address|number|phone|email|date|reference|city|country|province|language|description|details|comments|notes)\b/i', $trimmed ) ) {
                 // Only accept if it follows a pattern (we already detected 1+ option)
                 if ( count( $options ) > 0 ) {
                     $options[] = $trimmed;
