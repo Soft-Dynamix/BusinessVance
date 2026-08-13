@@ -1307,6 +1307,9 @@ class BV_Admin {
             $this->sync_service_questionnaires( $id, $questionnaire_ids );
             $this->sync_service_document_requirements( $id, $document_requirement_ids );
 
+            // Update status & progress for all existing projects using this service
+            $this->refresh_affected_projects( $id );
+
             wp_send_json_success( array( 'message' => __( 'Service updated.', 'businessvance-services-manager' ), 'id' => $id ) );
         } else {
             // Get max display_order
@@ -1432,6 +1435,186 @@ class BV_Admin {
         $junction = $wpdb->prefix . 'bv_service_documents';
 
         $this->sync_service_junction( $service_id, $doc_req_ids, $junction, 'document_requirement_id' );
+    }
+
+    /**
+     * Refresh status and progress for all projects that use a given service.
+     *
+     * Called after syncing agreement/questionnaire/document junction tables so
+     * that existing projects immediately reflect the newly linked (or removed)
+     * requirements in the client portal — correct tabs, status badges, and progress.
+     *
+     * Status logic mirrors the client-portal "awaiting" → "in-progress" flow:
+     *   1. If agreement needed & not signed → awaiting-agreement
+     *   2. If questionnaire needed & not done  → awaiting-questionnaire
+     *   3. If documents needed & not uploaded   → awaiting-documents
+     *   4. Otherwise, only update progress (keep current status if ≥ in-progress)
+     *
+     * @since 2.7.9
+     * @param int $service_id The service that was just updated.
+     */
+    private function refresh_affected_projects( $service_id ) {
+        global $wpdb;
+        $prefix = $wpdb->prefix;
+
+        // Find all projects linked to this service
+        $projects = $wpdb->get_results( $wpdb->prepare(
+            "SELECT p.id FROM {$prefix}bv_projects p
+             INNER JOIN {$prefix}bv_project_services ps ON ps.project_id = p.id
+             WHERE ps.service_id = %d",
+            $service_id
+        ) );
+
+        if ( empty( $projects ) ) {
+            return;
+        }
+
+        // Statuses that mean the consultant has taken over — don't regress
+        $consultant_statuses = array( 'in-progress', 'quality-check', 'completed', 'delivered', 'archived' );
+
+        foreach ( $projects as $proj ) {
+            $project_id = absint( $proj->id );
+
+            // Load services for this project
+            $services = $wpdb->get_results( $wpdb->prepare(
+                "SELECT s.* FROM {$prefix}bv_project_services ps
+                 JOIN {$prefix}bv_services s ON s.id = ps.service_id
+                 WHERE ps.project_id = %d",
+                $project_id
+            ) );
+
+            $service_ids = array_map( 'absint', wp_list_pluck( $services, 'id' ) );
+            if ( empty( $service_ids ) ) {
+                continue;
+            }
+
+            // Collect what's required
+            $placeholders = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
+
+            // 1. Agreement
+            $has_agreement = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$prefix}bv_service_agreements WHERE service_id IN ($placeholders)",
+                ...$service_ids
+            ) );
+            $agreement_signed = $has_agreement ? (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$prefix}bv_project_agreements WHERE project_id = %d",
+                $project_id
+            ) ) : true; // treat as "done" when not required
+
+            // 2. Questionnaire
+            $has_questionnaire = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$prefix}bv_service_questionnaires WHERE service_id IN ($placeholders)",
+                ...$service_ids
+            ) );
+            if ( ! $has_questionnaire ) {
+                $has_questionnaire = (bool) $wpdb->get_var( $wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$prefix}bv_services WHERE id IN ($placeholders) AND questionnaire_template_id > 0",
+                    ...$service_ids
+                ) );
+            }
+            $questionnaire_done = $has_questionnaire ? (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$prefix}bv_questionnaire_responses WHERE project_id = %d",
+                $project_id
+            ) ) : true;
+
+            // 3. Documents
+            $has_documents = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$prefix}bv_service_documents WHERE service_id IN ($placeholders)",
+                ...$service_ids
+            ) );
+
+            // Calculate progress
+            $required_steps = array();
+            if ( $has_agreement ) { $required_steps[] = $agreement_signed; }
+            if ( $has_questionnaire ) { $required_steps[] = $questionnaire_done; }
+            if ( $has_documents ) {
+                // Check if all required docs uploaded
+                $required_dr_ids = $wpdb->get_col( $wpdb->prepare(
+                    "SELECT DISTINCT sd.document_requirement_id
+                     FROM {$prefix}bv_service_documents sd
+                     JOIN {$prefix}bv_document_requirements dr ON dr.id = sd.document_requirement_id
+                     WHERE sd.service_id IN ($placeholders) AND dr.is_required = 1",
+                    ...$service_ids
+                ) );
+                if ( empty( $required_dr_ids ) ) {
+                    $docs_done = true;
+                } else {
+                    $dr_placeholders = implode( ',', array_fill( 0, count( $required_dr_ids ), '%d' ) );
+                    $uploaded = (int) $wpdb->get_var( $wpdb->prepare(
+                        "SELECT COUNT(DISTINCT document_requirement_id) FROM {$prefix}bv_project_documents
+                         WHERE project_id = %d AND document_requirement_id IN ($dr_placeholders)",
+                        $project_id,
+                        ...$required_dr_ids
+                    ) );
+                    $docs_done = ( $uploaded >= count( $required_dr_ids ) );
+                }
+                $required_steps[] = $docs_done;
+            }
+
+            if ( ! empty( $required_steps ) ) {
+                $progress = round( ( count( array_filter( $required_steps ) ) / count( $required_steps ) ) * 100 );
+            } else {
+                $progress = 0;
+            }
+
+            // Update progress
+            $wpdb->update(
+                $prefix . 'bv_projects',
+                array( 'progress_percent' => $progress ),
+                array( 'id' => $project_id ),
+                array( '%d' ),
+                array( '%d' )
+            );
+
+            // Determine if status should change
+            $current = $wpdb->get_var( $wpdb->prepare(
+                "SELECT status FROM {$prefix}bv_projects WHERE id = %d", $project_id
+            ) );
+            $in_consultant_phase = in_array( $current, $consultant_statuses, true );
+
+            if ( $in_consultant_phase ) {
+                // Don't regress status — consultant already working on it
+                // But if a NEW requirement was added that isn't done, set appropriate status
+                $needs_action = false;
+                if ( $has_agreement && ! $agreement_signed ) { $needs_action = 'awaiting-agreement'; }
+                elseif ( $has_questionnaire && ! $questionnaire_done ) { $needs_action = 'awaiting-questionnaire'; }
+                elseif ( $has_documents && ! $docs_done ) { $needs_action = 'awaiting-documents'; }
+
+                if ( $needs_action ) {
+                    // Check if this is a genuinely NEW requirement (not yet completed before)
+                    // If progress was 100% before and now it's less, a new requirement was added
+                    if ( $progress < 100 ) {
+                        $wpdb->update(
+                            $prefix . 'bv_projects',
+                            array( 'status' => $needs_action ),
+                            array( 'id' => $project_id ),
+                            array( '%s' ),
+                            array( '%d' )
+                        );
+                    }
+                }
+            } else {
+                // Project is in a client-action phase — update status based on what's next
+                $new_status = null;
+                if ( $has_agreement && ! $agreement_signed ) {
+                    $new_status = 'awaiting-agreement';
+                } elseif ( $has_questionnaire && ! $questionnaire_done ) {
+                    $new_status = 'awaiting-questionnaire';
+                } elseif ( $has_documents && ! $docs_done ) {
+                    $new_status = 'awaiting-documents';
+                }
+
+                if ( $new_status && $current !== $new_status ) {
+                    $wpdb->update(
+                        $prefix . 'bv_projects',
+                        array( 'status' => $new_status ),
+                        array( 'id' => $project_id ),
+                        array( '%s' ),
+                        array( '%d' )
+                    );
+                }
+            }
+        }
     }
 
     /**
