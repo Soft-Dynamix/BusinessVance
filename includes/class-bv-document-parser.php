@@ -1435,7 +1435,7 @@ class BV_Document_Parser {
                         // Insert as a virtual line at current position
                         array_splice( $section_lines, $i, 0, array(
                             array( 'text' => $remainder, 'meta' => array( 'bold' => false ) )
-                        );
+                        ));
                         $total = count( $section_lines ); // Update total
                     }
                 }
