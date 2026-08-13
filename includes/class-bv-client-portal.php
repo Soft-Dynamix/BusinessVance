@@ -318,6 +318,234 @@ class BV_Client_Portal {
         return true;
     }
 
+    /**
+     * Auto-calculate project progress based on completed client steps.
+     *
+     * Checks which steps are required for the project's services, then
+     * determines which have been completed, and returns a percentage.
+     *
+     * Steps: Agreement, Questionnaire, Documents
+     *
+     * @since 2.7.6
+     * @param int $project_id The project ID.
+     * @param array $services Services linked to the project.
+     * @return int Progress percentage 0-100.
+     */
+    private function calculate_project_progress( $project_id, $services = null ) {
+        global $wpdb;
+        $project = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_projects WHERE id = %d", $project_id ) );
+        if ( ! $project ) return 0;
+
+        if ( ! $services ) {
+            $services = $wpdb->get_results( $wpdb->prepare(
+                "SELECT s.* FROM {$wpdb->prefix}bv_project_services ps JOIN {$wpdb->prefix}bv_services s ON ps.service_id = s.id WHERE ps.project_id = %d",
+                $project_id
+            ) );
+        }
+
+        $service_ids = array();
+        foreach ( $services as $svc ) {
+            $service_ids[] = absint( $svc->id );
+        }
+
+        // Build list of required steps for this project
+        $required_steps = array();
+
+        // Step 1: Agreement
+        if ( ! empty( $service_ids ) ) {
+            $placeholders = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
+            $has_agreement_templates = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_service_agreements WHERE service_id IN ($placeholders)",
+                ...$service_ids
+            ) );
+        } else {
+            $has_agreement_templates = false;
+        }
+
+        if ( $has_agreement_templates ) {
+            // Check if agreement is signed
+            $agreement_signed = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_project_agreements WHERE project_id = %d",
+                $project_id
+            ) );
+            $required_steps['agreement'] = $agreement_signed;
+        }
+
+        // Step 2: Questionnaire
+        if ( ! empty( $service_ids ) ) {
+            $placeholders = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
+            $has_questionnaires = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_service_questionnaires WHERE service_id IN ($placeholders)",
+                ...$service_ids
+            ) );
+            if ( ! $has_questionnaires ) {
+                $has_questionnaires = (bool) $wpdb->get_var( $wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$wpdb->prefix}bv_services WHERE id IN ($placeholders) AND questionnaire_template_id > 0",
+                    ...$service_ids
+                ) );
+            }
+        } else {
+            $has_questionnaires = false;
+        }
+
+        if ( $has_questionnaires ) {
+            // Check if any questionnaire responses exist for this project
+            $questionnaire_done = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_questionnaire_responses WHERE project_id = %d",
+                $project_id
+            ) );
+            $required_steps['questionnaire'] = $questionnaire_done;
+        }
+
+        // Step 3: Documents
+        if ( ! empty( $service_ids ) ) {
+            $placeholders = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
+            $has_document_reqs = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_service_documents WHERE service_id IN ($placeholders)",
+                ...$service_ids
+            ) );
+        } else {
+            $has_document_reqs = false;
+        }
+
+        if ( $has_document_reqs ) {
+            $docs_done = $this->all_required_docs_uploaded( $project_id, $services );
+            $required_steps['documents'] = $docs_done;
+        }
+
+        // Calculate percentage
+        if ( empty( $required_steps ) ) {
+            // No steps required — if project is in-progress or beyond, show meaningful progress
+            $final_statuses = array( 'in-progress', 'quality-check', 'completed', 'delivered', 'archived' );
+            if ( in_array( $project->status, $final_statuses, true ) ) {
+                return 50; // Consultant's turn, client has nothing else to do
+            }
+            return 0;
+        }
+
+        $completed = count( array_filter( $required_steps ) );
+        $total     = count( $required_steps );
+        $percent   = round( ( $completed / $total ) * 100 );
+
+        return max( 0, min( 100, $percent ) );
+    }
+
+    /**
+     * Update the project's progress_percent in the database and return the new value.
+     *
+     * @since 2.7.6
+     * @param int $project_id The project ID.
+     * @param array $services Services linked to the project (optional, fetched if null).
+     * @return int The new progress percentage.
+     */
+    private function update_project_progress( $project_id, $services = null ) {
+        global $wpdb;
+        $progress = $this->calculate_project_progress( $project_id, $services );
+        $wpdb->update(
+            $wpdb->prefix . 'bv_projects',
+            array( 'progress_percent' => $progress ),
+            array( 'id' => $project_id ),
+            array( '%d' ),
+            array( '%d' )
+        );
+        return $progress;
+    }
+
+    /**
+     * Get visual step completion info for the overview tab progress section.
+     *
+     * Returns an ordered array of steps with 'num', 'label', 'done', 'active' keys.
+     *
+     * @since 2.7.6
+     * @param int   $project_id The project ID.
+     * @param array $services   Services linked to the project.
+     * @return array Step info arrays.
+     */
+    private function get_step_completion_info( $project_id, $services ) {
+        global $wpdb;
+        $service_ids = array();
+        foreach ( $services as $svc ) {
+            $service_ids[] = absint( $svc->id );
+        }
+
+        $steps = array();
+        $num  = 1;
+
+        // Step: Agreement
+        if ( ! empty( $service_ids ) ) {
+            $placeholders = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
+            $has_agreement = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_service_agreements WHERE service_id IN ($placeholders)",
+                ...$service_ids
+            ) );
+        } else {
+            $has_agreement = false;
+        }
+
+        if ( $has_agreement ) {
+            $signed = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_project_agreements WHERE project_id = %d",
+                $project_id
+            ) );
+            $steps[] = array( 'num' => $num, 'label' => esc_html__( 'Agreement', 'businessvance-services-manager' ), 'done' => $signed, 'active' => ! $signed );
+            $num++;
+        }
+
+        // Step: Questionnaire
+        if ( ! empty( $service_ids ) ) {
+            $placeholders = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
+            $has_q = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_service_questionnaires WHERE service_id IN ($placeholders)",
+                ...$service_ids
+            ) );
+            if ( ! $has_q ) {
+                $has_q = (bool) $wpdb->get_var( $wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$wpdb->prefix}bv_services WHERE id IN ($placeholders) AND questionnaire_template_id > 0",
+                    ...$service_ids
+                ) );
+            }
+        } else {
+            $has_q = false;
+        }
+
+        if ( $has_q ) {
+            $done = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_questionnaire_responses WHERE project_id = %d",
+                $project_id
+            ) );
+            $is_active = false;
+            // Mark as active if no prior step is incomplete
+            if ( empty( $steps ) || ! in_array( false, array_column( $steps, 'done' ), true ) ) {
+                $is_active = ! $done;
+            }
+            $steps[] = array( 'num' => $num, 'label' => esc_html__( 'Questionnaire', 'businessvance-services-manager' ), 'done' => $done, 'active' => $is_active );
+            $num++;
+        }
+
+        // Step: Documents
+        if ( ! empty( $service_ids ) ) {
+            $placeholders = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
+            $has_docs = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_service_documents WHERE service_id IN ($placeholders)",
+                ...$service_ids
+            ) );
+        } else {
+            $has_docs = false;
+        }
+
+        if ( $has_docs ) {
+            $done = $this->all_required_docs_uploaded( $project_id, $services );
+            $is_active = false;
+            if ( empty( $steps ) || ! in_array( false, array_column( $steps, 'done' ), true ) ) {
+                $is_active = ! $done;
+            }
+            $steps[] = array( 'num' => $num, 'label' => esc_html__( 'Documents', 'businessvance-services-manager' ), 'done' => $done, 'active' => $is_active );
+            $num++;
+        }
+
+        return $steps;
+    }
+
     public function render_portal( $atts ) {
         if ( ! is_user_logged_in() ) {
             return '<div class="bv-portal-login-message"><p>' . sprintf(
@@ -507,6 +735,10 @@ class BV_Client_Portal {
 
     private function render_overview_tab( $project, $services ) {
         $progress = max( 0, min( 100, (int) $project->progress_percent ) );
+
+        // Build step completion info for visual display
+        $step_info = $this->get_step_completion_info( $project->id, $services );
+
         ob_start();
         ?>
         <div class="bv-overview">
@@ -528,6 +760,22 @@ class BV_Client_Portal {
                 <div class="bv-progress-bar">
                     <div class="bv-progress-fill" style="width: <?php echo $progress; ?>%"></div>
                 </div>
+                <?php if ( ! empty( $step_info ) ) : ?>
+                <div class="bv-steps">
+                    <?php foreach ( $step_info as $step ) : ?>
+                    <div class="bv-step">
+                        <div class="bv-step-dot <?php echo $step['done'] ? 'done' : ( $step['active'] ? 'active' : '' ); ?>">
+                            <?php if ( $step['done'] ) : ?>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            <?php else : ?>
+                                <?php echo esc_html( $step['num'] ); ?>
+                            <?php endif; ?>
+                        </div>
+                        <span class="bv-step-label <?php echo $step['done'] ? 'done' : ( $step['active'] ? 'active' : '' ); ?>"><?php echo esc_html( $step['label'] ); ?></span>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
             </div>
 
             <div class="bv-info-grid">
@@ -1258,17 +1506,25 @@ class BV_Client_Portal {
             'user_id'     => get_current_user_id(),
         ), array( '%d', '%s', '%d', '%s', '%s', '%d' ) );
 
-        $this->notify_consultant( $project_id, esc_html__( 'Document Uploaded', 'businessvance-services-manager' ), esc_html__( 'Client uploaded document: ', 'businessvance-services-manager' ) . sanitize_text_field( $_POST['name'] ?? $file['name'] ) );
-
-        // Check if all required documents are now uploaded and advance status
+        // Update progress and notify consultant only if 100%
         $services = $wpdb->get_results( $wpdb->prepare(
             "SELECT s.* FROM {$wpdb->prefix}bv_project_services ps JOIN {$wpdb->prefix}bv_services s ON ps.service_id = s.id WHERE ps.project_id = %d", $project_id ) );
+
         if ( $project->status === 'awaiting-documents' && $this->all_required_docs_uploaded( $project_id, $services ) ) {
             $wpdb->update( $wpdb->prefix . 'bv_projects',
-                array( 'status' => 'in-progress', 'progress_percent' => 40 ),
+                array( 'status' => 'in-progress' ),
                 array( 'id' => $project_id ),
-                array( '%s', '%d' ), array( '%d' )
+                array( '%s' ), array( '%d' )
             );
+        }
+
+        $new_progress = $this->update_project_progress( $project_id, $services );
+        if ( $new_progress >= 100 ) {
+            $this->notify_consultant( $project_id, esc_html__( 'All Client Information Received', 'businessvance-services-manager' ), sprintf(
+                /* translators: %s: project number */
+                esc_html__( 'Client has completed all required steps for project %s. All information has been submitted.', 'businessvance-services-manager' ),
+                $project->project_number
+            ) );
         }
 
         wp_send_json_success( esc_html__( 'Document uploaded successfully', 'businessvance-services-manager' ) );
@@ -1357,9 +1613,9 @@ class BV_Client_Portal {
             ) );
             $next_status = $this->get_next_status_after_questionnaire( $project_id, $services );
             $wpdb->update( $wpdb->prefix . 'bv_projects',
-                array( 'status' => $next_status, 'progress_percent' => 25 ),
+                array( 'status' => $next_status ),
                 array( 'id' => $project_id ),
-                array( '%s', '%d' ), array( '%d' )
+                array( '%s' ), array( '%d' )
             );
         }
 
@@ -1368,11 +1624,19 @@ class BV_Client_Portal {
             'action' => 'submitted', 'description' => esc_html__( 'Client submitted questionnaire responses', 'businessvance-services-manager' ), 'user_id' => get_current_user_id(),
         ), array( '%d', '%s', '%d', '%s', '%s', '%d' ) );
 
-        $this->notify_consultant( $project_id, esc_html__( 'Questionnaire Submitted', 'businessvance-services-manager' ), sprintf(
-            /* translators: %s: project number */
-            esc_html__( 'Client submitted questionnaire responses for project %s.', 'businessvance-services-manager' ),
-            $project->project_number
+        // Update progress and notify consultant only if 100%
+        $services = $wpdb->get_results( $wpdb->prepare(
+            "SELECT s.* FROM {$wpdb->prefix}bv_project_services ps JOIN {$wpdb->prefix}bv_services s ON ps.service_id = s.id WHERE ps.project_id = %d",
+            $project_id
         ) );
+        $new_progress = $this->update_project_progress( $project_id, $services );
+        if ( $new_progress >= 100 ) {
+            $this->notify_consultant( $project_id, esc_html__( 'All Client Information Received', 'businessvance-services-manager' ), sprintf(
+                /* translators: %s: project number */
+                esc_html__( 'Client has completed all required steps for project %s. All information has been submitted.', 'businessvance-services-manager' ),
+                $project->project_number
+            ) );
+        }
         wp_send_json_success( esc_html__( 'Questionnaire saved successfully', 'businessvance-services-manager' ) );
     }
 
@@ -1454,9 +1718,9 @@ class BV_Client_Portal {
         // Smart status transition
         $next_status = $this->get_next_status_after_agreement( $project_id, $services );
         $wpdb->update( $wpdb->prefix . 'bv_projects',
-            array( 'status' => $next_status, 'progress_percent' => 10 ),
+            array( 'status' => $next_status ),
             array( 'id' => $project_id ),
-            array( '%s', '%d' ), array( '%d' )
+            array( '%s' ), array( '%d' )
         );
 
         $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array(
@@ -1468,12 +1732,16 @@ class BV_Client_Portal {
             ), 'user_id' => get_current_user_id(),
         ), array( '%d', '%s', '%d', '%s', '%s', '%d' ) );
 
-        $this->notify_consultant( $project_id, esc_html__( 'Agreement Signed', 'businessvance-services-manager' ), sprintf(
-            /* translators: %1$s: client name, %2$s: project number */
-            esc_html__( 'Client %1$s signed the service agreement for project %2$s.', 'businessvance-services-manager' ),
-            $full_name,
-            $project->project_number
-        ) );
+        // Update progress and notify consultant only if 100%
+        $new_progress = $this->update_project_progress( $project_id, $services );
+        if ( $new_progress >= 100 ) {
+            $this->notify_consultant( $project_id, esc_html__( 'All Client Information Received', 'businessvance-services-manager' ), sprintf(
+                /* translators: %1$s: client name, %2$s: project number */
+                esc_html__( 'Client %1$s signed the service agreement for project %2$s. All required information has been submitted.', 'businessvance-services-manager' ),
+                $full_name,
+                $project->project_number
+            ) );
+        }
         wp_send_json_success( esc_html__( 'Agreement signed successfully', 'businessvance-services-manager' ) );
     }
 
