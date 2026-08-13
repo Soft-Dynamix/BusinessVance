@@ -733,11 +733,150 @@ class BV_Client_Portal {
         return ob_get_clean();
     }
 
+    /**
+     * Build client guidance info — determines what the client should do next
+     * and whether all their required steps are complete.
+     *
+     * @since 2.7.7
+     * @param object $project   The project row.
+     * @param array  $services  Services linked to the project.
+     * @param array  $step_info Step completion info from get_step_completion_info().
+     * @param int    $progress  Current progress percentage.
+     * @return array { all_done: bool, next_action: array|null }
+     */
+    private function build_client_guidance( $project, $services, $step_info, $progress ) {
+        $all_done = ( $progress >= 100 );
+        $next_action = null;
+
+        if ( $all_done ) {
+            return array( 'all_done' => true, 'next_action' => null );
+        }
+
+        // Find the first incomplete step
+        foreach ( $step_info as $step ) {
+            if ( ! $step['done'] ) {
+                $label = strtolower( $step['label'] );
+                switch ( $label ) {
+                    case 'agreement':
+                        $next_action = array(
+                            'title'       => esc_html__( 'Step 1: Sign the Agreement', 'businessvance-services-manager' ),
+                            'description' => esc_html__( 'Please read through the agreement carefully and sign it by entering your full legal name. This must be completed before you can proceed to the next step.', 'businessvance-services-manager' ),
+                            'button'      => esc_html__( 'Go to Agreement', 'businessvance-services-manager' ),
+                            'tab'         => 'agreement',
+                        );
+                        break 2;
+                    case 'questionnaire':
+                        $next_action = array(
+                            'title'       => esc_html__( 'Step 2: Complete the Questionnaire', 'businessvance-services-manager' ),
+                            'description' => esc_html__( 'Please fill out the questionnaire with accurate details about your business. This information is essential for preparing your report. You can save and return later if needed.', 'businessvance-services-manager' ),
+                            'button'      => esc_html__( 'Go to Questionnaire', 'businessvance-services-manager' ),
+                            'tab'         => 'questionnaire',
+                        );
+                        break 2;
+                    case 'documents':
+                        $next_action = array(
+                            'title'       => esc_html__( 'Step 3: Upload Required Documents', 'businessvance-services-manager' ),
+                            'description' => esc_html__( 'Please upload all the required documents listed. These may include ID copies, registration certificates, financial statements, etc. Make sure each file meets the format and size requirements shown.', 'businessvance-services-manager' ),
+                            'button'      => esc_html__( 'Go to Documents', 'businessvance-services-manager' ),
+                            'tab'         => 'documents',
+                        );
+                        break 2;
+                    default:
+                        $next_action = array(
+                            'title'       => sprintf( /* translators: %s: step label */ esc_html__( 'Complete: %s', 'businessvance-services-manager' ), $step['label'] ),
+                            'description' => esc_html__( 'Please complete this step to continue with your project.', 'businessvance-services-manager' ),
+                            'button'      => sprintf( /* translators: %s: step label */ esc_html__( 'Go to %s', 'businessvance-services-manager' ), $step['label'] ),
+                            'tab'         => $label,
+                        );
+                        break 2;
+                }
+            }
+        }
+
+        return array( 'all_done' => false, 'next_action' => $next_action );
+    }
+
+    /**
+     * Send a completion email to the client when they finish all required steps.
+     *
+     * @since 2.7.7
+     * @param int $project_id The project ID.
+     * @return void
+     */
+    private function notify_client_completion( $project_id ) {
+        $settings = BV_Settings::get_settings();
+        if ( ( $settings['email_report_ready'] ?? 'yes' ) !== 'yes' ) {
+            return;
+        }
+
+        global $wpdb;
+        $project = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_projects WHERE id = %d", $project_id ) );
+        if ( ! $project || empty( $project->client_email ) ) {
+            return;
+        }
+
+        $company_name    = $settings['company_name'] ?? 'BusinessVance';
+        $consultant_email = $settings['consultant_email'] ?? '';
+        $consultant_phone = $settings['phone_number'] ?? '';
+        $portal_url      = $settings['portal_url'] ?? '';
+
+        $subject = sprintf(
+            /* translators: %1$s: project number, %2$s: company name */
+            esc_html__( 'All Information Submitted for Project %1$s — %2$s', 'businessvance-services-manager' ),
+            $project->project_number,
+            $company_name
+        );
+
+        $body = sprintf(
+            /* translators: %1$s: client name, %2$s: project number, %3$s: company name */
+            esc_html__( 'Dear %1$s,', 'businessvance-services-manager' ) . "\n\n" .
+            esc_html__( 'Thank you for completing all the required steps for project %2$s.', 'businessvance-services-manager' ) . "\n\n" .
+            esc_html__( 'Your consultant at %3$s will now review your information and begin working on your report. No further action is needed from your side at this time.', 'businessvance-services-manager' ) . "\n\n",
+            $project->client_name,
+            $project->project_number,
+            $company_name
+        );
+
+        if ( $consultant_email || $consultant_phone ) {
+            $body .= esc_html__( 'If you have any questions, you can reach us:', 'businessvance-services-manager' ) . "\n";
+            if ( $consultant_email ) {
+                $body .= '  • ' . esc_html__( 'Email: ', 'businessvance-services-manager' ) . $consultant_email . "\n";
+            }
+            if ( $consultant_phone ) {
+                $body .= '  • ' . esc_html__( 'Phone: ', 'businessvance-services-manager' ) . $consultant_phone . "\n";
+            }
+            $body .= "\n";
+        }
+
+        if ( $portal_url ) {
+            $body .= sprintf(
+                /* translators: %s: portal URL */
+                esc_html__( 'You can check your project status anytime here: %s', 'businessvance-services-manager' ),
+                $portal_url
+            ) . "\n\n";
+        }
+
+        $body .= esc_html__( 'Best regards,', 'businessvance-services-manager' ) . "\n" . $company_name;
+
+        wp_mail( $project->client_email, $subject, $body );
+    }
+
     private function render_overview_tab( $project, $services ) {
         $progress = max( 0, min( 100, (int) $project->progress_percent ) );
 
         // Build step completion info for visual display
         $step_info = $this->get_step_completion_info( $project->id, $services );
+
+        // Build next-step guidance
+        $guidance = $this->build_client_guidance( $project, $services, $step_info, $progress );
+        $client_steps_complete = $guidance['all_done'];
+        $next_action = $guidance['next_action'];
+
+        // Consultant contact details from settings
+        $settings = BV_Settings::get_settings();
+        $consultant_email = $settings['consultant_email'] ?? '';
+        $consultant_phone = $settings['phone_number'] ?? '';
+        $consultant_address = $settings['physical_address'] ?? '';
 
         ob_start();
         ?>
@@ -777,6 +916,43 @@ class BV_Client_Portal {
                 </div>
                 <?php endif; ?>
             </div>
+
+            <?php if ( $client_steps_complete ) : ?>
+            <!-- All client steps complete -->
+            <div class="bv-guidance-banner bv-guidance-complete">
+                <div class="bv-guidance-icon">🎉</div>
+                <div class="bv-guidance-content">
+                    <h3><?php echo esc_html__( 'All Information Submitted!', 'businessvance-services-manager' ); ?></h3>
+                    <p><?php echo esc_html__( 'Thank you for completing all the required steps. Your consultant will now review your information and prepare your report. No further action is needed from your side at this time.', 'businessvance-services-manager' ); ?></p>
+                    <?php if ( $consultant_email || $consultant_phone || $consultant_address ) : ?>
+                    <div class="bv-guidance-contact">
+                        <h4><?php echo esc_html__( 'Need to contact us?', 'businessvance-services-manager' ); ?></h4>
+                        <?php if ( $consultant_email ) : ?>
+                        <p><strong><?php echo esc_html__( 'Email:', 'businessvance-services-manager' ); ?></strong> <a href="mailto:<?php echo esc_attr( $consultant_email ); ?>"><?php echo esc_html( $consultant_email ); ?></a></p>
+                        <?php endif; ?>
+                        <?php if ( $consultant_phone ) : ?>
+                        <p><strong><?php echo esc_html__( 'Phone:', 'businessvance-services-manager' ); ?></strong> <a href="tel:<?php echo esc_attr( $consultant_phone ); ?>"><?php echo esc_html( $consultant_phone ); ?></a></p>
+                        <?php endif; ?>
+                        <?php if ( $consultant_address ) : ?>
+                        <p><strong><?php echo esc_html__( 'Address:', 'businessvance-services-manager' ); ?></strong> <?php echo esc_html( $consultant_address ); ?></p>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php elseif ( $next_action ) : ?>
+            <!-- Next step guidance -->
+            <div class="bv-guidance-banner bv-guidance-action">
+                <div class="bv-guidance-icon">👉</div>
+                <div class="bv-guidance-content">
+                    <h3><?php echo esc_html( $next_action['title'] ); ?></h3>
+                    <p><?php echo esc_html( $next_action['description'] ); ?></p>
+                    <?php if ( ! empty( $next_action['tab'] ) ) : ?>
+                    <a href="?project_id=<?php echo $project->id; ?>&tab=<?php echo esc_attr( $next_action['tab'] ); ?>" class="bv-guidance-btn"><?php echo esc_html( $next_action['button'] ); ?></a>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <div class="bv-info-grid">
                 <div class="bv-info-card">
@@ -1525,6 +1701,7 @@ class BV_Client_Portal {
                 esc_html__( 'Client has completed all required steps for project %s. All information has been submitted.', 'businessvance-services-manager' ),
                 $project->project_number
             ) );
+            $this->notify_client_completion( $project_id );
         }
 
         wp_send_json_success( esc_html__( 'Document uploaded successfully', 'businessvance-services-manager' ) );
@@ -1636,6 +1813,7 @@ class BV_Client_Portal {
                 esc_html__( 'Client has completed all required steps for project %s. All information has been submitted.', 'businessvance-services-manager' ),
                 $project->project_number
             ) );
+            $this->notify_client_completion( $project_id );
         }
         wp_send_json_success( esc_html__( 'Questionnaire saved successfully', 'businessvance-services-manager' ) );
     }
@@ -1741,6 +1919,7 @@ class BV_Client_Portal {
                 $full_name,
                 $project->project_number
             ) );
+            $this->notify_client_completion( $project_id );
         }
         wp_send_json_success( esc_html__( 'Agreement signed successfully', 'businessvance-services-manager' ) );
     }
