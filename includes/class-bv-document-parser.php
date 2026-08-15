@@ -1905,22 +1905,69 @@ class BV_Document_Parser {
 
     /**
      * Return the number of lines that were consumed as option lines.
+     * Must stay in sync with detect_options() patterns.
      */
     private function detect_option_lines( $following_lines ) {
         $count = 0;
         foreach ( $following_lines as $line ) {
             $trimmed = trim( $line );
-            if ( preg_match( '/^\s*(?:[a-z][\.\)]|[A-Z][\.\)]|•|○|–|—|[-–]\s+|[☐☑])/u', $trimmed ) ) {
-                $count++;
-            } elseif ( preg_match( '/^\s*(?:i{1,3}v{0,3}[\.\)]|I{1,3}V{0,3}[\.\)])/u', $trimmed ) ) {
-                $count++;
-            } elseif ( preg_match( '/^(?:\[[ x]\]|\[?\s*[☐☑]\s*\]?)\s*/u', $trimmed ) ) {
-                $count++;
-            } elseif ( strpos( $trimmed, "\x01" ) !== false ) {
-                $count++;
-            } else {
+
+            // Skip empty or very long lines (not options)
+            if ( $trimmed === '' || strlen( $trimmed ) > 120 ) {
                 break;
             }
+
+            // Bullet point or lettered options: a), b), c), A., B., C.
+            if ( preg_match( '/^\s*(?:[a-z][\.\)]|[A-Z][\.\)]|•|○|◦|▪|▫|►|▸|–|—|·|‣)\s*(.{1,100})$/u', $trimmed ) ) {
+                $count++;
+                continue;
+            }
+
+            // Roman numeral sub-items: i), ii), iii) or I., II., III.
+            if ( preg_match( '/^\s*(?:i{1,3}v{0,3}[\.\)]|I{1,3}V{0,3}[\.\)])\s*(.{1,100})$/u', $trimmed ) ) {
+                $count++;
+                continue;
+            }
+
+            // Dash-prefixed option
+            if ( preg_match( '/^[-–]\s+(.{1,100})$/u', $trimmed ) ) {
+                $count++;
+                continue;
+            }
+
+            // Single checkbox: "[ ] Option" or "☐ Option"
+            if ( preg_match( '/^(?:\[[ x]\]|\[?\s*[☐☑☒✓✗]\s*\]?)\s*(.{1,100})$/u', $trimmed ) ) {
+                $count++;
+                continue;
+            }
+
+            // PDF checkbox markers: \x01
+            if ( preg_match( '/^\x01\s*(.{1,100})$/u', $trimmed ) ) {
+                $count++;
+                continue;
+            }
+            if ( strpos( $trimmed, "\x01" ) !== false ) {
+                $count++;
+                continue;
+            }
+
+            // Standalone checkbox group (2+ checkboxes on one line) — NOT options
+            $checkbox_count = substr_count( $trimmed, '☐' ) + substr_count( $trimmed, '☑' ) + substr_count( $trimmed, "\x01" );
+            if ( $checkbox_count >= 2 ) {
+                break;
+            }
+
+            // Short continuation line that was accepted as option by detect_options() fallback
+            // Only count if previous lines were already options (we track $count > 0)
+            if ( $count > 0 && strlen( $trimmed ) <= 60 && ! preg_match( '/[?？]/u', $trimmed )
+                 && ! preg_match( '/^\s*\d+[\.\)]\s+/', $trimmed )
+                 && ! preg_match( '/^\s*\d+\.\d+/', $trimmed ) ) {
+                $count++;
+                continue;
+            }
+
+            // Not an option line — stop counting
+            break;
         }
         return $count;
     }
@@ -2112,10 +2159,18 @@ class BV_Document_Parser {
                 $prev = $cleaned[ count( $cleaned ) - 1 ];
                 $prev_text_str = is_array( $prev ) ? $prev['text'] : $prev;
 
+                // Never merge if current line looks like an option line (bullet, letter, checkbox, dash)
+                $looks_like_option = preg_match( '/^\s*(?:[a-z][\.\)]|[A-Z][\.\)]|•|○|◦|▪|▫|►|▸|–|—|[-–]\s+|·|‣|\[[ x]\]|\[?\s*[☐☑])/u', $text )
+                    || ( strpos( $text, "\x01" ) !== false && strlen( $text ) <= 100 );
+                // Never merge if current line starts with a numbered question pattern
+                $looks_like_question = preg_match( '/^\s*\d+(\.\d+)?[\.\)]\s+/', $text );
+
                 // Never merge if current line starts with a digit, uppercase, or control marker
                 if ( ! preg_match( '/[\.\?!:;,\-\s]$/', $prev_text_str )
                      && strlen( $text ) < 60
-                     && ! preg_match( '/^[A-Z\d\x01]/', $text ) ) {
+                     && ! preg_match( '/^[A-Z\d\x01]/', $text )
+                     && ! $looks_like_option
+                     && ! $looks_like_question ) {
                     // Merge into previous
                     if ( is_array( $prev ) ) {
                         $cleaned[ count( $cleaned ) - 1 ]['text'] = $prev_text_str . ' ' . $text;
