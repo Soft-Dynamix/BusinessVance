@@ -78,7 +78,7 @@
             $('#bv-qt-tpl-description').val(t.description);
             $('#bv-qt-tpl-status').val(t.status);
             $('#bv-qt-edit-title').text('Edit Template: ' + t.name);
-            renderSections(res.data.sections || []);
+            renderSections(t.sections || []);
         }).fail(function() { alert('Failed to load template.'); });
     }
 
@@ -171,8 +171,8 @@
                     id: 0, name: t.name + ' (Copy)', slug: '', description: t.description, status: 'draft'
                 }, function(res2) {
                     if (!res2.success) { alert('Duplicate failed'); return; }
-                    var newId = res2.data.id;
-                    var sections = res.data.sections || [];
+                    var newId = res2.data.template_id;
+                    var sections = t.sections || [];
                     var pending = sections.length;
                     if (pending === 0) { loadTemplates(); return; }
                     $.each(sections, function(i, s) {
@@ -184,11 +184,19 @@
                             var qPending = questions.length;
                             if (qPending === 0) { pending--; if(pending===0) loadTemplates(); return; }
                             $.each(questions, function(j, q) {
+                                var optsStr = '';
+                                if (q.options && Array.isArray(q.options)) {
+                                    $.each(q.options, function(k, o) {
+                                        var v = typeof o === 'object' ? (o.value || '') : o;
+                                        var l = typeof o === 'object' ? (o.label || '') : o;
+                                        optsStr += v + '|' + l + '\n';
+                                    });
+                                }
                                 $.post(ajaxurl, {
                                     action: 'bv_qt_save_question', nonce: BVQT.nonce,
-                                    id: 0, section_id: res3.data.id, type: q.type, label: q.label,
+                                    id: 0, section_id: res3.data.section.id, type: q.type, label: q.label,
                                     placeholder: q.placeholder, is_required: q.is_required,
-                                    help_text: q.help_text, options_text: q.options_raw || '', display_order: q.display_order
+                                    help_text: q.help_text, options_text: optsStr, display_order: q.display_order
                                 }, function() { qPending--; if(qPending===0){ pending--; if(pending===0) loadTemplates(); } })
                                 .fail(function() { qPending--; if(qPending===0){ pending--; if(pending===0) loadTemplates(); } alert('Failed to duplicate a question.'); });
                             });
@@ -225,7 +233,7 @@
                 status: $('#bv-qt-tpl-status').val()
             }, function(res) {
                 if (!res.success) { alert(res.data.message); return; }
-                var newId = res.data.id;
+                var newId = res.data.template_id;
                 if (getTemplateId() === 0) {
                     $('#bv-qt-edit-view').data('template-id', newId);
                     $('#bv-qt-edit-title').text('Edit Template: ' + $('#bv-qt-tpl-name').val());
@@ -347,7 +355,7 @@
             $.post(ajaxurl, { action: 'bv_qt_get_template', nonce: BVQT.nonce, template_id: getTemplateId() }, function(res) {
                 if (!res.success) return;
                 var q = null;
-                $.each(res.data.sections, function(i, s) {
+                $.each(res.data.template.sections, function(i, s) {
                     $.each(s.questions, function(j, qq) {
                         if (qq.id == qid) q = qq;
                     });
