@@ -350,8 +350,9 @@
 
         // Edit question → opens inline form
         $(document).on('click', '.bv-qt-edit-q', function() {
-            var qid = $(this).data('qid');
-            var sid = $(this).data('sid');
+            var $btn = $(this);
+            var qid = $btn.data('qid');
+            var sid = $btn.data('sid');
             $.post(ajaxurl, { action: 'bv_qt_get_template', nonce: BVQT.nonce, template_id: getTemplateId() }, function(res) {
                 if (!res.success) return;
                 var q = null;
@@ -393,7 +394,7 @@
                     + '<p class="bvq-options-row"><label>Options (one per line: value|Label):</label><br><textarea id="bvq-options" rows="4" class="large-text">' + escHtml(optsText) + '</textarea></p>'
                     + '<p><button class="button button-primary" id="bvq-save">Save Question</button> <button class="button" id="bvq-cancel">Cancel</button></p>'
                     + '</div>';
-                $(this).closest('li').after(formHtml);
+                $btn.closest('li').after(formHtml);
                 toggleOptionVisibility();
             }).fail(function() { alert('Failed to load template data.'); });
         });
