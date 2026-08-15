@@ -1197,9 +1197,19 @@ class BV_Document_Parser {
             }
         }
 
-        // If we found the first heading within the first 3 lines, it's likely the title,
-        // not a section. Skip it as a section heading but we still use it as the template name.
-        if ( ! empty( $filtered ) && $filtered[0]['index'] < 3 ) {
+        // Skip ALL headings before the first numbered heading (N. or N) pattern.
+        // These are document titles, not section headings.
+        $first_numbered = -1;
+        foreach ( $filtered as $idx => $f ) {
+            if ( preg_match( '/^\s*\d+[\.\)]\s+/', $normalized[ $f['index'] ]['text'] ) ) {
+                $first_numbered = $idx;
+                break;
+            }
+        }
+        if ( $first_numbered > 0 ) {
+            $filtered = array_slice( $filtered, $first_numbered );
+        } elseif ( $first_numbered === -1 && ! empty( $filtered ) && $filtered[0]['index'] < 3 ) {
+            // Fallback: if no numbered heading found, skip first heading if it's in the first 3 lines
             array_shift( $filtered );
         }
 
@@ -1385,8 +1395,15 @@ class BV_Document_Parser {
                 continue;
             }
 
-            // Skip the section title itself (usually first line or heading)
-            if ( $i === 0 && ( ! empty( $meta['heading_level'] ) || ! empty( $meta['bold'] ) ) ) {
+            // Skip the section title itself (first line is usually the title)
+            // For PDFs without metadata, check if line matches section title pattern
+            if ( $i === 0 ) {
+                if ( ! empty( $meta['heading_level'] ) || ! empty( $meta['bold'] ) ) {
+                    $i++;
+                    continue;
+                }
+                // For PDFs: skip first non-empty line if it looks like a heading
+                // (section title is already stored in the section data)
                 $i++;
                 continue;
             }
@@ -1467,21 +1484,29 @@ class BV_Document_Parser {
             return true;
         }
 
-        // Repeated branding lines
+        // Repeated branding lines (various formats)
         if ( preg_match( '/^BusinessVance\s*\|.*\|.*Page\s+\d+/i', $text ) ) {
+            return true;
+        }
+        if ( preg_match( '/^BusinessVance\s.*Page\s+\d+/i', $text ) ) {
+            return true;
+        }
+        if ( preg_match( '/BUSINESSVANCE.*COMPETITOR\s+ANALYSIS\s+QUESTIONNAIRE/i', $text ) ) {
             return true;
         }
         if ( $text === 'BUSINESSVANCE' || $text === 'COMPETITOR ANALYSIS QUESTIONNAIRE' ) {
             return true;
         }
 
-        // Standalone ALL CAPS short labels that are table column headers
-        // e.g., "PRODUCT OR SERVICE", "DESCRIPTION", "YOUR PRICE"
-        if ( preg_match( '/^[A-Z][A-Z\s\/&]+$/u', $text ) && strlen( $text ) > 3 && strlen( $text ) <= 30 ) {
-            // Single word ALL CAPS could be a section heading — don't filter
-            if ( strpos( $text, ' ' ) !== false && substr_count( $text, ' ' ) >= 1 ) {
-                return true;
-            }
+        // Standalone ALL CAPS lines that are table column headers or fragments
+        // e.g., "PRODUCT OR SERVICE", "DESCRIPTION", "YOUR PRICE", "PACKAGE", "DISCOUNT /"
+        if ( preg_match( '/^[A-Z][A-Z\s\/&\-\.\#]+$/', $text ) && strlen( $text ) > 3 && strlen( $text ) <= 40 ) {
+            return true;
+        }
+        // Table header lines with mixed case but containing known table column keywords
+        if ( preg_match( '/^\s*(?:PRODUCT|SERVICE|DESCRIPTION|PRICE|COMPETITOR|LOCATION|WEBSITE|DISCOUNT|PACKAGE|COMPARISON|IMPORTANCE)\s/u', $text )
+             && preg_match( '/\s{3,}/', $text ) ) {
+            return true;
         }
 
         return false;
@@ -1593,10 +1618,14 @@ class BV_Document_Parser {
 
         // ── Standalone checkbox/radio group detection ──
         // Lines like "☐ English ☐ Afrikaans" or "☐ Idea stage ☐ Research stage"
-        // These are their own questions, not options for a preceding field.
+        // IMPORTANT: Merge CONSECUTIVE checkbox lines into one question.
+        // PDF forms often have multiple checkbox lines in a row that form one question:
+        //   ☐ Idea stage              ☐ Research stage
+        //   ☐ Planning stage          ☐ Pre-launch
+        //   ☐ Recently launched       ☐ Already operating
         $checkbox_count = substr_count( $text, '☐' ) + substr_count( $text, '☑' ) + substr_count( $text, "\x01" );
         if ( $checkbox_count >= 2 && ( preg_match( '/^[☐\x01\s]+/u', $text ) || preg_match( '/^\s*[☐\x01]/u', $text ) ) ) {
-            // Extract options from the line
+            // Collect options from this line
             $raw = trim( $text );
             $parts = preg_split( '/[☐☑\x01]\s*/u', $raw );
             $opts = array();
@@ -1606,14 +1635,42 @@ class BV_Document_Parser {
                     $opts[] = $part;
                 }
             }
+
+            // Look ahead for consecutive checkbox lines and merge their options
+            $extra_consumed = 0;
+            $lookahead = $index + 1;
+            while ( $lookahead < count( $section_lines ) && $extra_consumed < 15 ) {
+                $next_text = trim( $section_lines[ $lookahead ]['text'] );
+                if ( $next_text === '' ) {
+                    $lookahead++;
+                    continue;
+                }
+                $next_cb_count = substr_count( $next_text, '☐' ) + substr_count( $next_text, '☑' ) + substr_count( $next_text, "\x01" );
+                if ( $next_cb_count >= 2 && ( preg_match( '/^[☐\x01\s]+/u', $next_text ) || preg_match( '/^\s*[☐\x01]/u', $next_text ) ) ) {
+                    // Merge options from this line too
+                    $next_parts = preg_split( '/[☐☑\x01]\s*/u', $next_text );
+                    foreach ( $next_parts as $np ) {
+                        $np = trim( $np );
+                        if ( strlen( $np ) >= 1 && strlen( $np ) <= 100 ) {
+                            $opts[] = $np;
+                        }
+                    }
+                    $extra_consumed += ( $lookahead - $index );
+                    $lookahead++;
+                } else {
+                    break;
+                }
+            }
+            // Calculate total consumed lines (from section start)
+            $consumed_lines = ( $lookahead - 1 ) - $index;
+
             if ( count( $opts ) >= 2 ) {
                 // Determine if it should be checkbox (multi-select) or radio (single-select)
-                // Language selection → radio; Stage/Type checkboxes → checkbox
                 $is_language = preg_match( '/\b(?:English|Afrikaans|language|taal|prefer)\b/i', implode( ' ', $opts ) );
                 $q_type = $is_language ? 'radio' : 'checkbox';
                 return array(
                     'type'        => $q_type,
-                    'label'       => $opts[0] === 'English' || $opts[0] === 'Afrikaans'
+                    'label'       => $is_language
                                      ? 'Preferred language' : 'Select all that apply',
                     'placeholder' => '',
                     'required'    => false,
@@ -1621,7 +1678,7 @@ class BV_Document_Parser {
                     'options'     => array_map( function( $o ) {
                         return array( 'value' => sanitize_title( $o ), 'label' => $o );
                     }, $opts ),
-                    '_consumed_lines' => 0,
+                    '_consumed_lines' => $consumed_lines,
                 );
             }
         }
@@ -1721,12 +1778,20 @@ class BV_Document_Parser {
         $q_options  = array();
         $q_required = true;
 
-        if ( $is_yesno || preg_match( '/\b(?:are you|is it|do you|does it|have you|has your|will you|would you|could you|should you|can you|did you)\b/i', $text ) ) {
+        // Check for open-ended question patterns (what/which/how/why ending with ?)
+        // These should be textarea, NOT Yes/No radio
+        $is_open_ended = preg_match( '/[?？]\s*$/u', $text )
+            && preg_match( '/\b(?:what|which|how|why|where|when|who)\b/i', $text );
+
+        if ( $is_yesno && ! $is_open_ended && ! empty( $options ) === false ) {
             $q_type = 'radio';
             $q_options = array(
                 array( 'value' => 'yes', 'label' => 'Yes' ),
                 array( 'value' => 'no',  'label' => 'No' ),
             );
+        } elseif ( $is_open_ended && empty( $options ) ) {
+            // Open-ended question with no options → textarea
+            $q_type = 'textarea';
         } elseif ( ! empty( $options ) ) {
             if ( preg_match( '/\b(?:select|choose|pick|which)\b/i', $text ) || count( $options ) > 5 ) {
                 $q_type = 'select';
