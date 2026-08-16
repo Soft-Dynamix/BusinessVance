@@ -794,10 +794,19 @@ class BV_Questionnaire_Admin {
                         <tr id="bv-qt-q-options-row" style="display:none;">
                             <th scope="row">
                                 <label for="bv-qt-q-options">Options</label>
-                                <p class="description">One per line. Format: <code>value|Label</code></p>
+                                <p class="description">Type labels one per line — values auto-generate.<br>You can also use <code>value|Label</code> format.</p>
                             </th>
                             <td>
-                                <textarea id="bv-qt-q-options" rows="5" class="large-text" placeholder="option_value|Option Label&#10;another_value|Another Label"></textarea>
+                                <div class="bv-qt-opts-presets" id="bv-qt-q-opts-presets">
+                                    <span class="bv-qt-opts-presets-label">Quick fill:</span>
+                                    <button type="button" class="button button-small bv-qt-preset-btn" data-preset="yes_no">Yes / No</button>
+                                    <button type="button" class="button button-small bv-qt-preset-btn" data-preset="true_false">True / False</button>
+                                    <button type="button" class="button button-small bv-qt-preset-btn" data-preset="agree5">Likert 5</button>
+                                    <button type="button" class="button button-small bv-qt-preset-btn" data-preset="satisfaction">Satisfaction</button>
+                                    <button type="button" class="button button-small bv-qt-preset-btn" data-preset="rating5">Rating 1-5</button>
+                                    <button type="button" class="button button-small bv-qt-preset-btn" data-preset="rating10">Rating 1-10</button>
+                                </div>
+                                <textarea id="bv-qt-q-options" rows="4" class="large-text" placeholder="Option Label&#10;Another Option&#10;Third Option"></textarea>
                             </td>
                         </tr>
                     </table>

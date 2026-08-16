@@ -33,6 +33,56 @@
         setTimeout(function(){ $('#bv-qt-notices').empty(); }, 3000);
     }
 
+    // ── Options Presets ──
+    var bvQTPresets = {
+        yes_no:      'Yes\nNo',
+        true_false:  'True\nFalse',
+        agree5:      'Strongly Agree\nAgree\nNeutral\nDisagree\nStrongly Disagree',
+        satisfaction: 'Very Satisfied\nSatisfied\nNeutral\nDissatisfied\nVery Dissatisfied',
+        rating5:     '1\n2\n3\n4\n5',
+        rating10:    '1\n2\n3\n4\n5\n6\n7\n8\n9\n10'
+    };
+
+    // Auto-fill option values: if a line has no "|", prepend "slugified_label|"
+    function bvQTAutoFillOptions(text) {
+        if (!text) return '';
+        return text.split('\n').map(function(line) {
+            line = line.trim();
+            if (!line) return '';
+            // Already has value|label format — leave as-is
+            if (line.indexOf('|') !== -1) return line;
+            // Auto-generate value from label
+            return slugify(line) + '|' + line;
+        }).filter(function(l) { return l !== ''; }).join('\n');
+    }
+
+    // Process options text: auto-fill values then pass to backend
+    function bvQTProcessOptionsText(text) {
+        return bvQTAutoFillOptions(text);
+    }
+
+    // ── Smart type defaults ──
+    var bvQTTypeDefaults = {
+        'text':     { placeholder: 'Enter your answer' },
+        'textarea': { placeholder: 'Please describe in detail...' },
+        'number':   { placeholder: 'Enter a number' },
+        'email':    { placeholder: 'email@example.com' },
+        'phone':    { placeholder: '+27 ' },
+        'date':     { placeholder: '' },
+        'file':     { placeholder: '', help_text: 'Accepted formats: PDF, DOC, JPG, PNG (max 10MB)' }
+    };
+
+    function bvQTApplyTypeDefaults($typeSelect, $placeholder, $helpText) {
+        var type = $typeSelect.val();
+        var defaults = bvQTTypeDefaults[type] || {};
+        if (defaults.placeholder !== undefined && !$placeholder.data('user-edited')) {
+            $placeholder.val(defaults.placeholder);
+        }
+        if (defaults.help_text !== undefined && !$helpText.data('user-edited')) {
+            $helpText.val(defaults.help_text);
+        }
+    }
+
     // Build options preview string from question options array
     function bvQTOptsPreview(q) {
         if (!q.options || !Array.isArray(q.options) || q.options.length === 0) return '';
@@ -183,6 +233,7 @@
                     + ' <span class="bv-qt-q-actions">'
                     +   '<button class="button button-small bv-qt-move-q-up" data-qid="' + q.id + '" data-sid="' + s.id + '" title="Move up">↑</button> '
                     +   '<button class="button button-small bv-qt-move-q-down" data-qid="' + q.id + '" data-sid="' + s.id + '" title="Move down">↓</button> '
+                    +   '<button class="button button-small bv-qt-dup-q" data-qid="' + q.id + '" data-sid="' + s.id + '" title="Duplicate">⧉</button> '
                     +   '<button class="button button-small bv-qt-edit-q" data-qid="' + q.id + '" data-sid="' + s.id + '">Edit</button> '
                     +   '<button class="button button-small bv-qt-del-q" data-qid="' + q.id + '" style="color:#a00;">Delete</button>'
                     + '</span>');
@@ -525,6 +576,18 @@
             wrapper.find('.bv-qt-new-q-options-row').toggle(showOpts);
             wrapper.find('.bv-qt-new-q-placeholder-row').toggle(showPH);
 
+            // Mark placeholder/help as not user-edited initially
+            wrapper.find('#bvq-new-placeholder').removeData('user-edited');
+            wrapper.find('#bvq-new-help').removeData('user-edited');
+
+            // Apply smart defaults for initial type
+            var $phField = wrapper.find('#bvq-new-placeholder');
+            var $helpField = wrapper.find('#bvq-new-help');
+            bvQTApplyTypeDefaults(wrapper.find('#bvq-new-type'), $phField, $helpField);
+
+            // Focus label field
+            setTimeout(function() { wrapper.find('#bvq-new-label').focus(); }, 100);
+
             // Scroll to form
             wrapper[0].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         });
@@ -537,6 +600,8 @@
             var showPH = (t !== 'heading' && t !== 'paragraph' && t !== 'checkbox');
             $form.find('.bv-qt-new-q-options-row').toggle(showOpts);
             $form.find('.bv-qt-new-q-placeholder-row').toggle(showPH);
+            // Apply smart defaults on type change
+            bvQTApplyTypeDefaults($(this), $form.find('#bvq-new-placeholder'), $form.find('#bvq-new-help'));
         });
 
         // Save new question (from inline add form)
@@ -545,6 +610,7 @@
             var sid = $form.data('section-id');
             var label = $form.find('#bvq-new-label').val().trim();
             if (!label) { alert('Question label is required.'); return; }
+            var rawOpts = $form.find('#bvq-new-options').val();
             $.post(ajaxurl, {
                 action: 'bv_qt_save_question', nonce: BVQT.nonce,
                 id: 0, section_id: sid,
@@ -553,7 +619,7 @@
                 placeholder: $form.find('#bvq-new-placeholder').val(),
                 is_required: $form.find('#bvq-new-required').is(':checked') ? 1 : 0,
                 help_text: $form.find('#bvq-new-help').val(),
-                options_text: $form.find('#bvq-new-options').val()
+                options_text: bvQTProcessOptionsText(rawOpts)
             }, function(res) {
                 if (!res.success) { alert(res.data.message); return; }
                 bvQTShowNotice('Question added successfully.');
@@ -564,6 +630,14 @@
         // Cancel new question form
         $(document).on('click', '.bv-qt-cancel-new-q', function() {
             $(this).closest('.bv-qt-inline-q-form').slideUp(150, function() { $(this).remove(); });
+        });
+
+        // Enter to save in new question form (from label or help field)
+        $(document).on('keydown', '#bvq-new-label, #bvq-new-placeholder, #bvq-new-help', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                $(this).closest('.bv-qt-inline-q-form').find('.bv-qt-save-new-q').click();
+            }
         });
 
         // Edit question → opens inline form (DO NOT CHANGE — existing working handler)
@@ -582,13 +656,18 @@
                 if (!q) return;
 
                 var optsText = '';
+                var optsLabelsOnly = '';
                 if (q.options && Array.isArray(q.options)) {
                     $.each(q.options, function(i, o) {
                         var v = typeof o === 'object' ? (o.value || '') : o;
                         var l = typeof o === 'object' ? (o.label || '') : o;
                         optsText += v + '|' + l + '\n';
+                        // For display: show labels only (existing options already have values)
+                        if (l) optsLabelsOnly += l + '\n';
                     });
                 }
+                // Show labels-only in the textarea (cleaner UX); values preserved on save
+                var displayOpts = optsLabelsOnly.trim() || optsText.trim();
 
                 var formHtml = '<div id="bv-qt-q-form-wrap" style="background:#fff;padding:16px;margin:8px 0;border:1px solid #ccd0d4;border-radius:4px;">'
                     + '<h4 style="margin:0 0 12px;">Edit Question</h4>'
@@ -609,7 +688,19 @@
                     + '<p class="bvq-placeholder-row"><label>Placeholder:</label><br><input type="text" id="bvq-placeholder" class="regular-text" value="' + escAttr(q.placeholder || '') + '"></p>'
                     + '<p><label><input type="checkbox" id="bvq-required"' + (q.is_required==1?' checked':'') + '> Required</label></p>'
                     + '<p><label>Help Text:</label><br><input type="text" id="bvq-help" class="regular-text" value="' + escAttr(q.help_text || '') + '"></p>'
-                    + '<p class="bvq-options-row"><label>Options (one per line: value|Label):</label><br><textarea id="bvq-options" rows="4" class="large-text">' + escHtml(optsText) + '</textarea></p>'
+                    + '<p class="bvq-options-row"><label>Options</label>'
+                    + '<div class="bv-qt-opts-presets">'
+                    +   '<span class="bv-qt-opts-presets-label">Quick fill:</span>'
+                    +   '<button type="button" class="button button-small bv-qt-preset-btn bvq-preset-btn" data-preset="yes_no">Yes / No</button>'
+                    +   '<button type="button" class="button button-small bv-qt-preset-btn bvq-preset-btn" data-preset="true_false">True / False</button>'
+                    +   '<button type="button" class="button button-small bv-qt-preset-btn bvq-preset-btn" data-preset="agree5">Likert 5</button>'
+                    +   '<button type="button" class="button button-small bv-qt-preset-btn bvq-preset-btn" data-preset="satisfaction">Satisfaction</button>'
+                    +   '<button type="button" class="button button-small bv-qt-preset-btn bvq-preset-btn" data-preset="rating5">Rating 1-5</button>'
+                    +   '<button type="button" class="button button-small bv-qt-preset-btn bvq-preset-btn" data-preset="rating10">Rating 1-10</button>'
+                    + '</div>'
+                    + '<br><textarea id="bvq-options" rows="4" class="large-text">' + escHtml(displayOpts) + '</textarea>'
+                    + '<p class="description" style="margin:4px 0 0;">Type labels one per line — values auto-generate. Use <code>value|Label</code> for custom values.</p>'
+                    + '</p>'
                     + '<p><button class="button button-primary" id="bvq-save">Save Question</button> <button class="button" id="bvq-cancel">Cancel</button></p>'
                     + '</div>';
                 $btn.closest('li').after(formHtml);
@@ -631,6 +722,7 @@
         $(document).on('click', '#bvq-save', function() {
             var qid = $(this).closest('#bv-qt-q-form-wrap').prev('li').find('.bv-qt-edit-q').data('qid');
             var sid = $(this).closest('#bv-qt-q-form-wrap').prev('li').find('.bv-qt-edit-q').data('sid');
+            var rawOpts = $('#bvq-options').val();
             $.post(ajaxurl, {
                 action: 'bv_qt_save_question', nonce: BVQT.nonce,
                 id: qid, section_id: sid,
@@ -639,7 +731,7 @@
                 placeholder: $('#bvq-placeholder').val(),
                 is_required: $('#bvq-required').is(':checked') ? 1 : 0,
                 help_text: $('#bvq-help').val(),
-                options_text: $('#bvq-options').val()
+                options_text: bvQTProcessOptionsText(rawOpts)
             }, function(res) {
                 if (res.success) {
                     bvQTShowNotice('Question updated successfully.');
@@ -667,6 +759,83 @@
                     editTemplate(getTemplateId());
                 }
             }).fail(function() { alert('Failed to delete question.'); });
+        });
+
+        // Enter to save in edit question form
+        $(document).on('keydown', '#bvq-label, #bvq-placeholder, #bvq-help', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                $('#bvq-save').click();
+            }
+        });
+
+        // ── Preset Options Buttons ──
+        // For new question forms
+        $(document).on('click', '.bv-qt-preset-btn:not(.bvq-preset-btn)', function() {
+            var preset = $(this).data('preset');
+            if (bvQTPresets[preset]) {
+                $(this).closest('tr').find('#bvq-new-options').val(bvQTPresets[preset]);
+            }
+        });
+        // For edit question forms
+        $(document).on('click', '.bvq-preset-btn', function() {
+            var preset = $(this).data('preset');
+            if (bvQTPresets[preset]) {
+                $('#bvq-options').val(bvQTPresets[preset]);
+            }
+        });
+
+        // ── Track user-edited fields (so smart defaults don't overwrite) ──
+        $(document).on('input', '#bvq-new-placeholder', function() {
+            $(this).data('user-edited', true);
+        });
+        $(document).on('input', '#bvq-new-help', function() {
+            $(this).data('user-edited', true);
+        });
+
+        // ── Duplicate Question (within same section) ──
+        $(document).on('click', '.bv-qt-dup-q', function() {
+            var $btn = $(this);
+            var qid = $btn.data('qid');
+            var sid = $btn.data('sid');
+            $.post(ajaxurl, { action: 'bv_qt_get_template', nonce: BVQT.nonce, template_id: getTemplateId() }, function(res) {
+                if (!res.success) return;
+                var q = null;
+                $.each(res.data.template.sections, function(i, s) {
+                    $.each(s.questions, function(j, qq) {
+                        if (qq.id == qid) q = qq;
+                    });
+                });
+                if (!q) return;
+
+                // Convert options to pipe-delimited string
+                var optsStr = '';
+                if (q.options && Array.isArray(q.options)) {
+                    $.each(q.options, function(i, o) {
+                        var v = typeof o === 'object' ? (o.value || '') : o;
+                        var l = typeof o === 'object' ? (o.label || '') : o;
+                        optsStr += v + '|' + l + '\n';
+                    });
+                }
+
+                $.post(ajaxurl, {
+                    action: 'bv_qt_save_question', nonce: BVQT.nonce,
+                    id: 0, section_id: sid,
+                    type: q.type,
+                    label: q.label + ' (Copy)',
+                    placeholder: q.placeholder,
+                    is_required: q.is_required,
+                    help_text: q.help_text,
+                    options_text: optsStr
+                }, function(res2) {
+                    if (res2.success) {
+                        bvQTShowNotice('Question duplicated successfully.');
+                        editTemplate(getTemplateId());
+                    } else {
+                        alert(res2.data.message || 'Failed to duplicate question.');
+                    }
+                }).fail(function() { alert('Failed to duplicate question.'); });
+            }).fail(function() { alert('Failed to load question data.'); });
         });
 
         // ── Global import function (called from inline button) ──
