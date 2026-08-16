@@ -1,5 +1,6 @@
 /**
  * BusinessVance Questionnaire Admin — Styles
+ * @version 2.7.16
  */
 
 .bv-qt-wrap { max-width: 1200px; margin-top: 20px; }
@@ -38,6 +39,7 @@
     background: #fafafa;
     border-left: 3px solid #e0e0e0;
     transition: box-shadow 0.15s ease, border-color 0.15s ease;
+    position: relative;
 }
 .bv-qt-section-item:first-child {
     border-left-color: #D4AF37;
@@ -80,8 +82,8 @@
     line-height: 1.5;
     flex-shrink: 0;
 }
-.bv-qt-meta { font-size: 12px; color: #646970; background: #e8e8e8; padding: 2px 8px; border-radius: 10px; }
-.bv-qt-section-actions { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.bv-qt-meta { font-size: 12px; color: #646970; background: #e8e8e8; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+.bv-qt-section-actions { margin-left: auto; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .bv-qt-section-actions .button {
     font-size: 12px;
     padding: 3px 10px;
@@ -89,6 +91,7 @@
     line-height: 1.6;
     min-height: 28px;
     transition: background 0.15s ease, color 0.15s ease;
+    white-space: nowrap;
 }
 .bv-qt-section-actions .button:hover {
     background: #f0f0f1;
@@ -114,7 +117,7 @@
     border-radius: 0 0 5px 5px;
 }
 .bv-qt-questions-list li {
-    padding: 8px 6px 8px 10px;
+    padding: 10px 6px 10px 10px;
     border-bottom: 1px solid #f0f0f0;
     display: flex;
     align-items: flex-start;
@@ -146,14 +149,15 @@
     color: #999;
     line-height: 1.4;
 }
-.bv-qt-q-actions { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; align-self: center; }
+.bv-qt-q-actions { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; align-self: center; flex-wrap: wrap; }
 .bv-qt-q-actions .button {
     font-size: 12px;
-    padding: 2px 10px;
+    padding: 4px 10px;
     height: auto;
-    line-height: 1.6;
-    min-height: 28px;
+    line-height: 1.5;
+    min-height: 30px;
     transition: background 0.15s ease;
+    white-space: nowrap;
 }
 .bv-qt-q-actions .button:hover {
     background: #f0f0f1;
@@ -161,8 +165,8 @@
 .bv-qt-move-q-up,
 .bv-qt-move-q-down {
     font-size: 14px !important;
-    padding: 2px 8px !important;
-    min-height: 28px !important;
+    padding: 4px 8px !important;
+    min-height: 30px !important;
     line-height: 1.4 !important;
     cursor: pointer;
     opacity: 0.6;
@@ -219,11 +223,222 @@
     font-style: italic;
 }
 
-/* Inline form wrapper */
-#bv-qt-q-form-wrap { border: 1px solid #ccd0d4; border-radius: 4px; }
-#bv-qt-q-form-wrap h4 { margin: 0 0 12px; }
-#bv-qt-q-form-wrap p { margin: 8px 0; }
-#bv-qt-q-form-wrap label { font-weight: 600; font-size: 13px; }
+/* ============================================
+   LOADING INDICATORS
+   ============================================ */
+
+/* Button loading state — spinner inline with text */
+.bv-qt-btn-loading {
+    position: relative;
+    pointer-events: none;
+    opacity: 0.7;
+}
+.bv-qt-btn-loading .bv-qt-btn-spinner {
+    display: inline-block !important;
+    margin: 0 4px 0 0;
+    vertical-align: middle;
+}
+
+/* Inline spinner next to button text */
+.bv-qt-btn-spinner {
+    display: none;
+    width: 16px;
+    height: 16px;
+    margin: 0 4px 0 0;
+    vertical-align: middle;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: bvQtSpin 0.6s linear infinite;
+}
+
+/* Dark spinner for non-primary buttons */
+.button .bv-qt-btn-spinner {
+    border-color: rgba(0,0,0,0.1);
+    border-top-color: #2271b1;
+}
+
+.button.button-primary .bv-qt-btn-spinner,
+.button-primary .bv-qt-btn-spinner {
+    border-color: rgba(255,255,255,0.3);
+    border-top-color: #fff;
+}
+
+@keyframes bvQtSpin {
+    to { transform: rotate(360deg); }
+}
+
+/* Section / container loading overlay */
+.bv-qt-loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255,255,255,0.75);
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    animation: bvQtFadeIn 0.15s ease;
+}
+.bv-qt-loading-overlay .spinner {
+    float: none;
+    width: 28px;
+    height: 28px;
+}
+
+/* Edit view loading */
+#bv-qt-edit-view > .bv-qt-loading-overlay {
+    position: fixed;
+    top: 32px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 0;
+    z-index: 999;
+}
+
+/* Question form loading overlay */
+.bv-qt-q-form-loading {
+    position: relative;
+}
+.bv-qt-q-form-loading::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255,255,255,0.8);
+    z-index: 5;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.bv-qt-q-form-loading > * {
+    position: relative;
+    z-index: 1;
+    pointer-events: none;
+}
+
+/* ============================================
+   QUESTION FORMS — UNIFIED LAYOUT
+   ============================================ */
+
+/* Shared question form styles (both add & edit) */
+.bv-qt-qform {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 6px;
+    padding: 20px;
+    margin: 8px 16px 12px;
+    animation: bvQtSlideDown 0.25s ease;
+    position: relative;
+}
+
+/* Add question form — dashed gold top border */
+.bv-qt-inline-q-form {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-top: 3px solid #D4AF37;
+    border-radius: 6px;
+    padding: 20px;
+    margin: 8px 16px 12px;
+    animation: bvQtSlideDown 0.25s ease;
+    position: relative;
+}
+
+/* Edit question form — blue accent */
+.bv-qt-edit-q-form {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-top: 3px solid #2271b1;
+    border-radius: 6px;
+    padding: 20px;
+    margin: 8px 16px 12px;
+    animation: bvQtSlideDown 0.25s ease;
+    position: relative;
+}
+
+.bv-qt-qform h4,
+.bv-qt-inline-q-form h4,
+.bv-qt-edit-q-form h4 {
+    margin: 0 0 16px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #1d2327;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.bv-qt-edit-q-form h4::before {
+    content: '';
+    display: inline-block;
+    width: 4px;
+    height: 18px;
+    background: #2271b1;
+    border-radius: 2px;
+}
+.bv-qt-inline-q-form h4::before {
+    content: '';
+    display: inline-block;
+    width: 4px;
+    height: 18px;
+    background: #D4AF37;
+    border-radius: 2px;
+}
+
+/* Question form table — responsive, clean */
+.bv-qt-qform table.form-table,
+.bv-qt-inline-q-form table.form-table,
+.bv-qt-edit-q-form table.form-table {
+    margin: 0;
+}
+.bv-qt-qform table.form-table th,
+.bv-qt-inline-q-form table.form-table th,
+.bv-qt-edit-q-form table.form-table th {
+    width: 110px;
+    padding: 10px 12px 10px 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #1d2327;
+    vertical-align: top;
+}
+.bv-qt-qform table.form-table td,
+.bv-qt-inline-q-form table.form-table td,
+.bv-qt-edit-q-form table.form-table td {
+    padding: 8px 0;
+}
+.bv-qt-qform table.form-table input[type="text"],
+.bv-qt-qform table.form-table textarea,
+.bv-qt-inline-q-form table.form-table input[type="text"],
+.bv-qt-inline-q-form table.form-table textarea,
+.bv-qt-edit-q-form table.form-table input[type="text"],
+.bv-qt-edit-q-form table.form-table textarea {
+    max-width: 100%;
+    width: 100%;
+}
+.bv-qt-qform table.form-table select,
+.bv-qt-inline-q-form table.form-table select,
+.bv-qt-edit-q-form table.form-table select {
+    max-width: 100%;
+    width: 100%;
+}
+
+/* Question form action buttons */
+.bv-qt-qform .bv-qt-qform-actions,
+.bv-qt-inline-q-form .bv-qt-qform-actions,
+.bv-qt-edit-q-form .bv-qt-qform-actions {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #f0f0f0;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
 
 /* Inline section edit form */
 .bv-qt-inline-section-form {
@@ -252,52 +467,22 @@
     width: 100%;
 }
 
-/* Inline question add form (inserted by JS) */
-.bv-qt-inline-q-form {
-    background: #fff;
-    border: 1px solid #ccd0d4;
-    border-top: 2px dashed #D4AF37;
-    border-radius: 0 0 5px 5px;
-    padding: 16px;
-    margin: 8px 16px 12px;
-    animation: bvQtSlideDown 0.2s ease;
-}
-.bv-qt-inline-q-form h4 { margin: 0 0 12px; font-size: 14px; }
-.bv-qt-inline-q-form p { margin: 8px 0; }
-.bv-qt-inline-q-form label { font-weight: 600; font-size: 13px; }
-.bv-qt-inline-q-form table.form-table {
-    margin: 0;
-}
-.bv-qt-inline-q-form table.form-table th {
-    width: 100px;
-    padding: 8px 10px 8px 0;
-    font-size: 13px;
-}
-.bv-qt-inline-q-form table.form-table td {
-    padding: 6px 0;
-}
-.bv-qt-inline-q-form table.form-table input[type="text"],
-.bv-qt-inline-q-form table.form-table textarea {
-    max-width: 100%;
-    width: 100%;
-}
-
 @keyframes bvQtSlideDown {
-    from { opacity: 0; max-height: 0; overflow: hidden; }
-    to { opacity: 1; max-height: 600px; }
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 /* Options presets row */
 .bv-qt-opts-presets {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: 6px;
     align-items: center;
-    margin: 6px 0 8px;
-    padding: 6px 10px;
+    margin: 8px 0 10px;
+    padding: 8px 12px;
     background: #f6f7f7;
     border: 1px solid #e0e0e0;
-    border-radius: 4px;
+    border-radius: 6px;
 }
 .bv-qt-opts-presets-label {
     font-size: 11px;
@@ -307,14 +492,15 @@
 }
 .bv-qt-opts-presets .bv-qt-preset-btn {
     font-size: 11px !important;
-    padding: 1px 8px !important;
-    min-height: 24px !important;
+    padding: 2px 10px !important;
+    min-height: 26px !important;
     line-height: 1.5 !important;
-    border-radius: 12px;
+    border-radius: 14px;
     background: #fff;
     border-color: #c3c4c7;
     color: #2271b1;
-    transition: all 0.12s ease;
+    transition: all 0.15s ease;
+    cursor: pointer;
 }
 .bv-qt-opts-presets .bv-qt-preset-btn:hover {
     background: #2271b1;
@@ -325,12 +511,12 @@
 /* Duplicate question button */
 .bv-qt-dup-q {
     font-size: 13px !important;
-    padding: 2px 8px !important;
-    min-height: 28px !important;
+    padding: 4px 8px !important;
+    min-height: 30px !important;
     line-height: 1.4 !important;
     cursor: pointer;
     opacity: 0.6;
-    transition: opacity 0.15s ease;
+    transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 .bv-qt-dup-q:hover {
     opacity: 1;
@@ -352,7 +538,18 @@
     to { opacity: 1; transform: translateY(0); }
 }
 
-/* Responsive */
+/* ============================================
+   RESPONSIVE — TABLET & MOBILE
+   ============================================ */
+@media (max-width: 1024px) {
+    /* Slightly reduce padding on tablet */
+    .bv-qt-qform,
+    .bv-qt-inline-q-form,
+    .bv-qt-edit-q-form {
+        padding: 16px;
+    }
+}
+
 @media (max-width: 782px) {
     .bv-qt-table-wrap,
     .bv-qt-editor {
@@ -372,48 +569,134 @@
     .bv-qt-section-header {
         flex-direction: column;
         align-items: flex-start;
-        gap: 6px;
+        gap: 8px;
     }
     .bv-qt-section-actions {
         margin-left: 0;
         width: 100%;
         flex-wrap: wrap;
     }
+    .bv-qt-section-actions .button {
+        flex: 1;
+        min-width: 0;
+        text-align: center;
+    }
     .bv-qt-questions-list {
-        padding-left: 36px;
+        padding-left: 16px;
+        padding-right: 8px;
+        list-style: none;
     }
     .bv-qt-q-main-info {
-        min-width: 150px;
+        min-width: 100%;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
     }
-    /* Responsive form-table */
+    .bv-qt-q-actions {
+        width: 100%;
+        margin-left: 0;
+        justify-content: flex-start;
+        padding-left: 4px;
+    }
+    .bv-qt-q-actions .button {
+        flex: 1;
+        min-width: 0;
+        text-align: center;
+    }
+
+    /* Responsive form-table — ALL question forms stack vertically */
     .bv-qt-editor .form-table th,
     .bv-qt-editor .form-table td,
     .bv-qt-inline-section-form table.form-table th,
     .bv-qt-inline-section-form table.form-table td,
+    .bv-qt-qform table.form-table th,
+    .bv-qt-qform table.form-table td,
     .bv-qt-inline-q-form table.form-table th,
-    .bv-qt-inline-q-form table.form-table td {
+    .bv-qt-inline-q-form table.form-table td,
+    .bv-qt-edit-q-form table.form-table th,
+    .bv-qt-edit-q-form table.form-table td {
         display: block;
         width: 100%;
-        padding: 4px 0;
+        padding: 6px 0;
     }
     .bv-qt-editor .form-table input[type="text"],
     .bv-qt-editor .form-table textarea,
     .bv-qt-inline-section-form table.form-table input[type="text"],
     .bv-qt-inline-section-form table.form-table textarea,
+    .bv-qt-qform table.form-table input[type="text"],
+    .bv-qt-qform table.form-table textarea,
     .bv-qt-inline-q-form table.form-table input[type="text"],
-    .bv-qt-inline-q-form table.form-table textarea {
+    .bv-qt-inline-q-form table.form-table textarea,
+    .bv-qt-edit-q-form table.form-table input[type="text"],
+    .bv-qt-edit-q-form table.form-table textarea {
         max-width: 100%;
         width: 100%;
     }
     .bv-qt-inline-section-form,
-    .bv-qt-inline-q-form {
-        margin-left: 8px;
-        margin-right: 8px;
+    .bv-qt-qform,
+    .bv-qt-inline-q-form,
+    .bv-qt-edit-q-form {
+        margin-left: 4px;
+        margin-right: 4px;
+        padding: 14px;
+    }
+
+    /* Add question button full width on mobile */
+    .bv-qt-add-q-wrap {
+        padding-left: 16px !important;
+        padding-right: 8px !important;
+    }
+    .bv-qt-add-q-wrap .button {
+        width: 100%;
+        text-align: center;
+    }
+
+    /* Options presets scrollable on mobile */
+    .bv-qt-opts-presets {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding: 6px 8px;
+        gap: 4px;
+        -webkit-overflow-scrolling: touch;
+    }
+    .bv-qt-opts-presets .bv-qt-preset-btn {
+        flex-shrink: 0;
+    }
+
+    /* Question form actions full width */
+    .bv-qt-qform .bv-qt-qform-actions,
+    .bv-qt-inline-q-form .bv-qt-qform-actions,
+    .bv-qt-edit-q-form .bv-qt-qform-actions {
+        flex-wrap: wrap;
+    }
+    .bv-qt-qform .bv-qt-qform-actions .button,
+    .bv-qt-inline-q-form .bv-qt-qform-actions .button,
+    .bv-qt-edit-q-form .bv-qt-qform-actions .button {
+        flex: 1;
+        min-width: 0;
+        text-align: center;
+    }
+}
+
+/* Extra small screens */
+@media (max-width: 480px) {
+    .bv-qt-wrap {
+        margin-top: 10px;
+    }
+    .bv-qt-questions-list {
+        padding-left: 8px;
+    }
+    .bv-qt-q-actions .button {
+        font-size: 11px;
+        padding: 3px 6px;
+    }
+    .bv-qt-section-actions .button {
+        font-size: 11px;
     }
 }
 
 /* ============================================
-   Focus visible styles for accessibility
+   FOCUS VISIBLE — Accessibility
    ============================================ */
 .bv-qt-wrap *:focus-visible {
     outline: 2px solid #D4AF37;
@@ -421,7 +704,7 @@
 }
 
 /* ============================================
-   Document Import Modal
+   DOCUMENT IMPORT MODAL
    ============================================ */
 .bv-qt-modal-overlay {
     position: fixed;

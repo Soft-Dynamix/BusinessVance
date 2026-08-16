@@ -1,5 +1,6 @@
 /**
  * BusinessVance Questionnaire Admin — JavaScript
+ * @version 2.7.16
  */
 (function($) {
     'use strict';
@@ -31,6 +32,95 @@
     function bvQTShowNotice(msg) {
         $('#bv-qt-notices').html('<div class="notice notice-success is-dismissible" style="margin:5px 0"><p>' + msg + '</p></div>');
         setTimeout(function(){ $('#bv-qt-notices').empty(); }, 3000);
+    }
+
+    // Show an error notice that auto-dismisses
+    function bvQTShowError(msg) {
+        $('#bv-qt-notices').html('<div class="notice notice-error is-dismissible" style="margin:5px 0"><p>' + msg + '</p></div>');
+        setTimeout(function(){ $('#bv-qt-notices').empty(); }, 5000);
+    }
+
+    // ── Loading Helpers ──
+
+    // Add/remove inline spinner from a button + disable/enable
+    function bvQTBtnLoading($btn, loading, text) {
+        if (loading) {
+            if (!$btn.data('bv-original-html')) {
+                $btn.data('bv-original-html', $btn.html());
+            }
+            $btn.addClass('bv-qt-btn-loading').prop('disabled', true);
+            var label = text || $btn.data('bv-original-text') || $btn.text().trim();
+            $btn.data('bv-original-text', label);
+            $btn.html('<span class="bv-qt-btn-spinner"></span> ' + escHtml(label) + '…');
+        } else {
+            $btn.removeClass('bv-qt-btn-loading').prop('disabled', false);
+            var origHtml = $btn.data('bv-original-html');
+            if (origHtml) {
+                $btn.html(origHtml);
+                $btn.removeData('bv-original-html');
+                $btn.removeData('bv-original-text');
+            }
+        }
+    }
+
+    // Show/hide a loading overlay on a container element
+    function bvQTOverlay($el, show) {
+        if (show) {
+            // Remove any existing overlay first
+            $el.find('.bv-qt-loading-overlay').remove();
+            $el.css('position', 'relative').append('<div class="bv-qt-loading-overlay"><span class="spinner is-active" style="float:none;"></span></div>');
+        } else {
+            $el.find('.bv-qt-loading-overlay').fadeOut(150, function() { $(this).remove(); });
+        }
+    }
+
+    // Build type options HTML for a select dropdown (reused in edit form)
+    function bvQTTypeOptionsHtml(selectedType) {
+        var t = selectedType || 'text';
+        var h = '<optgroup label="Basic Inputs">'
+            + '<option value="text"' + (t==='text'?' selected':'') + '>Text</option>'
+            + '<option value="textarea"' + (t==='textarea'?' selected':'') + '>Textarea</option>'
+            + '<option value="number"' + (t==='number'?' selected':'') + '>Number</option>'
+            + '<option value="email"' + (t==='email'?' selected':'') + '>Email</option>'
+            + '<option value="phone"' + (t==='phone'?' selected':'') + '>Phone</option>'
+            + '<option value="url"' + (t==='url'?' selected':'') + '>URL</option>'
+            + '<option value="date"' + (t==='date'?' selected':'') + '>Date</option>'
+            + '<option value="time"' + (t==='time'?' selected':'') + '>Time</option>'
+            + '</optgroup>'
+            + '<optgroup label="Selection">'
+            + '<option value="select"' + (t==='select'?' selected':'') + '>Select (Dropdown)</option>'
+            + '<option value="radio"' + (t==='radio'?' selected':'') + '>Radio Buttons</option>'
+            + '<option value="checkbox"' + (t==='checkbox'?' selected':'') + '>Checkboxes</option>'
+            + '</optgroup>'
+            + '<optgroup label="Specialized">'
+            + '<option value="range"' + (t==='range'?' selected':'') + '>Range / Slider</option>'
+            + '<option value="color"' + (t==='color'?' selected':'') + '>Color Picker</option>'
+            + '<option value="rating"' + (t==='rating'?' selected':'') + '>Star Rating</option>'
+            + '<option value="address"' + (t==='address'?' selected':'') + '>Address Block</option>'
+            + '<option value="repeatable"' + (t==='repeatable'?' selected':'') + '>Repeatable Table</option>'
+            + '</optgroup>'
+            + '<optgroup label="Rich Content">'
+            + '<option value="wysiwyg"' + (t==='wysiwyg'?' selected':'') + '>Rich Text Editor</option>'
+            + '<option value="file"' + (t==='file'?' selected':'') + '>File Upload</option>'
+            + '</optgroup>'
+            + '<optgroup label="Display Only">'
+            + '<option value="heading"' + (t==='heading'?' selected':'') + '>Heading</option>'
+            + '<option value="paragraph"' + (t==='paragraph'?' selected':'') + '>Paragraph</option>'
+            + '</optgroup>';
+        return h;
+    }
+
+    // Build options presets HTML
+    function bvQTPresetsHtml(cssClass) {
+        var cls = cssClass || 'bv-qt-preset-btn';
+        return '<span class="bv-qt-opts-presets-label">Quick fill:</span>'
+            + '<button type="button" class="button button-small ' + cls + '" data-preset="yes_no">Yes / No</button>'
+            + '<button type="button" class="button button-small ' + cls + '" data-preset="yes_no_other">Yes / No / Other</button>'
+            + '<button type="button" class="button button-small ' + cls + '" data-preset="true_false">True / False</button>'
+            + '<button type="button" class="button button-small ' + cls + '" data-preset="agree5">Likert 5</button>'
+            + '<button type="button" class="button button-small ' + cls + '" data-preset="satisfaction">Satisfaction</button>'
+            + '<button type="button" class="button button-small ' + cls + '" data-preset="rating5">Rating 1-5</button>'
+            + '<button type="button" class="button button-small ' + cls + '" data-preset="rating10">Rating 1-10</button>';
     }
 
     // ── Options Presets ──
@@ -95,6 +185,14 @@
         }
     }
 
+    // ── Field type visibility helpers ──
+    function bvQTNeedsOptions(type) {
+        return (type === 'select' || type === 'radio' || type === 'checkbox' || type === 'range' || type === 'rating' || type === 'repeatable');
+    }
+    function bvQTNeedsPlaceholder(type) {
+        return !(type === 'heading' || type === 'paragraph' || type === 'checkbox' || type === 'color' || type === 'rating' || type === 'address' || type === 'wysiwyg' || type === 'range' || type === 'time' || type === 'date' || type === 'file');
+    }
+
     // Build options preview string from question options array
     function bvQTOptsPreview(q) {
         if (!q.options || !Array.isArray(q.options) || q.options.length === 0) return '';
@@ -114,9 +212,11 @@
 
     // ── Template List ──
     function loadTemplates() {
+        var $tbody = $('#bv-qt-templates-body');
+        $tbody.html('<tr><td colspan="7" style="text-align:center;padding:40px;"><span class="spinner is-active" style="float:none;"></span><br>Loading templates...</td></tr>');
         $.post(ajaxurl, { action: 'bv_qt_get_templates', nonce: BVQT.nonce }, function(res) {
             if (!res.success) {
-                $('#bv-qt-templates-body').html(
+                $tbody.html(
                     '<tr><td colspan="7" style="text-align:center;padding:40px;color:#a00;">'
                     + (res.data && res.data.message ? escHtml(res.data.message) : 'Error loading templates.')
                     + '</td></tr>'
@@ -146,9 +246,9 @@
                         + '</td></tr>';
                 });
             }
-            $('#bv-qt-templates-body').html(rows);
+            $tbody.html(rows);
         }).fail(function(xhr, status, error) {
-            $('#bv-qt-templates-body').html(
+            $tbody.html(
                 '<tr><td colspan="7" style="text-align:center;padding:40px;color:#a00;">'
                 + 'Request failed: ' + escHtml(status + (error ? ' - ' + error : ''))
                 + '. Please try refreshing the page.'
@@ -173,7 +273,12 @@
             $('#bv-qt-edit-title').text('Add New Template');
             return;
         }
+
+        // Show loading overlay
+        bvQTOverlay($('#bv-qt-edit-view'), true);
+
         $.post(ajaxurl, { action: 'bv_qt_get_template', nonce: BVQT.nonce, template_id: id }, function(res) {
+            bvQTOverlay($('#bv-qt-edit-view'), false);
             if (!res.success) return;
             var t = res.data.template;
             $('#bv-qt-edit-id').val(t.id);
@@ -183,7 +288,10 @@
             $('#bv-qt-tpl-status').val(t.status);
             $('#bv-qt-edit-title').text('Edit Template: ' + t.name);
             renderSections(t.sections || []);
-        }).fail(function() { alert('Failed to load template.'); });
+        }).fail(function() {
+            bvQTOverlay($('#bv-qt-edit-view'), false);
+            bvQTShowError('Failed to load template.');
+        });
     }
 
     // ── Sections ──
@@ -289,19 +397,21 @@
         // Duplicate template
         $(document).on('click', '.bv-qt-duplicate', function() {
             if (!confirm('Duplicate this template and all its sections/questions?')) return;
-            var id = $(this).data('id');
+            var $btn = $(this);
+            bvQTBtnLoading($btn, true, 'Duplicate');
+            var id = $btn.data('id');
             $.post(ajaxurl, { action: 'bv_qt_get_template', nonce: BVQT.nonce, template_id: id }, function(res) {
-                if (!res.success) return;
+                if (!res.success) { bvQTBtnLoading($btn, false); return; }
                 var t = res.data.template;
                 $.post(ajaxurl, {
                     action: 'bv_qt_save_template', nonce: BVQT.nonce,
                     id: 0, name: t.name + ' (Copy)', slug: '', description: t.description, status: 'draft'
                 }, function(res2) {
-                    if (!res2.success) { alert('Duplicate failed'); return; }
+                    if (!res2.success) { alert('Duplicate failed'); bvQTBtnLoading($btn, false); return; }
                     var newId = res2.data.template_id;
                     var sections = t.sections || [];
                     var pending = sections.length;
-                    if (pending === 0) { loadTemplates(); return; }
+                    if (pending === 0) { bvQTBtnLoading($btn, false); loadTemplates(); return; }
                     $.each(sections, function(i, s) {
                         $.post(ajaxurl, {
                             action: 'bv_qt_save_section', nonce: BVQT.nonce,
@@ -309,7 +419,7 @@
                         }, function(res3) {
                             var questions = s.questions || [];
                             var qPending = questions.length;
-                            if (qPending === 0) { pending--; if(pending===0) loadTemplates(); return; }
+                            if (qPending === 0) { pending--; if(pending===0) { bvQTBtnLoading($btn, false); loadTemplates(); } return; }
                             $.each(questions, function(j, q) {
                                 var optsStr = '';
                                 if (q.options && Array.isArray(q.options)) {
@@ -324,19 +434,22 @@
                                     id: 0, section_id: res3.data.section.id, type: q.type, label: q.label,
                                     placeholder: q.placeholder, is_required: q.is_required,
                                     help_text: q.help_text, options_text: optsStr, display_order: q.display_order
-                                }, function() { qPending--; if(qPending===0){ pending--; if(pending===0) loadTemplates(); } })
-                                .fail(function() { qPending--; if(qPending===0){ pending--; if(pending===0) loadTemplates(); } alert('Failed to duplicate a question.'); });
+                                }, function() { qPending--; if(qPending===0){ pending--; if(pending===0) { bvQTBtnLoading($btn, false); loadTemplates(); } } })
+                                .fail(function() { qPending--; if(qPending===0){ pending--; if(pending===0) { bvQTBtnLoading($btn, false); loadTemplates(); } } alert('Failed to duplicate a question.'); });
                             });
-                        }).fail(function() { pending--; if(pending===0) loadTemplates(); alert('Failed to duplicate a section.'); });
+                        }).fail(function() { pending--; if(pending===0) { bvQTBtnLoading($btn, false); loadTemplates(); } alert('Failed to duplicate a section.'); });
                     });
-                }).fail(function() { alert('Failed to create duplicate template.'); });
-            }).fail(function() { alert('Failed to load template for duplication.'); });
+                }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to create duplicate template.'); });
+            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to load template for duplication.'); });
         });
 
         // Delete template
         $(document).on('click', '.bv-qt-delete', function() {
             if (!confirm('Delete this template and ALL its sections and questions?')) return;
-            $.post(ajaxurl, { action: 'bv_qt_delete_template', nonce: BVQT.nonce, id: $(this).data('id') }, function(res) {
+            var $btn = $(this);
+            bvQTBtnLoading($btn, true, 'Delete');
+            $.post(ajaxurl, { action: 'bv_qt_delete_template', nonce: BVQT.nonce, id: $btn.data('id') }, function(res) {
+                bvQTBtnLoading($btn, false);
                 if (res.success) {
                     bvQTShowNotice('Template deleted successfully.');
                     loadTemplates();
@@ -344,7 +457,7 @@
                     alert(res.data.message);
                     loadTemplates();
                 }
-            }).fail(function() { alert('Delete failed.'); });
+            }).fail(function() { bvQTBtnLoading($btn, false); alert('Delete failed.'); });
         });
 
         // Auto slug from name
@@ -354,8 +467,10 @@
 
         // Save template
         $('#bv-qt-save-tpl-btn').on('click', function() {
+            var $btn = $(this);
             var name = $('#bv-qt-tpl-name').val().trim();
             if (!name) { alert('Template name is required.'); return; }
+            bvQTBtnLoading($btn, true, 'Save');
             $.post(ajaxurl, {
                 action: 'bv_qt_save_template', nonce: BVQT.nonce,
                 id: getTemplateId(),
@@ -364,6 +479,7 @@
                 description: $('#bv-qt-tpl-description').val(),
                 status: $('#bv-qt-tpl-status').val()
             }, function(res) {
+                bvQTBtnLoading($btn, false);
                 if (!res.success) { alert(res.data.message); return; }
                 bvQTShowNotice('Template saved successfully.');
                 var newId = res.data.template_id;
@@ -372,7 +488,7 @@
                     $('#bv-qt-edit-title').text('Edit Template: ' + $('#bv-qt-tpl-name').val());
                 }
                 editTemplate(newId);
-            }).fail(function() { alert('Failed to save template.'); });
+            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to save template.'); });
         });
 
         // ── Sections ──
@@ -398,8 +514,10 @@
 
         // Save section (top form)
         $('#bv-qt-save-sec-btn').on('click', function() {
+            var $btn = $(this);
             var title = $('#bv-qt-sec-title').val().trim();
             if (!title) { alert('Section title is required.'); return; }
+            bvQTBtnLoading($btn, true, 'Save');
             $.post(ajaxurl, {
                 action: 'bv_qt_save_section', nonce: BVQT.nonce,
                 id: $('#bv-qt-sec-edit-id').val(),
@@ -408,11 +526,12 @@
                 description: $('#bv-qt-sec-description').val(),
                 display_order: 0
             }, function(res) {
+                bvQTBtnLoading($btn, false);
                 if (!res.success) { alert(res.data.message); return; }
                 bvQTShowNotice('Section saved successfully.');
                 $('#bv-qt-section-form-wrap').hide();
                 editTemplate(getTemplateId());
-            }).fail(function() { alert('Failed to save section.'); });
+            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to save section.'); });
         });
 
         // Cancel section (top form)
@@ -452,21 +571,24 @@
 
         // Save inline section edit
         $(document).on('click', '.bv-qt-save-inline-sec', function() {
-            var sid = $(this).data('sid');
-            var item = $(this).closest('.bv-qt-section-item');
+            var $btn = $(this);
+            var sid = $btn.data('sid');
+            var item = $btn.closest('.bv-qt-section-item');
             var newTitle = item.find('.bv-qt-inline-sec-title').val().trim();
             var newDesc = item.find('.bv-qt-inline-sec-desc').val();
             if (!newTitle) { alert('Section title is required.'); return; }
+            bvQTBtnLoading($btn, true, 'Save');
             $.post(ajaxurl, {
                 action: 'bv_qt_save_section', nonce: BVQT.nonce,
                 id: sid, template_id: getTemplateId(),
                 title: newTitle, description: newDesc, display_order: item.index()
             }, function(res) {
+                bvQTBtnLoading($btn, false);
                 if (res.success) {
                     bvQTShowNotice('Section updated successfully.');
                     editTemplate(getTemplateId());
                 }
-            }).fail(function() { alert('Failed to update section.'); });
+            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to update section.'); });
         });
 
         // Cancel inline section edit
@@ -477,15 +599,18 @@
         // Delete section
         $(document).on('click', '.bv-qt-del-section', function() {
             if (!confirm('Delete this section and all its questions?')) return;
+            var $btn = $(this);
+            bvQTBtnLoading($btn, true, 'Delete');
             $.post(ajaxurl, {
                 action: 'bv_qt_delete_section', nonce: BVQT.nonce,
-                id: $(this).data('sid')
+                id: $btn.data('sid')
             }, function(res) {
+                bvQTBtnLoading($btn, false);
                 if (res.success) {
                     bvQTShowNotice('Section deleted successfully.');
                     editTemplate(getTemplateId());
                 }
-            }).fail(function() { alert('Failed to delete section.'); });
+            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to delete section.'); });
         });
 
         // Move section up/down
@@ -497,6 +622,7 @@
             if (dir === 'down' && item.index() === list.children().length - 1) return;
             var $prev = item.prev();
             var $next = item.next();
+
             if (dir === 'up') $prev.before(item);
             else $next.after(item);
             var ids = [];
@@ -554,7 +680,7 @@
             var sectionItem = $btn.closest('.bv-qt-section-item');
 
             // Remove any existing inline question forms
-            $('.bv-qt-inline-q-form').slideUp(150, function() { $(this).remove(); });
+            $('.bv-qt-inline-q-form, .bv-qt-edit-q-form').slideUp(150, function() { $(this).remove(); });
 
             // Clone the hidden form template HTML and adapt IDs
             var formHtml = $('#bv-qt-question-form-template').html()
@@ -583,10 +709,8 @@
 
             // Initial toggle for options/placeholder visibility
             var initType = wrapper.find('#bvq-new-type').val();
-            var showOpts = (initType === 'select' || initType === 'radio' || initType === 'checkbox' || initType === 'range' || initType === 'rating' || initType === 'repeatable');
-            var showPH = (initType !== 'heading' && initType !== 'paragraph' && initType !== 'checkbox' && initType !== 'color' && initType !== 'rating' && initType !== 'address' && initType !== 'wysiwyg' && initType !== 'range' && initType !== 'time' && initType !== 'date' && initType !== 'file');
-            wrapper.find('.bv-qt-new-q-options-row').toggle(showOpts);
-            wrapper.find('.bv-qt-new-q-placeholder-row').toggle(showPH);
+            wrapper.find('.bv-qt-new-q-options-row').toggle(bvQTNeedsOptions(initType));
+            wrapper.find('.bv-qt-new-q-placeholder-row').toggle(bvQTNeedsPlaceholder(initType));
 
             // Mark placeholder/help as not user-edited initially
             wrapper.find('#bvq-new-placeholder').removeData('user-edited');
@@ -608,20 +732,20 @@
         $(document).on('change', '.bv-qt-new-q-type-select', function() {
             var t = $(this).val();
             var $form = $(this).closest('.bv-qt-inline-q-form');
-            var showOpts = (t === 'select' || t === 'radio' || t === 'checkbox' || t === 'range' || t === 'rating' || t === 'repeatable');
-            var showPH = (t !== 'heading' && t !== 'paragraph' && t !== 'checkbox' && t !== 'color' && t !== 'rating' && t !== 'address' && t !== 'wysiwyg' && t !== 'range' && t !== 'time' && t !== 'date' && t !== 'file');
-            $form.find('.bv-qt-new-q-options-row').toggle(showOpts);
-            $form.find('.bv-qt-new-q-placeholder-row').toggle(showPH);
+            $form.find('.bv-qt-new-q-options-row').toggle(bvQTNeedsOptions(t));
+            $form.find('.bv-qt-new-q-placeholder-row').toggle(bvQTNeedsPlaceholder(t));
             // Apply smart defaults on type change
             bvQTApplyTypeDefaults($(this), $form.find('#bvq-new-placeholder'), $form.find('#bvq-new-help'));
         });
 
         // Save new question (from inline add form)
         $(document).on('click', '.bv-qt-save-new-q', function() {
-            var $form = $(this).closest('.bv-qt-inline-q-form');
+            var $btn = $(this);
+            var $form = $btn.closest('.bv-qt-inline-q-form');
             var sid = $form.data('section-id');
             var label = $form.find('#bvq-new-label').val().trim();
-            if (!label) { alert('Question label is required.'); return; }
+            if (!label) { alert('Question label is required.'); $form.find('#bvq-new-label').focus(); return; }
+            bvQTBtnLoading($btn, true, 'Save');
             var rawOpts = $form.find('#bvq-new-options').val();
             $.post(ajaxurl, {
                 action: 'bv_qt_save_question', nonce: BVQT.nonce,
@@ -633,10 +757,11 @@
                 help_text: $form.find('#bvq-new-help').val(),
                 options_text: bvQTProcessOptionsText(rawOpts)
             }, function(res) {
+                bvQTBtnLoading($btn, false);
                 if (!res.success) { alert(res.data.message); return; }
                 bvQTShowNotice('Question added successfully.');
                 editTemplate(getTemplateId());
-            }).fail(function() { alert('Failed to add question.'); });
+            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to add question.'); });
         });
 
         // Cancel new question form
@@ -652,12 +777,20 @@
             }
         });
 
-        // Edit question → opens inline form (DO NOT CHANGE — existing working handler)
+        // Edit question → opens inline form with CONSISTENT table.form-table layout
         $(document).on('click', '.bv-qt-edit-q', function() {
             var $btn = $(this);
             var qid = $btn.data('qid');
             var sid = $btn.data('sid');
+
+            // Show loading on the button
+            bvQTBtnLoading($btn, true, 'Loading');
+
+            // Remove any existing question forms
+            $('.bv-qt-inline-q-form, .bv-qt-edit-q-form').slideUp(150, function() { $(this).remove(); });
+
             $.post(ajaxurl, { action: 'bv_qt_get_template', nonce: BVQT.nonce, template_id: getTemplateId() }, function(res) {
+                bvQTBtnLoading($btn, false);
                 if (!res.success) return;
                 var q = null;
                 $.each(res.data.template.sections, function(i, s) {
@@ -681,116 +814,116 @@
                 // Show labels-only in the textarea (cleaner UX); values preserved on save
                 var displayOpts = optsLabelsOnly.trim() || optsText.trim();
 
-                var formHtml = '<div id="bv-qt-q-form-wrap" style="background:#fff;padding:16px;margin:8px 0;border:1px solid #ccd0d4;border-radius:4px;">'
-                    + '<h4 style="margin:0 0 12px;">Edit Question</h4>'
-                    + '<p><label>Type:</label><br><select id="bvq-type">'
-                    +   '<optgroup label="Basic Inputs">'
-                    +   '<option value="text"' + (q.type==='text'?' selected':'') + '>Text</option>'
-                    +   '<option value="textarea"' + (q.type==='textarea'?' selected':'') + '>Textarea</option>'
-                    +   '<option value="number"' + (q.type==='number'?' selected':'') + '>Number</option>'
-                    +   '<option value="email"' + (q.type==='email'?' selected':'') + '>Email</option>'
-                    +   '<option value="phone"' + (q.type==='phone'?' selected':'') + '>Phone</option>'
-                    +   '<option value="url"' + (q.type==='url'?' selected':'') + '>URL</option>'
-                    +   '<option value="date"' + (q.type==='date'?' selected':'') + '>Date</option>'
-                    +   '<option value="time"' + (q.type==='time'?' selected':'') + '>Time</option>'
-                    +   '</optgroup>'
-                    +   '<optgroup label="Selection">'
-                    +   '<option value="select"' + (q.type==='select'?' selected':'') + '>Select (Dropdown)</option>'
-                    +   '<option value="radio"' + (q.type==='radio'?' selected':'') + '>Radio</option>'
-                    +   '<option value="checkbox"' + (q.type==='checkbox'?' selected':'') + '>Checkbox</option>'
-                    +   '</optgroup>'
-                    +   '<optgroup label="Specialized">'
-                    +   '<option value="range"' + (q.type==='range'?' selected':'') + '>Range / Slider</option>'
-                    +   '<option value="color"' + (q.type==='color'?' selected':'') + '>Color Picker</option>'
-                    +   '<option value="rating"' + (q.type==='rating'?' selected':'') + '>Star Rating</option>'
-                    +   '<option value="address"' + (q.type==='address'?' selected':'') + '>Address Block</option>'
-                    +   '<option value="repeatable"' + (q.type==='repeatable'?' selected':'') + '>Repeatable Table</option>'
-                    +   '</optgroup>'
-                    +   '<optgroup label="Rich Content">'
-                    +   '<option value="wysiwyg"' + (q.type==='wysiwyg'?' selected':'') + '>Rich Text Editor</option>'
-                    +   '<option value="file"' + (q.type==='file'?' selected':'') + '>File Upload</option>'
-                    +   '</optgroup>'
-                    +   '<optgroup label="Display Only">'
-                    +   '<option value="heading"' + (q.type==='heading'?' selected':'') + '>Heading</option>'
-                    +   '<option value="paragraph"' + (q.type==='paragraph'?' selected':'') + '>Paragraph</option>'
-                    +   '</optgroup>'
-                    + '</select></p>'
-                    + '<p><label>Label:</label><br><input type="text" id="bvq-label" class="regular-text" value="' + escAttr(q.label) + '"></p>'
-                    + '<p class="bvq-placeholder-row"><label>Placeholder:</label><br><input type="text" id="bvq-placeholder" class="regular-text" value="' + escAttr(q.placeholder || '') + '"></p>'
-                    + '<p><label><input type="checkbox" id="bvq-required"' + (q.is_required==1?' checked':'') + '> Required</label></p>'
-                    + '<p><label>Help Text:</label><br><input type="text" id="bvq-help" class="regular-text" value="' + escAttr(q.help_text || '') + '"></p>'
-                    + '<p class="bvq-options-row"><label>Options</label>'
-                    + '<div class="bv-qt-opts-presets">'
-                    +   '<span class="bv-qt-opts-presets-label">Quick fill:</span>'
-                    +   '<button type="button" class="button button-small bv-qt-preset-btn bvq-preset-btn" data-preset="yes_no">Yes / No</button>'
-                    +   '<button type="button" class="button button-small bv-qt-preset-btn bvq-preset-btn" data-preset="yes_no_other">Yes / No / Other</button>'
-                    +   '<button type="button" class="button button-small bv-qt-preset-btn bvq-preset-btn" data-preset="true_false">True / False</button>'
-                    +   '<button type="button" class="button button-small bv-qt-preset-btn bvq-preset-btn" data-preset="agree5">Likert 5</button>'
-                    +   '<button type="button" class="button button-small bv-qt-preset-btn bvq-preset-btn" data-preset="satisfaction">Satisfaction</button>'
-                    +   '<button type="button" class="button button-small bv-qt-preset-btn bvq-preset-btn" data-preset="rating5">Rating 1-5</button>'
-                    +   '<button type="button" class="button button-small bv-qt-preset-btn bvq-preset-btn" data-preset="rating10">Rating 1-10</button>'
+                // Check visibility for options and placeholder
+                var showOpts = bvQTNeedsOptions(q.type);
+                var showPH = bvQTNeedsPlaceholder(q.type);
+
+                // Build form using SAME table.form-table layout as the add form
+                var formHtml = '<div class="bv-qt-edit-q-form">'
+                    + '<h4>Edit Question</h4>'
+                    + '<table class="form-table">'
+                    + '<tr>'
+                    + '<th scope="row"><label for="bvq-type">Type</label></th>'
+                    + '<td><select id="bvq-type">' + bvQTTypeOptionsHtml(q.type) + '</select></td>'
+                    + '</tr>'
+                    + '<tr>'
+                    + '<th scope="row"><label for="bvq-label">Label <span style="color:#a00;">*</span></label></th>'
+                    + '<td><input type="text" id="bvq-label" class="large-text" value="' + escAttr(q.label) + '" placeholder="Question label" /></td>'
+                    + '</tr>'
+                    + '<tr class="bvq-placeholder-row"' + (showPH ? '' : ' style="display:none;"') + '>'
+                    + '<th scope="row"><label for="bvq-placeholder">Placeholder</label></th>'
+                    + '<td><input type="text" id="bvq-placeholder" class="large-text" value="' + escAttr(q.placeholder || '') + '" placeholder="Placeholder text (optional)" /></td>'
+                    + '</tr>'
+                    + '<tr>'
+                    + '<th scope="row"><label>Required</label></th>'
+                    + '<td><label><input type="checkbox" id="bvq-required"' + (q.is_required==1?' checked':'') + ' /> This question is required</label></td>'
+                    + '</tr>'
+                    + '<tr>'
+                    + '<th scope="row"><label for="bvq-help">Help Text</label></th>'
+                    + '<td><input type="text" id="bvq-help" class="large-text" value="' + escAttr(q.help_text || '') + '" placeholder="Optional help text shown below the field" /></td>'
+                    + '</tr>'
+                    + '<tr class="bvq-options-row"' + (showOpts ? '' : ' style="display:none;"') + '>'
+                    + '<th scope="row">'
+                    + '<label>Options</label>'
+                    + '<p class="description" style="margin:6px 0 0;font-weight:400;">Type labels one per line — values auto-generate.<br><code>value|Label</code> for custom values.</p>'
+                    + '</th>'
+                    + '<td>'
+                    + '<div class="bv-qt-opts-presets">' + bvQTPresetsHtml('bv-qt-preset-btn bvq-preset-btn') + '</div>'
+                    + '<textarea id="bvq-options" rows="4" class="large-text" placeholder="Option Label&#10;Another Option">' + escHtml(displayOpts) + '</textarea>'
+                    + '</td>'
+                    + '</tr>'
+                    + '</table>'
+                    + '<div class="bv-qt-qform-actions">'
+                    + '<button type="button" class="button button-primary" id="bvq-save">Save Question</button> '
+                    + '<button type="button" class="button" id="bvq-cancel">Cancel</button>'
                     + '</div>'
-                    + '<br><textarea id="bvq-options" rows="4" class="large-text">' + escHtml(displayOpts) + '</textarea>'
-                    + '<p class="description" style="margin:4px 0 0;">Type labels one per line — values auto-generate. Use <code>value|Label</code> for custom values.</p>'
-                    + '</p>'
-                    + '<p><button class="button button-primary" id="bvq-save">Save Question</button> <button class="button" id="bvq-cancel">Cancel</button></p>'
                     + '</div>';
                 $btn.closest('li').after(formHtml);
-                toggleOptionVisibility();
-            }).fail(function() { alert('Failed to load template data.'); });
+                // Scroll into view
+                $('.bv-qt-edit-q-form')[0].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }).fail(function() {
+                bvQTBtnLoading($btn, false);
+                alert('Failed to load question data.');
+            });
         });
 
         // Toggle options field based on type (for edit question form)
-        $(document).on('change', '#bvq-type', toggleOptionVisibility);
-        function toggleOptionVisibility() {
-            var t = $('#bvq-type').val();
-            var showOpts = (t === 'select' || t === 'radio' || t === 'checkbox' || t === 'range' || t === 'rating' || t === 'repeatable');
-            var showPH = (t !== 'heading' && t !== 'paragraph' && t !== 'checkbox' && t !== 'color' && t !== 'rating' && t !== 'address' && t !== 'wysiwyg' && t !== 'range' && t !== 'time' && t !== 'date' && t !== 'file');
-            $('.bvq-options-row').toggle(showOpts);
-            $('.bvq-placeholder-row').toggle(showPH);
-        }
+        $(document).on('change', '#bvq-type', function() {
+            var t = $(this).val();
+            var $form = $(this).closest('.bv-qt-edit-q-form');
+            $form.find('.bvq-options-row').toggle(bvQTNeedsOptions(t));
+            $form.find('.bvq-placeholder-row').toggle(bvQTNeedsPlaceholder(t));
+        });
 
         // Save question edit
         $(document).on('click', '#bvq-save', function() {
-            var qid = $(this).closest('#bv-qt-q-form-wrap').prev('li').find('.bv-qt-edit-q').data('qid');
-            var sid = $(this).closest('#bv-qt-q-form-wrap').prev('li').find('.bv-qt-edit-q').data('sid');
+            var $btn = $(this);
+            var qid = $btn.closest('.bv-qt-edit-q-form').prev('li').find('.bv-qt-edit-q').data('qid');
+            var sid = $btn.closest('.bv-qt-edit-q-form').prev('li').find('.bv-qt-edit-q').data('sid');
+            var label = $('#bvq-label').val().trim();
+            if (!label) { alert('Question label is required.'); $('#bvq-label').focus(); return; }
+            bvQTBtnLoading($btn, true, 'Save');
             var rawOpts = $('#bvq-options').val();
             $.post(ajaxurl, {
                 action: 'bv_qt_save_question', nonce: BVQT.nonce,
                 id: qid, section_id: sid,
                 type: $('#bvq-type').val(),
-                label: $('#bvq-label').val(),
+                label: label,
                 placeholder: $('#bvq-placeholder').val(),
                 is_required: $('#bvq-required').is(':checked') ? 1 : 0,
                 help_text: $('#bvq-help').val(),
                 options_text: bvQTProcessOptionsText(rawOpts)
             }, function(res) {
+                bvQTBtnLoading($btn, false);
                 if (res.success) {
                     bvQTShowNotice('Question updated successfully.');
                     editTemplate(getTemplateId());
                 } else {
                     alert(res.data.message);
                 }
-            }).fail(function() { alert('Failed to save question.'); });
+            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to save question.'); });
         });
 
         // Cancel question edit
         $(document).on('click', '#bvq-cancel', function() {
-            $(this).closest('#bv-qt-q-form-wrap').remove();
+            $(this).closest('.bv-qt-edit-q-form').slideUp(150, function() { $(this).remove(); });
         });
 
         // Delete question
         $(document).on('click', '.bv-qt-del-q', function() {
             if (!confirm('Delete this question?')) return;
+            var $btn = $(this);
+            bvQTBtnLoading($btn, true, 'Delete');
             $.post(ajaxurl, {
                 action: 'bv_qt_delete_question', nonce: BVQT.nonce,
-                id: $(this).data('qid')
+                id: $btn.data('qid')
             }, function(res) {
+                bvQTBtnLoading($btn, false);
                 if (res.success) {
                     bvQTShowNotice('Question deleted successfully.');
                     editTemplate(getTemplateId());
                 }
-            }).fail(function() { alert('Failed to delete question.'); });
+            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to delete question.'); });
         });
 
         // Enter to save in edit question form
@@ -830,15 +963,16 @@
             var $btn = $(this);
             var qid = $btn.data('qid');
             var sid = $btn.data('sid');
+            bvQTBtnLoading($btn, true, 'Copy');
             $.post(ajaxurl, { action: 'bv_qt_get_template', nonce: BVQT.nonce, template_id: getTemplateId() }, function(res) {
-                if (!res.success) return;
+                if (!res.success) { bvQTBtnLoading($btn, false); return; }
                 var q = null;
                 $.each(res.data.template.sections, function(i, s) {
                     $.each(s.questions, function(j, qq) {
                         if (qq.id == qid) q = qq;
                     });
                 });
-                if (!q) return;
+                if (!q) { bvQTBtnLoading($btn, false); return; }
 
                 // Convert options to pipe-delimited string
                 var optsStr = '';
@@ -860,22 +994,24 @@
                     help_text: q.help_text,
                     options_text: optsStr
                 }, function(res2) {
+                    bvQTBtnLoading($btn, false);
                     if (res2.success) {
                         bvQTShowNotice('Question duplicated successfully.');
                         editTemplate(getTemplateId());
                     } else {
                         alert(res2.data.message || 'Failed to duplicate question.');
                     }
-                }).fail(function() { alert('Failed to duplicate question.'); });
-            }).fail(function() { alert('Failed to load question data.'); });
+                }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to duplicate question.'); });
+            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to load question data.'); });
         });
 
         // ── Global import function (called from inline button) ──
         window.bvQTImportQuestionnaires = function() {
             if (!confirm('Import Market Research and Business Plan questionnaire templates? Existing templates with the same slug will be skipped.')) return;
-            var $btn = $('#bv-qt-import-btn').prop('disabled', true).text('Importing...');
+            var $btn = $('#bv-qt-import-btn');
+            bvQTBtnLoading($btn, true, 'Importing');
             $.post(ajaxurl, { action: 'bv_qt_import_questionnaires', nonce: BVQT.nonce }, function(res) {
-                $btn.prop('disabled', false).html('<span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span> Import Pre-built Questionnaires');
+                bvQTBtnLoading($btn, false);
                 if (res.success) {
                     var msg = res.data.message;
                     $.each(res.data.results, function(key, r) {
@@ -893,7 +1029,7 @@
                     alert('Import failed: ' + errMsg);
                 }
             }).fail(function(xhr, status, error) {
-                $btn.prop('disabled', false).html('<span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span> Import Pre-built Questionnaires');
+                bvQTBtnLoading($btn, false);
                 alert('Request failed: ' + (error || status || 'Network error') + '. The import may have timed out — try refreshing the page.');
             });
         };
@@ -1201,7 +1337,8 @@
 
         // Collect data from the preview and send to import
         $('#bv-qt-doc-confirm-btn').on('click', function() {
-            var $btn = $(this).prop('disabled', true).html('<span class="spinner is-active" style="margin:0 4px;"></span> Importing...');
+            var $btn = $(this);
+            bvQTBtnLoading($btn, true, 'Importing');
 
             var templateData = {
                 name: $('#bv-qt-doc-name').val().trim(),
@@ -1214,7 +1351,7 @@
 
             if (!templateData.name) {
                 alert('Please enter a template name.');
-                $btn.prop('disabled', false).html('<span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span> Import Questionnaire');
+                bvQTBtnLoading($btn, false);
                 return;
             }
 
@@ -1255,7 +1392,7 @@
             $.each(templateData.sections, function(i, s) { totalQ += s.questions.length; });
             if (totalQ === 0) {
                 alert('Please add at least one question. You can add questions to each section using the "+ Add Question" button.');
-                $btn.prop('disabled', false).html('<span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span> Import Questionnaire');
+                bvQTBtnLoading($btn, false);
                 return;
             }
 
@@ -1265,7 +1402,7 @@
 
             if (templateData.sections.length === 0) {
                 alert('All sections have empty titles. Please name at least one section.');
-                $btn.prop('disabled', false).html('<span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span> Import Questionnaire');
+                bvQTBtnLoading($btn, false);
                 return;
             }
 
@@ -1278,6 +1415,7 @@
                     template_data: JSON.stringify(templateData)
                 },
                 success: function(res) {
+                    bvQTBtnLoading($btn, false);
                     if (res.success) {
                         var msg = 'Questionnaire "' + escHtml(templateData.name) + '" imported successfully!\n\n'
                             + '• ' + res.data.sections + ' sections\n'
@@ -1290,11 +1428,10 @@
                         var errMsg = res.data && res.data.message ? res.data.message : 'Unknown error';
                         alert('Import failed: ' + errMsg);
                     }
-                    $btn.prop('disabled', false).html('<span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span> Import Questionnaire');
                 },
                 error: function(xhr, status, error) {
+                    bvQTBtnLoading($btn, false);
                     alert('Import failed: ' + (error || status || 'Network error'));
-                    $btn.prop('disabled', false).html('<span class="dashicons dashicons-download" style="margin-top:4px;margin-right:3px;"></span> Import Questionnaire');
                 }
             });
         });

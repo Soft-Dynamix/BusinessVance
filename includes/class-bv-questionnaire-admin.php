@@ -743,8 +743,8 @@ class BV_Questionnaire_Admin {
 
             <!-- ==================== QUESTION INLINE FORM (reused via JS) ==================== -->
             <div id="bv-qt-question-form-template" style="display:none;">
-                <div class="bv-qt-card bv-qt-inline-form bv-qt-question-form">
-                    <h3 class="bv-qt-card-title" id="bv-qt-question-form-title">New Question</h3>
+                <div class="bv-qt-qform">
+                    <h4 id="bv-qt-question-form-title">New Question</h4>
                     <table class="form-table">
                         <tr>
                             <th scope="row"><label for="bv-qt-q-type">Type</label></th>
@@ -784,7 +784,7 @@ class BV_Questionnaire_Admin {
                             </td>
                         </tr>
                         <tr>
-                            <th scope="row"><label for="bv-qt-q-label">Label <span class="description">(required)</span></label></th>
+                            <th scope="row"><label for="bv-qt-q-label">Label <span style="color:#a00;">*</span></label></th>
                             <td>
                                 <input type="text" id="bv-qt-q-label" class="large-text" placeholder="Question label" />
                             </td>
@@ -796,7 +796,7 @@ class BV_Questionnaire_Admin {
                             </td>
                         </tr>
                         <tr>
-                            <th scope="row"><label for="bv-qt-q-required">Required</label></th>
+                            <th scope="row"><label>Required</label></th>
                             <td>
                                 <label>
                                     <input type="checkbox" id="bv-qt-q-required" value="1" />
@@ -812,8 +812,8 @@ class BV_Questionnaire_Admin {
                         </tr>
                         <tr id="bv-qt-q-options-row" style="display:none;">
                             <th scope="row">
-                                <label for="bv-qt-q-options">Options</label>
-                                <p class="description">Type labels one per line — values auto-generate.<br>You can also use <code>value|Label</code> format.</p>
+                                <label>Options</label>
+                                <p class="description" style="margin:6px 0 0;font-weight:400;">Type labels one per line — values auto-generate.<br><code>value|Label</code> for custom values.</p>
                             </th>
                             <td>
                                 <div class="bv-qt-opts-presets" id="bv-qt-q-opts-presets">
@@ -830,10 +830,10 @@ class BV_Questionnaire_Admin {
                             </td>
                         </tr>
                     </table>
-                    <p style="margin-top:10px;">
+                    <div class="bv-qt-qform-actions">
                         <button type="button" class="bv-qt-save-q-btn button button-primary">Save Question</button>
-                        <button type="button" class="bv-qt-cancel-q-btn button button-secondary">Cancel</button>
-                    </p>
+                        <button type="button" class="bv-qt-cancel-q-btn button">Cancel</button>
+                    </div>
                     <input type="hidden" class="bv-qt-q-edit-id" value="0" />
                     <input type="hidden" class="bv-qt-q-section-id" value="0" />
                 </div>
