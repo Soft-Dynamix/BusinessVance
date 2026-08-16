@@ -1,6 +1,6 @@
 /**
  * BusinessVance Questionnaire Admin — JavaScript
- * @version 2.7.16
+ * @version 2.7.17
  */
 (function($) {
     'use strict';
@@ -187,10 +187,148 @@
 
     // ── Field type visibility helpers ──
     function bvQTNeedsOptions(type) {
-        return (type === 'select' || type === 'radio' || type === 'checkbox' || type === 'range' || type === 'rating' || type === 'repeatable');
+        return (type === 'select' || type === 'radio' || type === 'checkbox');
+    }
+    function bvQTNeedsColumns(type) {
+        return type === 'repeatable';
+    }
+    function bvQTNeedsRange(type) {
+        return type === 'range';
+    }
+    function bvQTNeedsRating(type) {
+        return type === 'rating';
     }
     function bvQTNeedsPlaceholder(type) {
         return !(type === 'heading' || type === 'paragraph' || type === 'checkbox' || type === 'color' || type === 'rating' || type === 'address' || type === 'wysiwyg' || type === 'range' || type === 'time' || type === 'date' || type === 'file');
+    }
+
+    // ── Column Builder (Repeatable Table) ──
+
+    // Column type options for the dropdown
+    var bvQTColTypes = {
+        'text':   { label: 'Text',   icon: ' short_before_widget' },
+        'number': { label: 'Number', icon: '' },
+        'email':  { label: 'Email',  icon: '' },
+        'phone':  { label: 'Phone',  icon: '' },
+        'date':   { label: 'Date',   icon: '' },
+        'url':    { label: 'URL',    icon: '' },
+        'select': { label: 'Select', icon: '' }
+    };
+
+    // Column presets: array of {type, name}
+    var bvQTColPresets = {
+        contact: [
+            { type: 'text', name: 'Full Name' },
+            { type: 'email', name: 'Email Address' },
+            { type: 'phone', name: 'Phone Number' },
+            { type: 'text', name: 'Company' }
+        ],
+        line_items: [
+            { type: 'text', name: 'Item Description' },
+            { type: 'number', name: 'Quantity' },
+            { type: 'number', name: 'Unit Price' }
+        ],
+        references: [
+            { type: 'text', name: 'Full Name' },
+            { type: 'text', name: 'Relationship' },
+            { type: 'email', name: 'Email' },
+            { type: 'phone', name: 'Phone' }
+        ],
+        address_book: [
+            { type: 'text', name: 'Full Name' },
+            { type: 'text', name: 'Street Address' },
+            { type: 'text', name: 'City' },
+            { type: 'text', name: 'Province/State' },
+            { type: 'text', name: 'Postal Code' },
+            { type: 'text', name: 'Country' }
+        ],
+        education: [
+            { type: 'text', name: 'Institution' },
+            { type: 'text', name: 'Qualification/Degree' },
+            { type: 'date', name: 'Start Date' },
+            { type: 'date', name: 'End Date' }
+        ]
+    };
+
+    // Build HTML for a single column row in the builder
+    function bvQTColItemHtml(name, type) {
+        name = name || '';
+        type = type || 'text';
+        var typeOpts = '';
+        $.each(bvQTColTypes, function(t, info) {
+            typeOpts += '<option value="' + t + '"' + (t === type ? ' selected' : '') + '>' + escHtml(info.label) + '</option>';
+        });
+        return '<div class="bv-qt-col-item">'
+            + '<span class="bv-qt-col-drag" title="Drag to reorder">≡</span>'
+            + '<input type="text" class="bv-qt-col-name regular-text" placeholder="Column name" value="' + escAttr(name) + '" />'
+            + '<select class="bv-qt-col-type">' + typeOpts + '</select>'
+            + '<button type="button" class="button button-small bv-qt-col-remove" title="Remove column">&times;</button>'
+            + '</div>';
+    }
+
+    // Update the table preview from column items
+    function bvQTUpdateTablePreview($builder) {
+        var $thead = $builder.find('.bv-qt-preview-thead tr').empty();
+        var $tbody = $builder.find('.bv-qt-preview-tbody tr').empty();
+        var colCount = 0;
+        $builder.find('.bv-qt-col-item').each(function() {
+            var name = $(this).find('.bv-qt-col-name').val().trim() || 'Column';
+            $thead.append('<th>' + escHtml(name) + '</th>');
+            $tbody.append('<td><input type="text" disabled placeholder="…" class="bv-qt-preview-input" /></td>');
+            colCount++;
+        });
+        if (colCount > 0) {
+            $thead.append('<th class="bv-qt-preview-action-col"></th>');
+            $tbody.append('<td class="bv-qt-preview-action-col"><button type="button" disabled class="button button-small" title="Remove row">&times;</button></td>');
+        }
+        $builder.find('.bv-qt-table-preview').toggle(colCount > 0);
+    }
+
+    // Load columns from options array (used when editing an existing question)
+    function bvQTLoadColumns($builder, options) {
+        var $list = $builder.find('.bv-qt-col-list').empty();
+        if (!options || !Array.isArray(options) || options.length === 0) return;
+        $.each(options, function(i, o) {
+            var type, name;
+            if (typeof o === 'object') {
+                type = o.value || 'text';
+                name = o.label || '';
+            } else {
+                type = 'text';
+                name = String(o);
+            }
+            $list.append(bvQTColItemHtml(name, type));
+        });
+        bvQTUpdateTablePreview($builder);
+    }
+
+    // Get columns as pipe-delimited text for saving to backend
+    function bvQTGetColumnsText($builder) {
+        var lines = [];
+        $builder.find('.bv-qt-col-item').each(function() {
+            var type = $(this).find('.bv-qt-col-type').val();
+            var name = $(this).find('.bv-qt-col-name').val().trim();
+            if (name) {
+                lines.push(type + '|' + name);
+            }
+        });
+        return lines.join('\n');
+    }
+
+    // Build options preview for repeatable type in the questions list
+    function bvQTRepeatableOptsPreview(q) {
+        if (!q.options || !Array.isArray(q.options) || q.options.length === 0) return '';
+        var names = [];
+        $.each(q.options, function(i, o) {
+            if (typeof o === 'object') {
+                names.push(o.label || '');
+            } else {
+                names.push(String(o));
+            }
+        });
+        names = names.filter(function(n) { return n !== ''; });
+        if (names.length === 0) return '';
+        return ' <span class="bv-qt-opts-preview">(' + escHtml(names.join(' · ')) + ')</span>';
     }
 
     // Build options preview string from question options array
@@ -208,6 +346,15 @@
     // Build a color-coded type badge
     function bvQTTypeBadge(type) {
         return '<span class="bv-qt-type-badge" data-type="' + escHtml(type) + '">' + escHtml(type) + '</span>';
+    }
+
+    // Build star HTML for rating preview
+    function bvQTRatingStarsHtml(count) {
+        var html = '';
+        for (var i = 0; i < Math.min(Math.max(count, 1), 10); i++) {
+            html += '&#9733;';
+        }
+        return html;
     }
 
     // ── Template List ──
@@ -333,7 +480,18 @@
             var qList = $('<ol class="bv-qt-questions-list"></ol>');
             $.each(questions, function(j, q) {
                 var reqBadge = q.is_required == 1 ? ' <span class="bv-qt-req-badge">*required</span>' : '';
-                var optsPreview = (q.type === 'radio' || q.type === 'select' || q.type === 'checkbox') ? bvQTOptsPreview(q) : '';
+                var optsPreview = '';
+                if (q.type === 'radio' || q.type === 'select' || q.type === 'checkbox') {
+                    optsPreview = bvQTOptsPreview(q);
+                } else if (q.type === 'repeatable') {
+                    optsPreview = bvQTRepeatableOptsPreview(q);
+                } else if (q.type === 'range') {
+                    var rn = q.options || [];
+                    optsPreview = ' <span class="bv-qt-opts-preview">(' + escHtml((rn[0] || '0') + ' → ' + (rn[1] || '100') + (rn[2] && rn[2] !== '1' ? ', step ' + rn[2] : '')) + ')</span>';
+                } else if (q.type === 'rating') {
+                    var rs = q.options || [];
+                    optsPreview = ' <span class="bv-qt-opts-preview">(' + escHtml((rs[0] || '5') + ' stars') + ')</span>';
+                }
                 var subInfo = '';
                 var subParts = [];
                 if (q.placeholder) subParts.push('placeholder: ' + escHtml(q.placeholder));
@@ -692,7 +850,22 @@
                 .replace(/id="bv-qt-q-required"/g, 'id="bvq-new-required"')
                 .replace(/id="bv-qt-q-help-text"/g, 'id="bvq-new-help"')
                 .replace(/id="bv-qt-q-options-row"/g, 'id="bvq-new-options-row" class="bv-qt-new-q-options-row"')
+                .replace(/id="bv-qt-q-opts-presets"/g, 'id="bvq-new-opts-presets"')
                 .replace(/id="bv-qt-q-options"/g, 'id="bvq-new-options"')
+                .replace(/id="bv-qt-q-cols-row"/g, 'id="bvq-new-cols-row" class="bv-qt-new-q-cols-row"')
+                .replace(/id="bv-qt-q-col-builder"/g, 'id="bvq-new-col-builder"')
+                .replace(/id="bv-qt-q-col-list"/g, 'id="bvq-new-col-list"')
+                .replace(/id="bv-qt-q-col-add"/g, 'id="bvq-new-col-add"')
+                .replace(/id="bv-qt-q-table-preview"/g, 'id="bvq-new-table-preview"')
+                .replace(/id="bv-qt-q-preview-thead"/g, 'id="bvq-new-preview-thead"')
+                .replace(/id="bv-qt-q-preview-tbody"/g, 'id="bvq-new-preview-tbody"')
+                .replace(/id="bv-qt-q-range-row"/g, 'id="bvq-new-range-row" class="bv-qt-new-q-range-row"')
+                .replace(/id="bv-qt-q-range-min"/g, 'id="bvq-new-range-min"')
+                .replace(/id="bv-qt-q-range-max"/g, 'id="bvq-new-range-max"')
+                .replace(/id="bv-qt-q-range-step"/g, 'id="bvq-new-range-step"')
+                .replace(/id="bv-qt-q-rating-row"/g, 'id="bvq-new-rating-row" class="bv-qt-new-q-rating-row"')
+                .replace(/id="bv-qt-q-rating-stars"/g, 'id="bvq-new-rating-stars"')
+                .replace(/id="bv-qt-q-rating-preview"/g, 'id="bvq-new-rating-preview"')
                 .replace(/bv-qt-save-q-btn/g, 'bv-qt-save-new-q')
                 .replace(/bv-qt-cancel-q-btn/g, 'bv-qt-cancel-new-q');
 
@@ -707,10 +880,20 @@
             // Insert after the Add Question button wrapper
             $btn.closest('.bv-qt-add-q-wrap').after(wrapper);
 
-            // Initial toggle for options/placeholder visibility
+            // Initial toggle for options/placeholder/columns/range/rating visibility
             var initType = wrapper.find('#bvq-new-type').val();
             wrapper.find('.bv-qt-new-q-options-row').toggle(bvQTNeedsOptions(initType));
+            wrapper.find('.bv-qt-new-q-cols-row').toggle(bvQTNeedsColumns(initType));
+            wrapper.find('.bv-qt-new-q-range-row').toggle(bvQTNeedsRange(initType));
+            wrapper.find('.bv-qt-new-q-rating-row').toggle(bvQTNeedsRating(initType));
             wrapper.find('.bv-qt-new-q-placeholder-row').toggle(bvQTNeedsPlaceholder(initType));
+
+            // Initialize column builder with default columns if repeatable
+            if (bvQTNeedsColumns(initType)) {
+                var $colBuilder = wrapper.find('#bvq-new-col-builder');
+                $colBuilder.find('.bv-qt-col-list').append(bvQTColItemHtml('Column 1', 'text'));
+                bvQTUpdateTablePreview($colBuilder);
+            }
 
             // Mark placeholder/help as not user-edited initially
             wrapper.find('#bvq-new-placeholder').removeData('user-edited');
@@ -728,14 +911,25 @@
             wrapper[0].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         });
 
-        // Toggle options/placeholder visibility in new question form
+        // Toggle options/placeholder/columns/range/rating visibility in new question form
         $(document).on('change', '.bv-qt-new-q-type-select', function() {
             var t = $(this).val();
             var $form = $(this).closest('.bv-qt-inline-q-form');
             $form.find('.bv-qt-new-q-options-row').toggle(bvQTNeedsOptions(t));
+            $form.find('.bv-qt-new-q-cols-row').toggle(bvQTNeedsColumns(t));
+            $form.find('.bv-qt-new-q-range-row').toggle(bvQTNeedsRange(t));
+            $form.find('.bv-qt-new-q-rating-row').toggle(bvQTNeedsRating(t));
             $form.find('.bv-qt-new-q-placeholder-row').toggle(bvQTNeedsPlaceholder(t));
             // Apply smart defaults on type change
             bvQTApplyTypeDefaults($(this), $form.find('#bvq-new-placeholder'), $form.find('#bvq-new-help'));
+            // Initialize column builder when switching to repeatable
+            if (bvQTNeedsColumns(t)) {
+                var $colBuilder = $form.find('#bvq-new-col-builder');
+                if ($colBuilder.find('.bv-qt-col-item').length === 0) {
+                    $colBuilder.find('.bv-qt-col-list').append(bvQTColItemHtml('Column 1', 'text'));
+                    bvQTUpdateTablePreview($colBuilder);
+                }
+            }
         });
 
         // Save new question (from inline add form)
@@ -746,16 +940,29 @@
             var label = $form.find('#bvq-new-label').val().trim();
             if (!label) { alert('Question label is required.'); $form.find('#bvq-new-label').focus(); return; }
             bvQTBtnLoading($btn, true, 'Save');
-            var rawOpts = $form.find('#bvq-new-options').val();
+            var type = $form.find('#bvq-new-type').val();
+            var optionsText = '';
+            if (bvQTNeedsOptions(type)) {
+                optionsText = bvQTProcessOptionsText($form.find('#bvq-new-options').val());
+            } else if (bvQTNeedsColumns(type)) {
+                optionsText = bvQTGetColumnsText($form.find('#bvq-new-col-builder'));
+            } else if (bvQTNeedsRange(type)) {
+                var min = $form.find('#bvq-new-range-min').val() || '0';
+                var max = $form.find('#bvq-new-range-max').val() || '100';
+                var step = $form.find('#bvq-new-range-step').val() || '1';
+                optionsText = min + '\n' + max + '\n' + step;
+            } else if (bvQTNeedsRating(type)) {
+                optionsText = $form.find('#bvq-new-rating-stars').val() || '5';
+            }
             $.post(ajaxurl, {
                 action: 'bv_qt_save_question', nonce: BVQT.nonce,
                 id: 0, section_id: sid,
-                type: $form.find('#bvq-new-type').val(),
+                type: type,
                 label: label,
                 placeholder: $form.find('#bvq-new-placeholder').val(),
                 is_required: $form.find('#bvq-new-required').is(':checked') ? 1 : 0,
                 help_text: $form.find('#bvq-new-help').val(),
-                options_text: bvQTProcessOptionsText(rawOpts)
+                options_text: optionsText
             }, function(res) {
                 bvQTBtnLoading($btn, false);
                 if (!res.success) { alert(res.data.message); return; }
@@ -802,21 +1009,46 @@
 
                 var optsText = '';
                 var optsLabelsOnly = '';
-                if (q.options && Array.isArray(q.options)) {
+                if (q.options && Array.isArray(q.options) && bvQTNeedsOptions(q.type)) {
                     $.each(q.options, function(i, o) {
                         var v = typeof o === 'object' ? (o.value || '') : o;
                         var l = typeof o === 'object' ? (o.label || '') : o;
                         optsText += v + '|' + l + '\n';
-                        // For display: show labels only (existing options already have values)
                         if (l) optsLabelsOnly += l + '\n';
                     });
                 }
-                // Show labels-only in the textarea (cleaner UX); values preserved on save
                 var displayOpts = optsLabelsOnly.trim() || optsText.trim();
 
-                // Check visibility for options and placeholder
+                // Range values from options
+                var rangeMin = '0', rangeMax = '100', rangeStep = '1';
+                if (q.type === 'range' && q.options && Array.isArray(q.options)) {
+                    rangeMin = q.options[0] || '0';
+                    rangeMax = q.options[1] || '100';
+                    rangeStep = q.options[2] || '1';
+                }
+
+                // Rating stars from options
+                var ratingStars = '5';
+                if (q.type === 'rating' && q.options && Array.isArray(q.options) && q.options.length > 0) {
+                    ratingStars = String(q.options[0]).replace(/[^0-9]/g, '') || '5';
+                }
+
+                // Check visibility for options, columns, range, rating and placeholder
                 var showOpts = bvQTNeedsOptions(q.type);
+                var showCols = bvQTNeedsColumns(q.type);
+                var showRange = bvQTNeedsRange(q.type);
+                var showRating = bvQTNeedsRating(q.type);
                 var showPH = bvQTNeedsPlaceholder(q.type);
+
+                // Build column presets HTML
+                var colPresetsHtml = '<div class="bv-qt-col-presets-row">'
+                    + '<span class="bv-qt-opts-presets-label">Presets:</span>'
+                    + '<button type="button" class="button button-small bv-qt-col-preset-btn" data-col-preset="contact">Contact Info</button>'
+                    + '<button type="button" class="button button-small bv-qt-col-preset-btn" data-col-preset="line_items">Line Items</button>'
+                    + '<button type="button" class="button button-small bv-qt-col-preset-btn" data-col-preset="references">References</button>'
+                    + '<button type="button" class="button button-small bv-qt-col-preset-btn" data-col-preset="address_book">Address Book</button>'
+                    + '<button type="button" class="button button-small bv-qt-col-preset-btn" data-col-preset="education">Education</button>'
+                    + '</div>';
 
                 // Build form using SAME table.form-table layout as the add form
                 var formHtml = '<div class="bv-qt-edit-q-form">'
@@ -842,6 +1074,7 @@
                     + '<th scope="row"><label for="bvq-help">Help Text</label></th>'
                     + '<td><input type="text" id="bvq-help" class="large-text" value="' + escAttr(q.help_text || '') + '" placeholder="Optional help text shown below the field" /></td>'
                     + '</tr>'
+                    // Options row (select/radio/checkbox)
                     + '<tr class="bvq-options-row"' + (showOpts ? '' : ' style="display:none;"') + '>'
                     + '<th scope="row">'
                     + '<label>Options</label>'
@@ -852,6 +1085,54 @@
                     + '<textarea id="bvq-options" rows="4" class="large-text" placeholder="Option Label&#10;Another Option">' + escHtml(displayOpts) + '</textarea>'
                     + '</td>'
                     + '</tr>'
+                    // Columns row (repeatable table)
+                    + '<tr class="bvq-cols-row"' + (showCols ? '' : ' style="display:none;"') + '>'
+                    + '<th scope="row">'
+                    + '<label>Table Columns</label>'
+                    + '<p class="description" style="margin:6px 0 0;font-weight:400;">Define the columns for the repeatable table. Users can add/remove rows when filling out the form.</p>'
+                    + '</th>'
+                    + '<td>'
+                    + '<div class="bv-qt-col-builder" id="bvq-edit-col-builder">'
+                    + colPresetsHtml
+                    + '<div class="bv-qt-col-list" id="bvq-edit-col-list"></div>'
+                    + '<button type="button" class="button button-small bv-qt-col-add-btn" id="bvq-edit-col-add">'
+                    + '<span class="dashicons dashicons-plus-alt2" style="margin-top:3px;margin-right:3px;font-size:14px;"></span>Add Column'
+                    + '</button>'
+                    + '<div class="bv-qt-table-preview" id="bvq-edit-table-preview">'
+                    + '<div class="bv-qt-table-preview-label">Preview:</div>'
+                    + '<table><thead id="bvq-edit-preview-thead"><tr></tr></thead><tbody id="bvq-edit-preview-tbody"><tr></tr></tbody></table>'
+                    + '</div>'
+                    + '</div>'
+                    + '</td>'
+                    + '</tr>'
+                    // Range row
+                    + '<tr class="bvq-range-row"' + (showRange ? '' : ' style="display:none;"') + '>'
+                    + '<th scope="row">'
+                    + '<label>Range Settings</label>'
+                    + '<p class="description" style="margin:6px 0 0;font-weight:400;">Set the slider\'s minimum, maximum, and step values.</p>'
+                    + '</th>'
+                    + '<td>'
+                    + '<div class="bv-qt-range-inputs">'
+                    + '<div class="bv-qt-range-field"><label for="bvq-range-min">Min</label><input type="number" id="bvq-range-min" class="small-text" value="' + escAttr(rangeMin) + '" /></div>'
+                    + '<div class="bv-qt-range-field"><label for="bvq-range-max">Max</label><input type="number" id="bvq-range-max" class="small-text" value="' + escAttr(rangeMax) + '" /></div>'
+                    + '<div class="bv-qt-range-field"><label for="bvq-range-step">Step</label><input type="number" id="bvq-range-step" class="small-text" value="' + escAttr(rangeStep) + '" min="0.01" step="any" /></div>'
+                    + '</div>'
+                    + '</td>'
+                    + '</tr>'
+                    // Rating row
+                    + '<tr class="bvq-rating-row"' + (showRating ? '' : ' style="display:none;"') + '>'
+                    + '<th scope="row">'
+                    + '<label>Rating Settings</label>'
+                    + '<p class="description" style="margin:6px 0 0;font-weight:400;">Set the maximum number of stars.</p>'
+                    + '</th>'
+                    + '<td>'
+                    + '<div class="bv-qt-rating-inputs">'
+                    + '<label for="bvq-rating-stars">Stars</label>'
+                    + '<input type="number" id="bvq-rating-stars" class="small-text" value="' + escAttr(ratingStars) + '" min="1" max="10" />'
+                    + '<span class="bv-qt-rating-preview" id="bvq-edit-rating-preview">' + bvQTRatingStarsHtml(parseInt(ratingStars, 10) || 5) + '</span>'
+                    + '</div>'
+                    + '</td>'
+                    + '</tr>'
                     + '</table>'
                     + '<div class="bv-qt-qform-actions">'
                     + '<button type="button" class="button button-primary" id="bvq-save">Save Question</button> '
@@ -859,6 +1140,12 @@
                     + '</div>'
                     + '</div>';
                 $btn.closest('li').after(formHtml);
+
+                // Load columns into the column builder if repeatable
+                if (showCols) {
+                    bvQTLoadColumns($('#bvq-edit-col-builder'), q.options || []);
+                }
+
                 // Scroll into view
                 $('.bv-qt-edit-q-form')[0].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }).fail(function() {
@@ -867,12 +1154,23 @@
             });
         });
 
-        // Toggle options field based on type (for edit question form)
+        // Toggle options/placeholder/columns/range/rating visibility for edit form
         $(document).on('change', '#bvq-type', function() {
             var t = $(this).val();
             var $form = $(this).closest('.bv-qt-edit-q-form');
             $form.find('.bvq-options-row').toggle(bvQTNeedsOptions(t));
+            $form.find('.bvq-cols-row').toggle(bvQTNeedsColumns(t));
+            $form.find('.bvq-range-row').toggle(bvQTNeedsRange(t));
+            $form.find('.bvq-rating-row').toggle(bvQTNeedsRating(t));
             $form.find('.bvq-placeholder-row').toggle(bvQTNeedsPlaceholder(t));
+            // Initialize column builder when switching to repeatable
+            if (bvQTNeedsColumns(t)) {
+                var $colBuilder = $form.find('#bvq-edit-col-builder');
+                if ($colBuilder.find('.bv-qt-col-item').length === 0) {
+                    $colBuilder.find('.bv-qt-col-list').append(bvQTColItemHtml('Column 1', 'text'));
+                    bvQTUpdateTablePreview($colBuilder);
+                }
+            }
         });
 
         // Save question edit
@@ -883,16 +1181,29 @@
             var label = $('#bvq-label').val().trim();
             if (!label) { alert('Question label is required.'); $('#bvq-label').focus(); return; }
             bvQTBtnLoading($btn, true, 'Save');
-            var rawOpts = $('#bvq-options').val();
+            var type = $('#bvq-type').val();
+            var optionsText = '';
+            if (bvQTNeedsOptions(type)) {
+                optionsText = bvQTProcessOptionsText($('#bvq-options').val());
+            } else if (bvQTNeedsColumns(type)) {
+                optionsText = bvQTGetColumnsText($('#bvq-edit-col-builder'));
+            } else if (bvQTNeedsRange(type)) {
+                var min = $('#bvq-range-min').val() || '0';
+                var max = $('#bvq-range-max').val() || '100';
+                var step = $('#bvq-range-step').val() || '1';
+                optionsText = min + '\n' + max + '\n' + step;
+            } else if (bvQTNeedsRating(type)) {
+                optionsText = $('#bvq-rating-stars').val() || '5';
+            }
             $.post(ajaxurl, {
                 action: 'bv_qt_save_question', nonce: BVQT.nonce,
                 id: qid, section_id: sid,
-                type: $('#bvq-type').val(),
+                type: type,
                 label: label,
                 placeholder: $('#bvq-placeholder').val(),
                 is_required: $('#bvq-required').is(':checked') ? 1 : 0,
                 help_text: $('#bvq-help').val(),
-                options_text: bvQTProcessOptionsText(rawOpts)
+                options_text: optionsText
             }, function(res) {
                 bvQTBtnLoading($btn, false);
                 if (res.success) {
@@ -956,6 +1267,65 @@
         });
         $(document).on('input', '#bvq-new-help', function() {
             $(this).data('user-edited', true);
+        });
+
+        // ── Column Builder Event Handlers ──
+
+        // Add column button (works for both new and edit forms)
+        $(document).on('click', '.bv-qt-col-add-btn', function() {
+            var $builder = $(this).closest('.bv-qt-col-builder');
+            $builder.find('.bv-qt-col-list').append(bvQTColItemHtml('', 'text'));
+            bvQTUpdateTablePreview($builder);
+            // Focus the new column name input
+            $builder.find('.bv-qt-col-item:last .bv-qt-col-name').focus();
+        });
+
+        // Remove column button
+        $(document).on('click', '.bv-qt-col-remove', function() {
+            var $builder = $(this).closest('.bv-qt-col-builder');
+            // Don't allow removing the last column
+            if ($builder.find('.bv-qt-col-item').length <= 1) return;
+            $(this).closest('.bv-qt-col-item').slideUp(150, function() {
+                $(this).remove();
+                bvQTUpdateTablePreview($builder);
+            });
+        });
+
+        // Update preview when column name changes
+        $(document).on('input', '.bv-qt-col-name', function() {
+            bvQTUpdateTablePreview($(this).closest('.bv-qt-col-builder'));
+        });
+
+        // Update preview when column type changes
+        $(document).on('change', '.bv-qt-col-type', function() {
+            bvQTUpdateTablePreview($(this).closest('.bv-qt-col-builder'));
+        });
+
+        // Column presets (works for both new and edit forms)
+        $(document).on('click', '.bv-qt-col-preset-btn', function() {
+            var presetKey = $(this).data('col-preset');
+            var cols = bvQTColPresets[presetKey];
+            if (!cols) return;
+            var $builder = $(this).closest('.bv-qt-col-builder');
+            var $list = $builder.find('.bv-qt-col-list').empty();
+            $.each(cols, function(i, col) {
+                $list.append(bvQTColItemHtml(col.name, col.type));
+            });
+            bvQTUpdateTablePreview($builder);
+        });
+
+        // ── Rating Star Preview Update ──
+        $(document).on('input', '#bvq-new-rating-stars, #bvq-rating-stars', function() {
+            var count = parseInt($(this).val(), 10) || 5;
+            count = Math.min(Math.max(count, 1), 10);
+            var $preview = $(this).siblings('.bv-qt-rating-preview');
+            if ($preview.length === 0) {
+                // For edit form, find by ID
+                $preview = $('#bvq-edit-rating-preview');
+            }
+            if ($preview.length) {
+                $preview.html(bvQTRatingStarsHtml(count));
+            }
         });
 
         // ── Duplicate Question (within same section) ──

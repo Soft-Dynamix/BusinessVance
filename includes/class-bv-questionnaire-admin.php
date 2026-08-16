@@ -471,6 +471,36 @@ class BV_Questionnaire_Admin {
                     );
                 }
             }
+        } elseif ( $type === 'range' && ! empty( $options_text ) ) {
+            // Range: parse as min\nmax\nstep (values only, stored as simple string array)
+            $parts = array_map( 'trim', explode( "\n", $options_text ) );
+            $parts = array_filter( $parts, function( $p ) { return $p !== ''; });
+            $options = array_values( $parts );
+        } elseif ( $type === 'rating' && ! empty( $options_text ) ) {
+            // Rating: parse as stars count (single value, stored as simple string array)
+            $options = array( trim( $options_text ) );
+        } elseif ( $type === 'repeatable' && ! empty( $options_text ) ) {
+            // Repeatable table: parse as type|ColumnName pairs (one per line)
+            // type is the column input type, ColumnName is the header label
+            $lines = explode( "\n", $options_text );
+            foreach ( $lines as $line ) {
+                $line = trim( $line );
+                if ( '' === $line ) {
+                    continue;
+                }
+                if ( strpos( $line, '|' ) !== false ) {
+                    $parts = explode( '|', $line, 2 );
+                    $options[] = array(
+                        'value' => sanitize_text_field( trim( $parts[0] ) ), // column type
+                        'label' => sanitize_text_field( trim( $parts[1] ) ), // column name
+                    );
+                } else {
+                    $options[] = array(
+                        'value' => 'text',
+                        'label' => sanitize_text_field( $line ),
+                    );
+                }
+            }
         }
 
         $options_json = wp_json_encode( $options );
@@ -813,7 +843,7 @@ class BV_Questionnaire_Admin {
                         <tr id="bv-qt-q-options-row" style="display:none;">
                             <th scope="row">
                                 <label>Options</label>
-                                <p class="description" style="margin:6px 0 0;font-weight:400;">Type labels one per line — values auto-generate.<br><code>value|Label</code> for custom values.</p>
+                                <p class="description bv-qt-opts-desc" style="margin:6px 0 0;font-weight:400;">Type labels one per line — values auto-generate.<br><code>value|Label</code> for custom values.</p>
                             </th>
                             <td>
                                 <div class="bv-qt-opts-presets" id="bv-qt-q-opts-presets">
@@ -827,6 +857,75 @@ class BV_Questionnaire_Admin {
                                     <button type="button" class="button button-small bv-qt-preset-btn" data-preset="rating10">Rating 1-10</button>
                                 </div>
                                 <textarea id="bv-qt-q-options" rows="4" class="large-text" placeholder="Option Label&#10;Another Option&#10;Third Option"></textarea>
+                            </td>
+                        </tr>
+                        <!-- Repeatable Table Column Builder -->
+                        <tr id="bv-qt-q-cols-row" style="display:none;">
+                            <th scope="row">
+                                <label>Table Columns</label>
+                                <p class="description" style="margin:6px 0 0;font-weight:400;">Define the columns for the repeatable table. Users can add/remove rows when filling out the form.</p>
+                            </th>
+                            <td>
+                                <div class="bv-qt-col-builder" id="bv-qt-q-col-builder">
+                                    <div class="bv-qt-col-presets-row">
+                                        <span class="bv-qt-opts-presets-label">Presets:</span>
+                                        <button type="button" class="button button-small bv-qt-col-preset-btn" data-col-preset="contact">Contact Info</button>
+                                        <button type="button" class="button button-small bv-qt-col-preset-btn" data-col-preset="line_items">Line Items</button>
+                                        <button type="button" class="button button-small bv-qt-col-preset-btn" data-col-preset="references">References</button>
+                                        <button type="button" class="button button-small bv-qt-col-preset-btn" data-col-preset="address_book">Address Book</button>
+                                        <button type="button" class="button button-small bv-qt-col-preset-btn" data-col-preset="education">Education</button>
+                                    </div>
+                                    <div class="bv-qt-col-list" id="bv-qt-q-col-list">
+                                        <!-- Columns rendered by JS -->
+                                    </div>
+                                    <button type="button" class="button button-small bv-qt-col-add-btn" id="bv-qt-q-col-add">
+                                        <span class="dashicons dashicons-plus-alt2" style="margin-top:3px;margin-right:3px;font-size:14px;"></span>Add Column
+                                    </button>
+                                    <div class="bv-qt-table-preview" id="bv-qt-q-table-preview">
+                                        <div class="bv-qt-table-preview-label">Preview:</div>
+                                        <table>
+                                            <thead id="bv-qt-q-preview-thead"><tr></tr></thead>
+                                            <tbody id="bv-qt-q-preview-tbody"><tr></tr></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        <!-- Range Settings -->
+                        <tr id="bv-qt-q-range-row" style="display:none;">
+                            <th scope="row">
+                                <label>Range Settings</label>
+                                <p class="description" style="margin:6px 0 0;font-weight:400;">Set the slider's minimum, maximum, and step values.</p>
+                            </th>
+                            <td>
+                                <div class="bv-qt-range-inputs">
+                                    <div class="bv-qt-range-field">
+                                        <label for="bv-qt-q-range-min">Min</label>
+                                        <input type="number" id="bv-qt-q-range-min" class="small-text" value="0" />
+                                    </div>
+                                    <div class="bv-qt-range-field">
+                                        <label for="bv-qt-q-range-max">Max</label>
+                                        <input type="number" id="bv-qt-q-range-max" class="small-text" value="100" />
+                                    </div>
+                                    <div class="bv-qt-range-field">
+                                        <label for="bv-qt-q-range-step">Step</label>
+                                        <input type="number" id="bv-qt-q-range-step" class="small-text" value="1" min="0.01" step="any" />
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        <!-- Rating Settings -->
+                        <tr id="bv-qt-q-rating-row" style="display:none;">
+                            <th scope="row">
+                                <label>Rating Settings</label>
+                                <p class="description" style="margin:6px 0 0;font-weight:400;">Set the maximum number of stars.</p>
+                            </th>
+                            <td>
+                                <div class="bv-qt-rating-inputs">
+                                    <label for="bv-qt-q-rating-stars">Stars</label>
+                                    <input type="number" id="bv-qt-q-rating-stars" class="small-text" value="5" min="1" max="10" />
+                                    <span class="bv-qt-rating-preview" id="bv-qt-q-rating-preview">&#9733;&#9733;&#9733;&#9733;&#9733;</span>
+                                </div>
                             </td>
                         </tr>
                     </table>
