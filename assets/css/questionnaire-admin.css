@@ -196,6 +196,14 @@
 .bv-qt-type-badge[data-type="heading"]     { background: #f3f4f6; color: #374151; font-weight: 700; }
 .bv-qt-type-badge[data-type="paragraph"]   { background: #f3f4f6; color: #374151; font-weight: 700; }
 .bv-qt-type-badge[data-type="file"]        { background: #fee2e2; color: #991b1b; }
+.bv-qt-type-badge[data-type="url"]         { background: #dbeafe; color: #1e40af; }
+.bv-qt-type-badge[data-type="time"]        { background: #fce7f3; color: #9d174d; }
+.bv-qt-type-badge[data-type="range"]       { background: #ede9fe; color: #6d28d9; }
+.bv-qt-type-badge[data-type="color"]       { background: #fee2e2; color: #991b1b; }
+.bv-qt-type-badge[data-type="rating"]      { background: #fef3c7; color: #92400e; }
+.bv-qt-type-badge[data-type="address"]     { background: #cffafe; color: #155e75; }
+.bv-qt-type-badge[data-type="repeatable"]  { background: #cffafe; color: #155e75; }
+.bv-qt-type-badge[data-type="wysiwyg"]     { background: #ede9fe; color: #6d28d9; }
 
 /* Required badge */
 .bv-qt-req-badge {

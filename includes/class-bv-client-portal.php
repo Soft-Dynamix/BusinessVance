@@ -67,6 +67,42 @@ class BV_Client_Portal {
                 'ajax_url' => admin_url( 'admin-ajax.php' ),
                 'nonce'    => wp_create_nonce( 'bv_portal_action' ),
             ) );
+            // Inline JS for new field types: star rating, repeatable table, other option toggle
+            wp_add_inline_script( 'bv-client-portal', "
+jQuery(function($){
+    // Star rating click handler
+    $(document).on('click', '.bv-q-star', function(){
+        var val = $(this).data('val');
+        var wrap = $(this).closest('.bv-q-rating-wrap');
+        wrap.find('.bv-q-star').each(function(){
+            $(this).css('color', $(this).data('val') <= val ? '#f59e0b' : '#d1d5db');
+        });
+        wrap.find('input[type=hidden]').val(val);
+    });
+    // Repeatable table: add row
+    $(document).on('click', '.bv-q-rep-add-row', function(){
+        var table = $(this).closest('.bv-q-repeatable-wrap').find('tbody');
+        var lastRow = table.find('tr:last');
+        var rowHtml = lastRow.length ? lastRow.html() : '<td><input type=\"text\" class=\"bv-q-rep-cell\" /></td>';
+        var newIdx = table.find('tr').length;
+        var newRow = $('<tr></tr>');
+        var cells = lastRow.find('input').length || 1;
+        for(var c=0; c<cells; c++){
+            newRow.append('<td><input type=\"text\" name=\"' + table.closest('[data-qid]').data('qid') + '[' + newIdx + '][' + c + ']\" class=\"bv-q-rep-cell\" /></td>');
+        }
+        newRow.append('<td><button type=\"button\" class=\"bv-q-rep-remove\" title=\"Remove row\">&times;</button></td>');
+        table.append(newRow);
+    });
+    // Repeatable table: remove row
+    $(document).on('click', '.bv-q-rep-remove', function(){
+        var tbody = $(this).closest('tbody');
+        if(tbody.find('tr').length > 1) $(this).closest('tr').remove();
+    });
+    // Other option toggle (radio and checkbox)
+    $(document).on('change', '.bv-q-other-option input[type=radio], .bv-q-other-option input[type=checkbox]', function(){
+        $(this).closest('.bv-q-other-option').find('.bv-q-other-input').toggle(this.checked);
+    });
+});" );
         }
     }
 
@@ -1339,15 +1375,21 @@ class BV_Client_Portal {
                             </select>
                         <?php elseif ( $q->type === 'radio' && is_array( $options ) ) : ?>
                             <div class="bv-q-radio-group">
-                                <?php foreach ( $options as $i => $opt ) : ?>
-                                <label class="bv-q-radio"><input type="radio" id="q_<?php echo $qid; ?>_<?php echo $i; ?>" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( is_array($opt) ? $opt['value'] ?? $opt[0] : $opt ); ?>" <?php checked( $val, is_array($opt) ? $opt['value'] ?? $opt[0] : $opt ); ?> <?php echo $req; ?> /><span><?php echo esc_html( is_array($opt) ? $opt['label'] ?? $opt[1] : $opt ); ?></span></label>
+                                <?php $has_other = false; foreach ( $options as $i => $opt ) : $ov = is_array($opt) ? $opt['value'] ?? $opt[0] : $opt; if ( $ov === '__other__' ) { $has_other = true; continue; } ?>
+                                <label class="bv-q-radio"><input type="radio" id="q_<?php echo $qid; ?>_<?php echo $i; ?>" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( $ov ); ?>" <?php checked( $val, $ov ); ?> <?php echo $req; ?> /><span><?php echo esc_html( is_array($opt) ? $opt['label'] ?? $opt[1] : $opt ); ?></span></label>
                                 <?php endforeach; ?>
+                                <?php if ( $has_other ) : ?>
+                                <label class="bv-q-radio bv-q-other-option"><input type="radio" id="q_<?php echo $qid; ?>_other" name="q_<?php echo $qid; ?>" value="__other__" <?php checked( $val, '__other__' ); ?> <?php echo $req; ?> /><span><?php echo esc_html__( 'Other', 'businessvance-services-manager' ); ?></span> <input type="text" id="q_<?php echo $qid; ?>_other_text" name="q_<?php echo $qid; ?>_other_text" class="bv-q-other-input" placeholder="<?php echo esc_attr__( 'Please specify…', 'businessvance-services-manager' ); ?>" value="<?php echo ( $val === '__other__' ) ? esc_attr( get_post_meta( $project->id, 'bv_q_' . $qid . '_other', true ) ) : ''; ?>" style="display:<?php echo ( $val === '__other__' ) ? 'inline-block' : 'none'; ?>;" /></label>
+                                <?php endif; ?>
                             </div>
                         <?php elseif ( $q->type === 'checkbox' && is_array( $options ) ) : ?>
                             <div class="bv-q-checkbox-group">
-                                <?php $saved = json_decode( $val, true ) ?: array(); foreach ( $options as $opt ) : $ov = is_array($opt) ? $opt['value'] ?? $opt[0] : $opt; ?>
+                                <?php $saved = json_decode( $val, true ) ?: array(); $has_other = false; foreach ( $options as $opt ) : $ov = is_array($opt) ? $opt['value'] ?? $opt[0] : $opt; if ( $ov === '__other__' ) { $has_other = true; continue; } ?>
                                 <label class="bv-q-checkbox"><input type="checkbox" id="q_<?php echo $qid; ?>_<?php echo esc_attr( $ov ); ?>" name="q_<?php echo $qid; ?>[]" value="<?php echo esc_attr( $ov ); ?>" <?php echo in_array( $ov, $saved ) ? 'checked' : ''; ?> /><span><?php echo esc_html( is_array($opt) ? $opt['label'] ?? $opt[1] : $opt ); ?></span></label>
                                 <?php endforeach; ?>
+                                <?php if ( $has_other ) : ?>
+                                <label class="bv-q-checkbox bv-q-other-option"><input type="checkbox" id="q_<?php echo $qid; ?>_other" name="q_<?php echo $qid; ?>[]" value="__other__" <?php echo in_array( '__other__', $saved ) ? 'checked' : ''; ?> /><span><?php echo esc_html__( 'Other', 'businessvance-services-manager' ); ?></span> <input type="text" id="q_<?php echo $qid; ?>_other_text" name="q_<?php echo $qid; ?>_other_text" class="bv-q-other-input" placeholder="<?php echo esc_attr__( 'Please specify…', 'businessvance-services-manager' ); ?>" value="<?php echo in_array( '__other__', $saved ) ? esc_attr( get_post_meta( $project->id, 'bv_q_' . $qid . '_other', true ) ) : ''; ?>" style="display:<?php echo in_array( '__other__', $saved ) ? 'inline-block' : 'none'; ?>;" /></label>
+                                <?php endif; ?>
                             </div>
                         <?php elseif ( $q->type === 'file' ) : ?>
                             <div class="bv-q-file-area">
@@ -1362,6 +1404,42 @@ class BV_Client_Portal {
                             <input type="tel" id="q_<?php echo $qid; ?>" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( $val ); ?>" placeholder="<?php echo esc_attr( $q->placeholder ); ?>" <?php echo $req; ?> />
                         <?php elseif ( $q->type === 'date' ) : ?>
                             <input type="date" id="q_<?php echo $qid; ?>" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( $val ); ?>" <?php echo $req; ?> />
+                        <?php elseif ( $q->type === 'url' ) : ?>
+                            <input type="url" id="q_<?php echo $qid; ?>" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( $val ); ?>" placeholder="<?php echo esc_attr( $q->placeholder ); ?>" <?php echo $req; ?> />
+                        <?php elseif ( $q->type === 'time' ) : ?>
+                            <input type="time" id="q_<?php echo $qid; ?>" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( $val ); ?>" <?php echo $req; ?> />
+                        <?php elseif ( $q->type === 'color' ) : ?>
+                            <input type="color" id="q_<?php echo $qid; ?>" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( $val ) ?: '#000000'; ?>" <?php echo $req; ?> style="width:60px;height:40px;cursor:pointer;" />
+                        <?php elseif ( $q->type === 'range' ) : ?>
+                            <?php $range_min = 0; $range_max = 100; $range_step = 1; if ( is_array( $options ) && count( $options ) >= 2 ) { $range_min = intval( $options[0] ); $range_max = intval( $options[1] ); if ( count( $options ) >= 3 ) $range_step = intval( $options[2] ); } ?>
+                            <div class="bv-q-range-wrap"><input type="range" id="q_<?php echo $qid; ?>" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( $val ) ?: $range_min; ?>" min="<?php echo $range_min; ?>" max="<?php echo $range_max; ?>" step="<?php echo $range_step; ?>" <?php echo $req; ?> oninput="this.nextElementSibling.textContent=this.value" /><output><?php echo esc_html( $val ) ?: $range_min; ?></output></div>
+                        <?php elseif ( $q->type === 'rating' ) : ?>
+                            <?php $stars = 5; $rating_val = intval( $val ) ?: 0; if ( is_array( $options ) && count( $options ) >= 1 ) $stars = max( 1, intval( $options[0] ) ); ?>
+                            <div class="bv-q-rating-wrap" data-qid="<?php echo $qid; ?>">
+                                <?php for ( $si = 1; $si <= $stars; $si++ ) : ?>
+                                <span class="bv-q-star" data-val="<?php echo $si; ?>" style="cursor:pointer;font-size:28px;color:<?php echo $si <= $rating_val ? '#f59e0b' : '#d1d5db'; ?>;">&#9733;</span>
+                                <?php endfor; ?>
+                                <input type="hidden" id="q_<?php echo $qid; ?>" name="q_<?php echo $qid; ?>" value="<?php echo $rating_val; ?>" />
+                            </div>
+                        <?php elseif ( $q->type === 'address' ) : ?>
+                            <?php $addr = json_decode( $val, true ) ?: array(); ?>
+                            <div class="bv-q-address-wrap">
+                                <input type="text" name="q_<?php echo $qid; ?>[street]" value="<?php echo esc_attr( $addr['street'] ?? '' ); ?>" placeholder="<?php echo esc_attr__( 'Street Address', 'businessvance-services-manager' ); ?>" class="bv-q-addr-field" <?php echo $req; ?> />
+                                <div class="bv-q-addr-row"><input type="text" name="q_<?php echo $qid; ?>[city]" value="<?php echo esc_attr( $addr['city'] ?? '' ); ?>" placeholder="<?php echo esc_attr__( 'City', 'businessvance-services-manager' ); ?>" class="bv-q-addr-field" <?php echo $req; ?> /><input type="text" name="q_<?php echo $qid; ?>[state]" value="<?php echo esc_attr( $addr['state'] ?? '' ); ?>" placeholder="<?php echo esc_attr__( 'State/Province', 'businessvance-services-manager' ); ?>" class="bv-q-addr-field" <?php echo $req; ?> /></div>
+                                <div class="bv-q-addr-row"><input type="text" name="q_<?php echo $qid; ?>[zip]" value="<?php echo esc_attr( $addr['zip'] ?? '' ); ?>" placeholder="<?php echo esc_attr__( 'ZIP/Postal Code', 'businessvance-services-manager' ); ?>" class="bv-q-addr-field" <?php echo $req; ?> /><input type="text" name="q_<?php echo $qid; ?>[country]" value="<?php echo esc_attr( $addr['country'] ?? '' ); ?>" placeholder="<?php echo esc_attr__( 'Country', 'businessvance-services-manager' ); ?>" class="bv-q-addr-field" <?php echo $req; ?> /></div>
+                            </div>
+                        <?php elseif ( $q->type === 'repeatable' ) : ?>
+                            <?php $rows = json_decode( $val, true ) ?: array(); $col_defs = array(); if ( is_array( $options ) ) { foreach ( $options as $col ) { $col_defs[] = array( 'name' => is_array($col) ? ($col['label'] ?? $col[1] ?? $col['value'] ?? $col[0]) : $col, 'type' => is_array($col) ? ($col['value'] ?? 'text') : 'text' ); } } ?>
+                            <div class="bv-q-repeatable-wrap" data-qid="<?php echo $qid; ?>">
+                                <div class="bv-q-rep-table"><table><thead><tr><?php foreach ( $col_defs as $col ) : ?><th><?php echo esc_html( $col['name'] ); ?></th><?php endforeach; ?><th style="width:32px;"></th></tr></thead><tbody>
+                                <?php foreach ( $rows as $ri => $row ) : ?>
+                                <tr><?php foreach ( $col_defs as $ci => $col ) : ?><td><input type="text" name="q_<?php echo $qid; ?>[<?php echo $ri; ?>][<?php echo $ci; ?>]" value="<?php echo esc_attr( $row[$ci] ?? '' ); ?>" class="bv-q-rep-cell" /></td><?php endforeach; ?><td><button type="button" class="bv-q-rep-remove" title="Remove row">&times;</button></td></tr>
+                                <?php endforeach; ?>
+                                </tbody></table></div>
+                                <button type="button" class="bv-q-rep-add-row button button-small"><?php echo esc_html__( '+ Add Row', 'businessvance-services-manager' ); ?></button>
+                            </div>
+                        <?php elseif ( $q->type === 'wysiwyg' ) : ?>
+                            <?php wp_editor( $val, 'q_' . $qid, array( 'textarea_name' => 'q_' . $qid, 'textarea_rows' => 6, 'media_buttons' => false, 'teeny' => true, 'quicktags' => true ) ); ?>
                         <?php else : ?>
                             <input type="text" id="q_<?php echo $qid; ?>" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( $val ); ?>" placeholder="<?php echo esc_attr( $q->placeholder ); ?>" <?php echo $req; ?> />
                         <?php endif; ?>

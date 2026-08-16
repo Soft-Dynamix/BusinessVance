@@ -36,6 +36,7 @@
     // ── Options Presets ──
     var bvQTPresets = {
         yes_no:      'Yes\nNo',
+        yes_no_other: 'Yes\nNo\n__other__|Other',
         true_false:  'True\nFalse',
         agree5:      'Strongly Agree\nAgree\nNeutral\nDisagree\nStrongly Disagree',
         satisfaction: 'Very Satisfied\nSatisfied\nNeutral\nDissatisfied\nVery Dissatisfied',
@@ -44,6 +45,7 @@
     };
 
     // Auto-fill option values: if a line has no "|", prepend "slugified_label|"
+    // Exception: __other__ values pass through as-is
     function bvQTAutoFillOptions(text) {
         if (!text) return '';
         return text.split('\n').map(function(line) {
@@ -51,6 +53,8 @@
             if (!line) return '';
             // Already has value|label format — leave as-is
             if (line.indexOf('|') !== -1) return line;
+            // __other__ magic value — preserve as-is
+            if (line === '__other__') return '__other__|Other';
             // Auto-generate value from label
             return slugify(line) + '|' + line;
         }).filter(function(l) { return l !== ''; }).join('\n');
@@ -68,8 +72,16 @@
         'number':   { placeholder: 'Enter a number' },
         'email':    { placeholder: 'email@example.com' },
         'phone':    { placeholder: '+27 ' },
+        'url':      { placeholder: 'https://example.com' },
         'date':     { placeholder: '' },
-        'file':     { placeholder: '', help_text: 'Accepted formats: PDF, DOC, JPG, PNG (max 10MB)' }
+        'time':     { placeholder: '' },
+        'file':     { placeholder: '', help_text: 'Accepted formats: PDF, DOC, JPG, PNG (max 10MB)' },
+        'range':    { placeholder: '', help_text: 'Set options: min|max|step (e.g. 1|10|1)' },
+        'rating':   { placeholder: '', help_text: 'Set options: number of stars (e.g. 5)' },
+        'color':    { placeholder: '', help_text: 'Choose a color' },
+        'address':  { placeholder: '' },
+        'repeatable': { placeholder: '', help_text: 'Set options: column names, one per line' },
+        'wysiwyg':  { placeholder: '' }
     };
 
     function bvQTApplyTypeDefaults($typeSelect, $placeholder, $helpText) {
@@ -571,8 +583,8 @@
 
             // Initial toggle for options/placeholder visibility
             var initType = wrapper.find('#bvq-new-type').val();
-            var showOpts = (initType === 'select' || initType === 'radio' || initType === 'checkbox');
-            var showPH = (initType !== 'heading' && initType !== 'paragraph' && initType !== 'checkbox');
+            var showOpts = (initType === 'select' || initType === 'radio' || initType === 'checkbox' || initType === 'range' || initType === 'rating' || initType === 'repeatable');
+            var showPH = (initType !== 'heading' && initType !== 'paragraph' && initType !== 'checkbox' && initType !== 'color' && initType !== 'rating' && initType !== 'address' && initType !== 'wysiwyg' && initType !== 'range' && initType !== 'time' && initType !== 'date' && initType !== 'file');
             wrapper.find('.bv-qt-new-q-options-row').toggle(showOpts);
             wrapper.find('.bv-qt-new-q-placeholder-row').toggle(showPH);
 
@@ -596,8 +608,8 @@
         $(document).on('change', '.bv-qt-new-q-type-select', function() {
             var t = $(this).val();
             var $form = $(this).closest('.bv-qt-inline-q-form');
-            var showOpts = (t === 'select' || t === 'radio' || t === 'checkbox');
-            var showPH = (t !== 'heading' && t !== 'paragraph' && t !== 'checkbox');
+            var showOpts = (t === 'select' || t === 'radio' || t === 'checkbox' || t === 'range' || t === 'rating' || t === 'repeatable');
+            var showPH = (t !== 'heading' && t !== 'paragraph' && t !== 'checkbox' && t !== 'color' && t !== 'rating' && t !== 'address' && t !== 'wysiwyg' && t !== 'range' && t !== 'time' && t !== 'date' && t !== 'file');
             $form.find('.bv-qt-new-q-options-row').toggle(showOpts);
             $form.find('.bv-qt-new-q-placeholder-row').toggle(showPH);
             // Apply smart defaults on type change
@@ -672,17 +684,36 @@
                 var formHtml = '<div id="bv-qt-q-form-wrap" style="background:#fff;padding:16px;margin:8px 0;border:1px solid #ccd0d4;border-radius:4px;">'
                     + '<h4 style="margin:0 0 12px;">Edit Question</h4>'
                     + '<p><label>Type:</label><br><select id="bvq-type">'
+                    +   '<optgroup label="Basic Inputs">'
                     +   '<option value="text"' + (q.type==='text'?' selected':'') + '>Text</option>'
                     +   '<option value="textarea"' + (q.type==='textarea'?' selected':'') + '>Textarea</option>'
                     +   '<option value="number"' + (q.type==='number'?' selected':'') + '>Number</option>'
                     +   '<option value="email"' + (q.type==='email'?' selected':'') + '>Email</option>'
                     +   '<option value="phone"' + (q.type==='phone'?' selected':'') + '>Phone</option>'
+                    +   '<option value="url"' + (q.type==='url'?' selected':'') + '>URL</option>'
                     +   '<option value="date"' + (q.type==='date'?' selected':'') + '>Date</option>'
-                    +   '<option value="select"' + (q.type==='select'?' selected':'') + '>Select (dropdown)</option>'
+                    +   '<option value="time"' + (q.type==='time'?' selected':'') + '>Time</option>'
+                    +   '</optgroup>'
+                    +   '<optgroup label="Selection">'
+                    +   '<option value="select"' + (q.type==='select'?' selected':'') + '>Select (Dropdown)</option>'
                     +   '<option value="radio"' + (q.type==='radio'?' selected':'') + '>Radio</option>'
                     +   '<option value="checkbox"' + (q.type==='checkbox'?' selected':'') + '>Checkbox</option>'
+                    +   '</optgroup>'
+                    +   '<optgroup label="Specialized">'
+                    +   '<option value="range"' + (q.type==='range'?' selected':'') + '>Range / Slider</option>'
+                    +   '<option value="color"' + (q.type==='color'?' selected':'') + '>Color Picker</option>'
+                    +   '<option value="rating"' + (q.type==='rating'?' selected':'') + '>Star Rating</option>'
+                    +   '<option value="address"' + (q.type==='address'?' selected':'') + '>Address Block</option>'
+                    +   '<option value="repeatable"' + (q.type==='repeatable'?' selected':'') + '>Repeatable Table</option>'
+                    +   '</optgroup>'
+                    +   '<optgroup label="Rich Content">'
+                    +   '<option value="wysiwyg"' + (q.type==='wysiwyg'?' selected':'') + '>Rich Text Editor</option>'
+                    +   '<option value="file"' + (q.type==='file'?' selected':'') + '>File Upload</option>'
+                    +   '</optgroup>'
+                    +   '<optgroup label="Display Only">'
                     +   '<option value="heading"' + (q.type==='heading'?' selected':'') + '>Heading</option>'
                     +   '<option value="paragraph"' + (q.type==='paragraph'?' selected':'') + '>Paragraph</option>'
+                    +   '</optgroup>'
                     + '</select></p>'
                     + '<p><label>Label:</label><br><input type="text" id="bvq-label" class="regular-text" value="' + escAttr(q.label) + '"></p>'
                     + '<p class="bvq-placeholder-row"><label>Placeholder:</label><br><input type="text" id="bvq-placeholder" class="regular-text" value="' + escAttr(q.placeholder || '') + '"></p>'
@@ -692,6 +723,7 @@
                     + '<div class="bv-qt-opts-presets">'
                     +   '<span class="bv-qt-opts-presets-label">Quick fill:</span>'
                     +   '<button type="button" class="button button-small bv-qt-preset-btn bvq-preset-btn" data-preset="yes_no">Yes / No</button>'
+                    +   '<button type="button" class="button button-small bv-qt-preset-btn bvq-preset-btn" data-preset="yes_no_other">Yes / No / Other</button>'
                     +   '<button type="button" class="button button-small bv-qt-preset-btn bvq-preset-btn" data-preset="true_false">True / False</button>'
                     +   '<button type="button" class="button button-small bv-qt-preset-btn bvq-preset-btn" data-preset="agree5">Likert 5</button>'
                     +   '<button type="button" class="button button-small bv-qt-preset-btn bvq-preset-btn" data-preset="satisfaction">Satisfaction</button>'
@@ -712,8 +744,8 @@
         $(document).on('change', '#bvq-type', toggleOptionVisibility);
         function toggleOptionVisibility() {
             var t = $('#bvq-type').val();
-            var showOpts = (t === 'select' || t === 'radio' || t === 'checkbox');
-            var showPH = (t !== 'heading' && t !== 'paragraph' && t !== 'checkbox');
+            var showOpts = (t === 'select' || t === 'radio' || t === 'checkbox' || t === 'range' || t === 'rating' || t === 'repeatable');
+            var showPH = (t !== 'heading' && t !== 'paragraph' && t !== 'checkbox' && t !== 'color' && t !== 'rating' && t !== 'address' && t !== 'wysiwyg' && t !== 'range' && t !== 'time' && t !== 'date' && t !== 'file');
             $('.bvq-options-row').toggle(showOpts);
             $('.bvq-placeholder-row').toggle(showPH);
         }
@@ -886,16 +918,20 @@
         // Question type labels for preview
         var bvDocTypeLabels = {
             'text': 'Text', 'textarea': 'Textarea', 'number': 'Number',
-            'email': 'Email', 'phone': 'Phone', 'date': 'Date',
+            'email': 'Email', 'phone': 'Phone', 'url': 'URL', 'date': 'Date', 'time': 'Time',
             'select': 'Dropdown', 'radio': 'Radio', 'checkbox': 'Checkbox',
+            'range': 'Range / Slider', 'color': 'Color', 'rating': 'Star Rating',
+            'address': 'Address', 'repeatable': 'Repeatable Table', 'wysiwyg': 'Rich Text',
             'heading': 'Heading', 'paragraph': 'Paragraph', 'file': 'File Upload'
         };
 
         // Question type colors for preview badges
         var bvDocTypeColors = {
             'text': '#2271b1', 'textarea': '#2271b1', 'number': '#7e5bf0',
-            'email': '#2271b1', 'phone': '#2271b1', 'date': '#7e5bf0',
+            'email': '#2271b1', 'phone': '#2271b1', 'url': '#2271b1', 'date': '#7e5bf0', 'time': '#7e5bf0',
             'select': '#0e7732', 'radio': '#0e7732', 'checkbox': '#0e7732',
+            'range': '#7e5bf0', 'color': '#b32d2e', 'rating': '#f59e0b',
+            'address': '#0891b2', 'repeatable': '#0891b2', 'wysiwyg': '#7e5bf0',
             'heading': '#646970', 'paragraph': '#646970', 'file': '#b32d2e'
         };
 

@@ -434,6 +434,7 @@ class BV_Questionnaire_Admin {
         $allowed_types = array(
             'text', 'textarea', 'number', 'email', 'phone', 'date',
             'select', 'radio', 'checkbox', 'heading', 'paragraph', 'file',
+            'url', 'time', 'range', 'color', 'address', 'wysiwyg', 'rating', 'repeatable',
         );
 
         if ( ! in_array( $type, $allowed_types, true ) ) {
@@ -749,18 +750,36 @@ class BV_Questionnaire_Admin {
                             <th scope="row"><label for="bv-qt-q-type">Type</label></th>
                             <td>
                                 <select id="bv-qt-q-type" class="bv-qt-q-type-select">
+                                    <optgroup label="Basic Inputs">
                                     <option value="text">Text</option>
                                     <option value="textarea">Textarea</option>
                                     <option value="number">Number</option>
                                     <option value="email">Email</option>
                                     <option value="phone">Phone</option>
+                                    <option value="url">URL</option>
                                     <option value="date">Date</option>
+                                    <option value="time">Time</option>
+                                    </optgroup>
+                                    <optgroup label="Selection">
                                     <option value="select">Select (Dropdown)</option>
                                     <option value="radio">Radio Buttons</option>
                                     <option value="checkbox">Checkboxes</option>
-                                    <option value="heading">Heading (display only)</option>
-                                    <option value="paragraph">Paragraph (display only)</option>
+                                    </optgroup>
+                                    <optgroup label="Specialized">
+                                    <option value="range">Range / Slider</option>
+                                    <option value="color">Color Picker</option>
+                                    <option value="rating">Star Rating</option>
+                                    <option value="address">Address Block</option>
+                                    <option value="repeatable">Repeatable Table</option>
+                                    </optgroup>
+                                    <optgroup label="Rich Content">
+                                    <option value="wysiwyg">Rich Text Editor</option>
                                     <option value="file">File Upload</option>
+                                    </optgroup>
+                                    <optgroup label="Display Only">
+                                    <option value="heading">Heading</option>
+                                    <option value="paragraph">Paragraph</option>
+                                    </optgroup>
                                 </select>
                             </td>
                         </tr>
@@ -800,6 +819,7 @@ class BV_Questionnaire_Admin {
                                 <div class="bv-qt-opts-presets" id="bv-qt-q-opts-presets">
                                     <span class="bv-qt-opts-presets-label">Quick fill:</span>
                                     <button type="button" class="button button-small bv-qt-preset-btn" data-preset="yes_no">Yes / No</button>
+                                    <button type="button" class="button button-small bv-qt-preset-btn" data-preset="yes_no_other">Yes / No / Other</button>
                                     <button type="button" class="button button-small bv-qt-preset-btn" data-preset="true_false">True / False</button>
                                     <button type="button" class="button button-small bv-qt-preset-btn" data-preset="agree5">Likert 5</button>
                                     <button type="button" class="button button-small bv-qt-preset-btn" data-preset="satisfaction">Satisfaction</button>
@@ -904,6 +924,7 @@ class BV_Questionnaire_Admin {
     private static $allowed_question_types = array(
         'text', 'textarea', 'number', 'email', 'phone', 'date',
         'select', 'radio', 'checkbox', 'heading', 'paragraph', 'file',
+        'url', 'time', 'range', 'color', 'address', 'wysiwyg', 'rating', 'repeatable',
     );
 
     /**
