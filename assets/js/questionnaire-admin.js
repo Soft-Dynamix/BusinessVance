@@ -181,6 +181,8 @@
                     + '</div>'
                     + subInfo
                     + ' <span class="bv-qt-q-actions">'
+                    +   '<button class="button button-small bv-qt-move-q-up" data-qid="' + q.id + '" data-sid="' + s.id + '" title="Move up">↑</button> '
+                    +   '<button class="button button-small bv-qt-move-q-down" data-qid="' + q.id + '" data-sid="' + s.id + '" title="Move down">↓</button> '
                     +   '<button class="button button-small bv-qt-edit-q" data-qid="' + q.id + '" data-sid="' + s.id + '">Edit</button> '
                     +   '<button class="button button-small bv-qt-del-q" data-qid="' + q.id + '" style="color:#a00;">Delete</button>'
                     + '</span>');
@@ -445,6 +447,42 @@
         });
 
         // ── Questions ──
+
+        // Move question up/down within its section
+        $(document).on('click', '.bv-qt-move-q-up, .bv-qt-move-q-down', function() {
+            var $btn = $(this);
+            var dir = $btn.hasClass('bv-qt-move-q-up') ? 'up' : 'down';
+            var $li = $btn.closest('li[data-qid]');
+            var $qList = $li.parent('.bv-qt-questions-list');
+
+            if (dir === 'up' && $li.index() === 0) return;
+            if (dir === 'down' && $li.index() === $qList.children('li').length - 1) return;
+
+            var $prev = $li.prev();
+            var $next = $li.next();
+
+            // Visual swap
+            if (dir === 'up') $prev.before($li);
+            else $next.after($li);
+
+            // Collect all question IDs in the current section in new order
+            var ids = [];
+            $qList.children('li[data-qid]').each(function() { ids.push($(this).data('qid')); });
+
+            // Save new order to backend
+            $.post(ajaxurl, { action: 'bv_qt_reorder', nonce: BVQT.nonce, type: 'question', ids: ids.join(',') })
+            .done(function(res) {
+                if (res.success) {
+                    // Re-render to update numbering
+                    editTemplate(getTemplateId());
+                }
+            })
+            .fail(function() {
+                alert('Reorder failed, reverting.');
+                if (dir === 'up') $li.insertBefore($prev);
+                else $li.insertAfter($next);
+            });
+        });
 
         // Add question — INLINE form (reuses hidden template)
         $(document).on('click', '.bv-qt-add-q', function() {

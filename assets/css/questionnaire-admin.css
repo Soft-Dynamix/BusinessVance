@@ -158,6 +158,21 @@
 .bv-qt-q-actions .button:hover {
     background: #f0f0f1;
 }
+.bv-qt-move-q-up,
+.bv-qt-move-q-down {
+    font-size: 14px !important;
+    padding: 2px 8px !important;
+    min-height: 28px !important;
+    line-height: 1.4 !important;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.15s ease;
+}
+.bv-qt-move-q-up:hover,
+.bv-qt-move-q-down:hover {
+    opacity: 1;
+    background: #e7e7e7;
+}
 
 /* Question type badges — color-coded */
 .bv-qt-type-badge {
