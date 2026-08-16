@@ -30,6 +30,7 @@ class BV_Questionnaire_Admin {
         add_action( 'wp_ajax_bv_qt_save_question', array( $this, 'ajax_save_question' ) );
         add_action( 'wp_ajax_bv_qt_delete_question', array( $this, 'ajax_delete_question' ) );
         add_action( 'wp_ajax_bv_qt_reorder', array( $this, 'ajax_reorder' ) );
+        add_action( 'wp_ajax_bv_qt_move_question', array( $this, 'ajax_move_question' ) );
         add_action( 'wp_ajax_bv_qt_import_questionnaires', array( $this, 'ajax_import_questionnaires' ) );
         add_action( 'wp_ajax_bv_qt_import_json', array( $this, 'ajax_import_json' ) );
         add_action( 'wp_ajax_bv_qt_export_json', array( $this, 'ajax_export_json' ) );
@@ -71,7 +72,7 @@ class BV_Questionnaire_Admin {
         wp_enqueue_script(
             'bv-questionnaire-admin-js',
             BV_PLUGIN_URL . 'assets/js/questionnaire-admin.js',
-            array( 'jquery' ),
+            array( 'jquery', 'jquery-ui-sortable' ),
             BV_VERSION,
             true
         );
@@ -616,6 +617,59 @@ class BV_Questionnaire_Admin {
         }
 
         wp_send_json_success( array( 'message' => 'Order updated successfully.' ) );
+    }
+
+    /**
+     * AJAX: Move a question to a different section.
+     *
+     * POST fields: question_id (int), new_section_id (int)
+     */
+    public function ajax_move_question() {
+        $this->verify_nonce();
+
+        global $wpdb;
+        $t = $this->get_tables();
+
+        $question_id   = isset( $_POST['question_id'] ) ? absint( $_POST['question_id'] ) : 0;
+        $new_section_id = isset( $_POST['new_section_id'] ) ? absint( $_POST['new_section_id'] ) : 0;
+
+        if ( ! $question_id || ! $new_section_id ) {
+            wp_send_json_error( array( 'message' => 'Missing question_id or new_section_id.' ) );
+        }
+
+        // Verify the question exists.
+        $question = $wpdb->get_row( $wpdb->prepare( "SELECT id, section_id FROM {$t['questions']} WHERE id = %d", $question_id ) );
+        if ( ! $question ) {
+            wp_send_json_error( array( 'message' => 'Question not found.' ) );
+        }
+
+        // Verify the destination section exists.
+        $section = $wpdb->get_row( $wpdb->prepare( "SELECT id FROM {$t['sections']} WHERE id = %d", $new_section_id ) );
+        if ( ! $section ) {
+            wp_send_json_error( array( 'message' => 'Destination section not found.' ) );
+        }
+
+        // Determine the display_order for the question in the new section (append at end).
+        $max_order = (int) $wpdb->get_var(
+            $wpdb->prepare( "SELECT COALESCE(MAX(display_order), -1) FROM {$t['questions']} WHERE section_id = %d", $new_section_id )
+        );
+
+        $updated = $wpdb->update(
+            $t['questions'],
+            array(
+                'section_id'    => $new_section_id,
+                'display_order' => $max_order + 1,
+            ),
+            array( 'id' => $question_id ),
+            array( '%d', '%d' ),
+            array( '%d' )
+        );
+
+        if ( $updated === false ) {
+            wp_send_json_error( array( 'message' => 'Database error moving question.' ) );
+        }
+
+        wp_send_json_success( array( 'message' => 'Question moved successfully.' ) );
     }
 
     /* ==========================================================================

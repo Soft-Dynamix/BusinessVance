@@ -1,6 +1,6 @@
 /**
  * BusinessVance Questionnaire Admin — JavaScript
- * @version 2.7.17
+ * @version 2.7.18
  */
 (function($) {
     'use strict';
@@ -460,7 +460,8 @@
 
             // Section header with number badge
             var header = $('<div class="bv-qt-section-header"></div>');
-            var headerInner = '<span class="bv-qt-section-num-badge">' + (i + 1) + '</span>'
+            var headerInner = '<span class="bv-qt-section-drag-handle" title="Drag to reorder section"><span class="dashicons dashicons-menu"></span></span>'
+                + '<span class="bv-qt-section-num-badge">' + (i + 1) + '</span>'
                 + '<div style="flex:1;min-width:0;">'
                 +   '<strong>' + escHtml(s.title) + '</strong>'
                 +   (sectionDesc ? '<div class="bv-qt-section-desc">' + escHtml(sectionDesc) + '</div>' : '')
@@ -468,8 +469,8 @@
                 + '<span class="bv-qt-meta">' + questions.length + ' question' + (questions.length !== 1 ? 's' : '') + '</span>'
                 + '<span class="bv-qt-section-actions">'
                 +   '<button class="button button-small bv-qt-toggle-section" data-sid="' + s.id + '">Collapse</button> '
-                +   '<button class="button button-small bv-qt-move-up" data-sid="' + s.id + '" title="Move up">↑</button> '
-                +   '<button class="button button-small bv-qt-move-down" data-sid="' + s.id + '" title="Move down">↓</button> '
+                +   '<button class="button button-small bv-qt-move-up bv-qt-mobile-only" data-sid="' + s.id + '" title="Move up">↑</button> '
+                +   '<button class="button button-small bv-qt-move-down bv-qt-mobile-only" data-sid="' + s.id + '" title="Move down">↓</button> '
                 +   '<button class="button button-small bv-qt-edit-section" data-sid="' + s.id + '">Edit</button> '
                 +   '<button class="button button-small bv-qt-del-section" data-sid="' + s.id + '" style="color:#a00;">Delete</button>'
                 + '</span>';
@@ -501,7 +502,8 @@
                 }
 
                 var qli = $('<li data-qid="' + q.id + '"></li>');
-                qli.html('<div class="bv-qt-q-main-info">'
+                qli.html('<span class="bv-qt-q-drag-handle" title="Drag to reorder or move to another section"><span class="dashicons dashicons-menu"></span></span>'
+                    + '<div class="bv-qt-q-main-info">'
                     +   (j + 1) + '. <strong>' + escHtml(q.label) + '</strong> '
                     +   bvQTTypeBadge(q.type)
                     +   reqBadge
@@ -509,8 +511,8 @@
                     + '</div>'
                     + subInfo
                     + ' <span class="bv-qt-q-actions">'
-                    +   '<button class="button button-small bv-qt-move-q-up" data-qid="' + q.id + '" data-sid="' + s.id + '" title="Move up">↑</button> '
-                    +   '<button class="button button-small bv-qt-move-q-down" data-qid="' + q.id + '" data-sid="' + s.id + '" title="Move down">↓</button> '
+                    +   '<button class="button button-small bv-qt-move-q-up bv-qt-mobile-only" data-qid="' + q.id + '" data-sid="' + s.id + '" title="Move up">↑</button> '
+                    +   '<button class="button button-small bv-qt-move-q-down bv-qt-mobile-only" data-qid="' + q.id + '" data-sid="' + s.id + '" title="Move down">↓</button> '
                     +   '<button class="button button-small bv-qt-dup-q" data-qid="' + q.id + '" data-sid="' + s.id + '" title="Duplicate">⧉</button> '
                     +   '<button class="button button-small bv-qt-edit-q" data-qid="' + q.id + '" data-sid="' + s.id + '">Edit</button> '
                     +   '<button class="button button-small bv-qt-del-q" data-qid="' + q.id + '" style="color:#a00;">Delete</button>'
@@ -527,6 +529,181 @@
             li.append(addQWrap);
 
             list.append(li);
+        });
+        // Show drag-and-drop hint when sections exist
+        if (sections.length > 0) {
+            var hintHtml = '<div class="bv-qt-drag-hint">'
+                + '<span class="dashicons dashicons-move" style="font-size:16px;margin-top:2px;color:#D4AF37;"></span> '
+                + 'Drag the <strong>☰ handle</strong> to reorder questions and sections. Questions can be dragged between sections to move them.'
+                + '</div>';
+            var $secHeader = $('.bv-qt-sections-header');
+            $secHeader.next('.bv-qt-drag-hint').remove();
+            $secHeader.after(hintHtml);
+        }
+        // Initialize drag-and-drop sortable
+        bvQTInitSortable();
+    }
+
+    // ── Drag & Drop Sortable ──
+
+    function bvQTInitSortable() {
+        // Destroy existing instances safely to prevent duplicate handlers
+        try { $('.bv-qt-questions-list').sortable('destroy'); } catch(e) {}
+        try { $('.bv-qt-sections-list').sortable('destroy'); } catch(e) {}
+
+        if ($('#bv-qt-sections-list').length === 0) return;
+
+        // ── Questions sortable — connected across ALL sections ──
+        $('.bv-qt-questions-list').sortable({
+            handle: '.bv-qt-q-drag-handle',
+            connectWith: '.bv-qt-questions-list',
+            items: 'li[data-qid]',
+            placeholder: 'bv-qt-q-sortable-placeholder',
+            tolerance: 'pointer',
+            cursor: 'grabbing',
+            opacity: 0.7,
+            revert: 120,
+            zIndex: 9999,
+            scrollSensitivity: 50,
+            scrollSpeed: 20,
+            start: function(e, ui) {
+                ui.placeholder.height(ui.item.outerHeight());
+                ui.item.addClass('bv-qt-q-dragging');
+                // Temporarily expand collapsed sections so they can accept drops
+                $('.bv-qt-section-item').each(function() {
+                    var $qList = $(this).find('.bv-qt-questions-list');
+                    if (!$qList.is(':visible')) {
+                        $(this).addClass('bv-qt-was-collapsed');
+                        $qList.show().css({ minHeight: '50px', opacity: 0.5 });
+                        $(this).find('.bv-qt-add-q-wrap').show();
+                    }
+                });
+                // Highlight all sections as potential drop targets
+                $('.bv-qt-section-item').addClass('bv-qt-section-drop-target');
+            },
+            stop: function(e, ui) {
+                ui.item.removeClass('bv-qt-q-dragging');
+                // Re-collapse sections that were temporarily expanded
+                $('.bv-qt-was-collapsed').each(function() {
+                    $(this).find('.bv-qt-questions-list').hide().css({ minHeight: '', opacity: '' });
+                    $(this).find('.bv-qt-add-q-wrap').hide();
+                    $(this).removeClass('bv-qt-was-collapsed');
+                    $(this).find('.bv-qt-toggle-section').text('Expand');
+                });
+                // Remove drop target highlights
+                $('.bv-qt-section-item').removeClass('bv-qt-section-drop-target bv-qt-section-drop-active');
+            },
+            over: function(e, ui) {
+                $(this).closest('.bv-qt-section-item').addClass('bv-qt-section-drop-active');
+            },
+            out: function(e, ui) {
+                $(this).closest('.bv-qt-section-item').removeClass('bv-qt-section-drop-active');
+            },
+            receive: function(e, ui) {
+                // Question dropped into a DIFFERENT section
+                var $destList = $(this);
+                var $srcList = ui.sender;
+                var qid = ui.item.data('qid');
+                var newSid = $destList.closest('.bv-qt-section-item').data('section-id');
+                var $destSection = $destList.closest('.bv-qt-section-item');
+
+                // Mark both lists so update handler doesn't double-process
+                $destList.data('bv-cross-move', true);
+                $srcList.data('bv-cross-move', true);
+
+                // Don't re-collapse the destination section (keep expanded so user sees result)
+                $destSection.removeClass('bv-qt-was-collapsed');
+
+                // Update question's section_id in the database
+                $.post(ajaxurl, {
+                    action: 'bv_qt_move_question',
+                    nonce: BVQT.nonce,
+                    question_id: qid,
+                    new_section_id: newSid
+                }).done(function(res) {
+                    if (res.success) {
+                        // Reorder destination section questions
+                        var destIds = [];
+                        $destList.children('li[data-qid]').each(function() { destIds.push($(this).data('qid')); });
+                        if (destIds.length > 0) {
+                            $.post(ajaxurl, { action: 'bv_qt_reorder', nonce: BVQT.nonce, type: 'question', ids: destIds.join(',') });
+                        }
+                        // Reorder source section questions (item already removed from DOM)
+                        var srcIds = [];
+                        $srcList.children('li[data-qid]').each(function() { srcIds.push($(this).data('qid')); });
+                        if (srcIds.length > 0) {
+                            $.post(ajaxurl, { action: 'bv_qt_reorder', nonce: BVQT.nonce, type: 'question', ids: srcIds.join(',') });
+                        }
+                        bvQTShowNotice('Question moved to new section.');
+                        // Re-render to update numbering and section counts
+                        editTemplate(getTemplateId());
+                    } else {
+                        alert(res.data && res.data.message ? res.data.message : 'Failed to move question.');
+                        $srcList.append(ui.item);
+                        editTemplate(getTemplateId());
+                    }
+                }).fail(function() {
+                    alert('Network error moving question. Please try again.');
+                    $srcList.append(ui.item);
+                    editTemplate(getTemplateId());
+                });
+            },
+            update: function(e, ui) {
+                // Skip if this is part of a cross-section move (handled by receive)
+                if ($(this).data('bv-cross-move')) {
+                    $(this).removeData('bv-cross-move');
+                    return;
+                }
+                // Same-section reorder
+                var $list = $(this);
+                var ids = [];
+                $list.children('li[data-qid]').each(function() { ids.push($(this).data('qid')); });
+                if (ids.length === 0) return;
+                $.post(ajaxurl, { action: 'bv_qt_reorder', nonce: BVQT.nonce, type: 'question', ids: ids.join(',') })
+                .done(function(res) {
+                    if (res.success) {
+                        editTemplate(getTemplateId());
+                    }
+                })
+                .fail(function() {
+                    alert('Reorder failed. Please try again.');
+                    editTemplate(getTemplateId());
+                });
+            }
+        });
+
+        // ── Sections sortable ──
+        $('.bv-qt-sections-list').sortable({
+            handle: '.bv-qt-section-drag-handle',
+            items: '.bv-qt-section-item',
+            placeholder: 'bv-qt-section-sortable-placeholder',
+            tolerance: 'pointer',
+            cursor: 'grabbing',
+            opacity: 0.85,
+            revert: 120,
+            cancel: '.bv-qt-questions-list, .bv-qt-add-q-wrap, .bv-qt-inline-section-form, .bv-qt-inline-q-form, .bv-qt-edit-q-form',
+            start: function(e, ui) {
+                ui.placeholder.height(ui.item.outerHeight());
+                ui.item.addClass('bv-qt-section-dragging');
+            },
+            stop: function(e, ui) {
+                ui.item.removeClass('bv-qt-section-dragging');
+            },
+            update: function() {
+                var ids = [];
+                $(this).children('.bv-qt-section-item').each(function() { ids.push($(this).data('section-id')); });
+                if (ids.length === 0) return;
+                $.post(ajaxurl, { action: 'bv_qt_reorder', nonce: BVQT.nonce, type: 'section', ids: ids.join(',') })
+                .done(function(res) {
+                    if (res.success) {
+                        editTemplate(getTemplateId());
+                    }
+                })
+                .fail(function() {
+                    alert('Section reorder failed. Please try again.');
+                    editTemplate(getTemplateId());
+                });
+            }
         });
     }
 

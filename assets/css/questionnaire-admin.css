@@ -1,6 +1,6 @@
 /**
  * BusinessVance Questionnaire Admin — Styles
- * @version 2.7.17
+ * @version 2.7.18
  */
 
 .bv-qt-wrap { max-width: 1200px; margin-top: 20px; }
@@ -539,6 +539,143 @@
 }
 
 /* ============================================
+   DRAG & DROP — Sortable
+   ============================================ */
+
+/* Drag hint banner */
+.bv-qt-drag-hint {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: #f0f6fc;
+    border: 1px solid #c3c4c7;
+    border-left: 3px solid #D4AF37;
+    border-radius: 4px;
+    margin-bottom: 14px;
+    font-size: 12px;
+    color: #50575e;
+    line-height: 1.5;
+    animation: bvQtFadeIn 0.25s ease;
+}
+
+/* ── Question drag handle ── */
+.bv-qt-q-drag-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    min-width: 26px;
+    height: 26px;
+    color: #bbb;
+    cursor: grab;
+    user-select: none;
+    flex-shrink: 0;
+    border-radius: 4px;
+    transition: color 0.15s ease, background 0.15s ease;
+    margin: 0 2px 0 0;
+}
+.bv-qt-q-drag-handle:hover {
+    color: #D4AF37;
+    background: #fef8e0;
+}
+.bv-qt-q-drag-handle:active {
+    cursor: grabbing;
+}
+.bv-qt-q-drag-handle .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
+}
+
+/* ── Section drag handle ── */
+.bv-qt-section-drag-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
+    color: #ccc;
+    cursor: grab;
+    user-select: none;
+    flex-shrink: 0;
+    border-radius: 4px;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+.bv-qt-section-drag-handle:hover {
+    color: #D4AF37;
+    background: #fef8e0;
+}
+.bv-qt-section-drag-handle:active {
+    cursor: grabbing;
+}
+.bv-qt-section-drag-handle .dashicons {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    line-height: 18px;
+}
+
+/* ── Question sortable placeholder ── */
+.bv-qt-q-sortable-placeholder {
+    background: #fef8e0;
+    border: 2px dashed #D4AF37;
+    border-radius: 4px;
+    margin: 4px 0;
+    min-height: 40px;
+    list-style: none !important;
+    transition: all 0.15s ease;
+}
+.bv-qt-q-sortable-placeholder * {
+    visibility: hidden;
+}
+
+/* ── Section sortable placeholder ── */
+.bv-qt-section-sortable-placeholder {
+    background: #fef8e0;
+    border: 2px dashed #D4AF37;
+    border-radius: 6px;
+    margin: 10px 0;
+    min-height: 80px;
+    list-style: none !important;
+    transition: all 0.15s ease;
+}
+
+/* ── Question being dragged ── */
+.bv-qt-q-dragging {
+    opacity: 0.5;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    border-left-color: #D4AF37 !important;
+    background: #fffdf5 !important;
+}
+
+/* ── Section being dragged ── */
+.bv-qt-section-dragging {
+    opacity: 0.6;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    border-left-color: #D4AF37 !important;
+    background: #fffdf5 !important;
+}
+
+/* ── Drop target section highlights ── */
+.bv-qt-section-drop-target {
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.bv-qt-section-drop-target.bv-qt-section-drop-active {
+    box-shadow: 0 0 0 2px #D4AF37, 0 4px 16px rgba(212,175,55,0.2);
+    border-color: #D4AF37 !important;
+}
+
+/* ── Mobile-only fallback buttons (up/down arrows) ── */
+@media (min-width: 783px) {
+    .bv-qt-mobile-only {
+        display: none !important;
+    }
+}
+
+/* ============================================
    RESPONSIVE — TABLET & MOBILE
    ============================================ */
 @media (max-width: 1024px) {
@@ -692,6 +829,33 @@
     }
     .bv-qt-section-actions .button {
         font-size: 11px;
+    }
+    /* Drag handles — slightly smaller on small screens */
+    .bv-qt-q-drag-handle {
+        width: 22px;
+        min-width: 22px;
+        height: 22px;
+    }
+    .bv-qt-q-drag-handle .dashicons {
+        font-size: 14px;
+        width: 14px;
+        height: 14px;
+        line-height: 14px;
+    }
+    .bv-qt-section-drag-handle {
+        width: 26px;
+        min-width: 26px;
+        height: 26px;
+    }
+    .bv-qt-section-drag-handle .dashicons {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+        line-height: 16px;
+    }
+    .bv-qt-drag-hint {
+        font-size: 11px;
+        padding: 6px 10px;
     }
 }
 
