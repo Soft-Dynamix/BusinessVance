@@ -1,6 +1,6 @@
 /**
  * BusinessVance Questionnaire Admin — JavaScript
- * @version 2.7.18
+ * @version 2.7.19
  */
 (function($) {
     'use strict';
@@ -792,7 +792,7 @@
                     alert(res.data.message);
                     loadTemplates();
                 }
-            }).fail(function() { bvQTBtnLoading($btn, false); alert('Delete failed.'); });
+            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to delete template. Network error — please check your connection and try again.'); });
         });
 
         // Auto slug from name
@@ -823,7 +823,7 @@
                     $('#bv-qt-edit-title').text('Edit Template: ' + $('#bv-qt-tpl-name').val());
                 }
                 editTemplate(newId);
-            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to save template.'); });
+            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to save template. Network error — please check your connection and try again.'); });
         });
 
         // ── Sections ──
@@ -866,7 +866,7 @@
                 bvQTShowNotice('Section saved successfully.');
                 $('#bv-qt-section-form-wrap').hide();
                 editTemplate(getTemplateId());
-            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to save section.'); });
+            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to save section. Network error — please check your connection and try again.'); });
         });
 
         // Cancel section (top form)
@@ -923,7 +923,7 @@
                     bvQTShowNotice('Section updated successfully.');
                     editTemplate(getTemplateId());
                 }
-            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to update section.'); });
+            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to update section. Network error — please check your connection and try again.'); });
         });
 
         // Cancel inline section edit
@@ -945,7 +945,7 @@
                     bvQTShowNotice('Section deleted successfully.');
                     editTemplate(getTemplateId());
                 }
-            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to delete section.'); });
+            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to delete section. Network error — please check your connection and try again.'); });
         });
 
         // Move section up/down
@@ -964,7 +964,7 @@
             list.children('.bv-qt-section-item').each(function() { ids.push($(this).data('section-id')); });
             $.post(ajaxurl, { action: 'bv_qt_reorder', nonce: BVQT.nonce, type: 'section', ids: ids.join(',') })
             .fail(function() {
-                alert('Reorder failed, reverting.');
+                alert('Section reorder failed. Reverting — please check your connection and try again.');
                 if (dir === 'up') item.insertBefore($prev);
                 else item.insertAfter($next);
             });
@@ -1002,7 +1002,7 @@
                 }
             })
             .fail(function() {
-                alert('Reorder failed, reverting.');
+                alert('Question reorder failed. Reverting — please check your connection and try again.');
                 if (dir === 'up') $li.insertBefore($prev);
                 else $li.insertAfter($next);
             });
@@ -1145,7 +1145,7 @@
                 if (!res.success) { alert(res.data.message); return; }
                 bvQTShowNotice('Question added successfully.');
                 editTemplate(getTemplateId());
-            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to add question.'); });
+            }).fail(function(xhr, status, error) { bvQTBtnLoading($btn, false); alert('Failed to add question. Network error (' + (status || 'unknown') + '). Please check your connection and try again.'); });
         });
 
         // Cancel new question form
@@ -1389,7 +1389,7 @@
                 } else {
                     alert(res.data.message);
                 }
-            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to save question.'); });
+            }).fail(function(xhr, status, error) { bvQTBtnLoading($btn, false); alert('Failed to save question. Network error (' + (status || 'unknown') + '). Please check your connection and try again.'); });
         });
 
         // Cancel question edit
@@ -1411,7 +1411,7 @@
                     bvQTShowNotice('Question deleted successfully.');
                     editTemplate(getTemplateId());
                 }
-            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to delete question.'); });
+            }).fail(function() { bvQTBtnLoading($btn, false); alert('Failed to delete question. Network error — please check your connection and try again.'); });
         });
 
         // Enter to save in edit question form

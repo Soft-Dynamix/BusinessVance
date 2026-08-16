@@ -97,11 +97,28 @@ class BV_Questionnaire_Admin {
      */
     private function verify_nonce() {
         if ( ! check_ajax_referer( 'bv_admin_nonce', 'nonce', false ) ) {
-            wp_send_json_error( array( 'message' => 'Security check failed.' ), 403 );
+            wp_send_json_error( array( 'message' => 'Security check failed. Your session may have expired — please refresh the page and try again.' ), 403 );
         }
         if ( ! current_user_can( 'manage_options' ) ) {
-            wp_send_json_error( array( 'message' => 'Permission denied.' ), 403 );
+            wp_send_json_error( array( 'message' => 'Permission denied. You do not have the required capability to perform this action.' ), 403 );
         }
+    }
+
+    /**
+     * Execute awpdb query and check for errors. Returns true on success, or an error message string on failure.
+     *
+     * @param mixed $result  Return value of $wpdb->insert(), $wpdb->update(), or $wpdb->query()
+     * @param string $context Human-readable context (e.g. "save question", "update template")
+     * @return true|string
+     */
+    private function check_db_result( $result, $context ) {
+        global $wpdb;
+        if ( $result === false ) {
+            $db_error = $wpdb->last_error ? $wpdb->last_error : 'Unknown database error';
+            error_log( "BV QT DB Error [{$context}]: " . $db_error );
+            return "Database error while trying to {$context}: {$db_error}";
+        }
+        return true;
     }
 
     /**
@@ -171,7 +188,7 @@ class BV_Questionnaire_Admin {
 
         $template_id = absint( $_POST['template_id'] );
         if ( ! $template_id ) {
-            wp_send_json_error( array( 'message' => 'Invalid template ID.' ) );
+            wp_send_json_error( array( 'message' => 'Invalid or missing template ID. Please provide a valid template ID to load.' ) );
         }
 
         $template = $wpdb->get_row( $wpdb->prepare(
@@ -180,7 +197,7 @@ class BV_Questionnaire_Admin {
         ) );
 
         if ( ! $template ) {
-            wp_send_json_error( array( 'message' => 'Template not found.' ) );
+            wp_send_json_error( array( 'message' => 'Template #' . $template_id . ' not found. It may have been deleted.' ) );
         }
 
         $sections = $wpdb->get_results( $wpdb->prepare(
@@ -234,7 +251,7 @@ class BV_Questionnaire_Admin {
         $status      = isset( $_POST['status'] ) ? sanitize_text_field( $_POST['status'] ) : 'draft';
 
         if ( empty( $name ) ) {
-            wp_send_json_error( array( 'message' => 'Template name is required.' ) );
+            wp_send_json_error( array( 'message' => 'Template name is required. Please enter a name for the template.' ) );
         }
 
         if ( ! in_array( $status, array( 'draft', 'published' ), true ) ) {
@@ -256,7 +273,7 @@ class BV_Questionnaire_Admin {
         }
 
         if ( (int) $existing > 0 ) {
-            wp_send_json_error( array( 'message' => 'A template with this slug already exists. Please use a different name.' ) );
+            wp_send_json_error( array( 'message' => 'A template with the slug "' . $slug . '" already exists. Please use a different name.' ) );
         }
 
         $data = array(
@@ -269,17 +286,20 @@ class BV_Questionnaire_Admin {
         $format = array( '%s', '%s', '%s', '%s', '%s' );
 
         if ( $id ) {
-            $wpdb->update( $t['templates'], $data, array( 'id' => $id ), $format, array( '%d' ) );
+            $result = $wpdb->update( $t['templates'], $data, array( 'id' => $id ), $format, array( '%d' ) );
+            $err = $this->check_db_result( $result, "update template #{$id}" );
+            if ( $err !== true ) {
+                wp_send_json_error( array( 'message' => $err ) );
+            }
         } else {
             $data['created_at'] = current_time( 'mysql' );
             $format[] = '%s';
-            $wpdb->insert( $t['templates'], $data, $format );
+            $result = $wpdb->insert( $t['templates'], $data, $format );
+            $err = $this->check_db_result( $result, 'create new template' );
+            if ( $err !== true ) {
+                wp_send_json_error( array( 'message' => $err ) );
+            }
             $id = $wpdb->insert_id;
-        }
-
-        if ( $wpdb->last_error ) {
-            error_log( 'BV Questionnaire Admin Error: ' . $wpdb->last_error );
-            wp_send_json_error( array( 'message' => 'Database error occurred' ) );
         }
 
         wp_send_json_success( array(
@@ -312,17 +332,29 @@ class BV_Questionnaire_Admin {
         // Delete all questions in those sections
         if ( ! empty( $section_ids ) ) {
             $placeholders = implode( ',', array_fill( 0, count( $section_ids ), '%d' ) );
-            $wpdb->query( $wpdb->prepare(
+            $result = $wpdb->query( $wpdb->prepare(
                 "DELETE FROM {$t['questions']} WHERE section_id IN ({$placeholders})",
                 $section_ids
             ) );
+            $err = $this->check_db_result( $result, 'delete questions for template #' . $id );
+            if ( $err !== true ) {
+                wp_send_json_error( array( 'message' => $err ) );
+            }
         }
 
         // Delete all sections
-        $wpdb->delete( $t['sections'], array( 'template_id' => $id ), array( '%d' ) );
+        $result = $wpdb->delete( $t['sections'], array( 'template_id' => $id ), array( '%d' ) );
+        $err = $this->check_db_result( $result, 'delete sections for template #' . $id );
+        if ( $err !== true ) {
+            wp_send_json_error( array( 'message' => $err ) );
+        }
 
         // Delete template
-        $wpdb->delete( $t['templates'], array( 'id' => $id ), array( '%d' ) );
+        $result = $wpdb->delete( $t['templates'], array( 'id' => $id ), array( '%d' ) );
+        $err = $this->check_db_result( $result, 'delete template #' . $id );
+        if ( $err !== true ) {
+            wp_send_json_error( array( 'message' => $err ) );
+        }
 
         wp_send_json_success( array( 'message' => 'Template deleted successfully.' ) );
     }
@@ -343,11 +375,11 @@ class BV_Questionnaire_Admin {
         $description = isset( $_POST['description'] ) ? sanitize_textarea_field( wp_unslash( $_POST['description'] ) ) : '';
 
         if ( ! $template_id ) {
-            wp_send_json_error( array( 'message' => 'Template ID is required.' ) );
+            wp_send_json_error( array( 'message' => 'Template ID is required. The section must belong to a template.' ) );
         }
 
         if ( empty( $title ) ) {
-            wp_send_json_error( array( 'message' => 'Section title is required.' ) );
+            wp_send_json_error( array( 'message' => 'Section title is required. Please enter a title for the section.' ) );
         }
 
         $data = array(
@@ -358,7 +390,11 @@ class BV_Questionnaire_Admin {
         $format = array( '%d', '%s', '%s' );
 
         if ( $id ) {
-            $wpdb->update( $t['sections'], $data, array( 'id' => $id ), $format, array( '%d' ) );
+            $result = $wpdb->update( $t['sections'], $data, array( 'id' => $id ), $format, array( '%d' ) );
+            $err = $this->check_db_result( $result, "update section #{$id}" );
+            if ( $err !== true ) {
+                wp_send_json_error( array( 'message' => $err ) );
+            }
         } else {
             // Get the next display_order
             $max_order = (int) $wpdb->get_var( $wpdb->prepare(
@@ -369,13 +405,12 @@ class BV_Questionnaire_Admin {
             $format[] = '%d';
             $data['created_at'] = current_time( 'mysql' );
             $format[] = '%s';
-            $wpdb->insert( $t['sections'], $data, $format );
+            $result = $wpdb->insert( $t['sections'], $data, $format );
+            $err = $this->check_db_result( $result, 'create new section' );
+            if ( $err !== true ) {
+                wp_send_json_error( array( 'message' => $err ) );
+            }
             $id = $wpdb->insert_id;
-        }
-
-        if ( $wpdb->last_error ) {
-            error_log( 'BV Questionnaire Admin Error: ' . $wpdb->last_error );
-            wp_send_json_error( array( 'message' => 'Database error occurred' ) );
         }
 
         $section = $wpdb->get_row( $wpdb->prepare(
@@ -405,10 +440,18 @@ class BV_Questionnaire_Admin {
         }
 
         // Delete all questions in this section
-        $wpdb->delete( $t['questions'], array( 'section_id' => $id ), array( '%d' ) );
+        $result = $wpdb->delete( $t['questions'], array( 'section_id' => $id ), array( '%d' ) );
+        $err = $this->check_db_result( $result, 'delete questions in section #' . $id );
+        if ( $err !== true ) {
+            wp_send_json_error( array( 'message' => $err ) );
+        }
 
         // Delete section
-        $wpdb->delete( $t['sections'], array( 'id' => $id ), array( '%d' ) );
+        $result = $wpdb->delete( $t['sections'], array( 'id' => $id ), array( '%d' ) );
+        $err = $this->check_db_result( $result, 'delete section #' . $id );
+        if ( $err !== true ) {
+            wp_send_json_error( array( 'message' => $err ) );
+        }
 
         wp_send_json_success( array( 'message' => 'Section deleted successfully.' ) );
     }
@@ -443,11 +486,16 @@ class BV_Questionnaire_Admin {
         }
 
         if ( ! $section_id ) {
-            wp_send_json_error( array( 'message' => 'Section ID is required.' ) );
+            wp_send_json_error( array( 'message' => 'Section ID is required. The question must belong to a section.' ) );
         }
 
         if ( empty( $label ) ) {
-            wp_send_json_error( array( 'message' => 'Question label is required.' ) );
+            wp_send_json_error( array( 'message' => 'Question label is required. Please enter a label for the question.' ) );
+        }
+
+        // Checkbox, radio, and select fields require options
+        if ( in_array( $type, array( 'select', 'radio', 'checkbox' ), true ) && empty( $options_text ) ) {
+            wp_send_json_error( array( 'message' => "Options are required for the \"{$type}\" field type. Please add at least one option." ) );
         }
 
         // Convert options_text to JSON array
@@ -518,7 +566,11 @@ class BV_Questionnaire_Admin {
         $format = array( '%d', '%s', '%s', '%s', '%d', '%s', '%s' );
 
         if ( $id ) {
-            $wpdb->update( $t['questions'], $data, array( 'id' => $id ), $format, array( '%d' ) );
+            $result = $wpdb->update( $t['questions'], $data, array( 'id' => $id ), $format, array( '%d' ) );
+            $err = $this->check_db_result( $result, "save question #{$id} (type: {$type})" );
+            if ( $err !== true ) {
+                wp_send_json_error( array( 'message' => $err ) );
+            }
         } else {
             // Get the next display_order
             $max_order = (int) $wpdb->get_var( $wpdb->prepare(
@@ -529,13 +581,12 @@ class BV_Questionnaire_Admin {
             $format[] = '%d';
             $data['created_at'] = current_time( 'mysql' );
             $format[] = '%s';
-            $wpdb->insert( $t['questions'], $data, $format );
+            $result = $wpdb->insert( $t['questions'], $data, $format );
+            $err = $this->check_db_result( $result, "create new question (type: {$type}, label: {$label})" );
+            if ( $err !== true ) {
+                wp_send_json_error( array( 'message' => $err ) );
+            }
             $id = $wpdb->insert_id;
-        }
-
-        if ( $wpdb->last_error ) {
-            error_log( 'BV Questionnaire Admin Error: ' . $wpdb->last_error );
-            wp_send_json_error( array( 'message' => 'Database error occurred' ) );
         }
 
         $question = $wpdb->get_row( $wpdb->prepare(
@@ -568,10 +619,14 @@ class BV_Questionnaire_Admin {
 
         $id = isset( $_POST['id'] ) ? absint( $_POST['id'] ) : 0;
         if ( ! $id ) {
-            wp_send_json_error( array( 'message' => 'Invalid question ID.' ) );
+            wp_send_json_error( array( 'message' => 'Invalid question ID provided.' ) );
         }
 
-        $wpdb->delete( $t['questions'], array( 'id' => $id ), array( '%d' ) );
+        $result = $wpdb->delete( $t['questions'], array( 'id' => $id ), array( '%d' ) );
+        $err = $this->check_db_result( $result, 'delete question #' . $id );
+        if ( $err !== true ) {
+            wp_send_json_error( array( 'message' => $err ) );
+        }
 
         wp_send_json_success( array( 'message' => 'Question deleted successfully.' ) );
     }
@@ -590,30 +645,36 @@ class BV_Questionnaire_Admin {
         $ids  = isset( $_POST['ids'] ) ? sanitize_text_field( $_POST['ids'] ) : '';
 
         if ( ! in_array( $type, array( 'section', 'question' ), true ) ) {
-            wp_send_json_error( array( 'message' => 'Invalid reorder type.' ) );
+            wp_send_json_error( array( 'message' => 'Invalid reorder type: "' . esc_html( $type ) . '". Expected "section" or "question".' ) );
         }
 
         $id_array = array_map( 'absint', explode( ',', $ids ) );
         $id_array = array_filter( $id_array );
 
         if ( empty( $id_array ) ) {
-            wp_send_json_error( array( 'message' => 'No IDs provided.' ) );
+            wp_send_json_error( array( 'message' => 'No IDs provided for reordering.' ) );
         }
 
         if ( 'section' === $type ) {
             $table = $t['sections'];
+            $label = 'section';
         } else {
             $table = $t['questions'];
+            $label = 'question';
         }
 
         foreach ( $id_array as $order => $item_id ) {
-            $wpdb->update(
+            $result = $wpdb->update(
                 $table,
                 array( 'display_order' => $order ),
                 array( 'id' => $item_id ),
                 array( '%d' ),
                 array( '%d' )
             );
+            // Log but don't abort on individual reorder failures — the whole set will be re-sent
+            if ( $result === false ) {
+                error_log( "BV QT Reorder Error: failed to set {$label} #{$item_id} to order {$order}: " . $wpdb->last_error );
+            }
         }
 
         wp_send_json_success( array( 'message' => 'Order updated successfully.' ) );
@@ -665,8 +726,9 @@ class BV_Questionnaire_Admin {
             array( '%d' )
         );
 
-        if ( $updated === false ) {
-            wp_send_json_error( array( 'message' => 'Database error moving question.' ) );
+        $err = $this->check_db_result( $updated, "move question #{$question_id} to section #{$new_section_id}" );
+        if ( $err !== true ) {
+            wp_send_json_error( array( 'message' => $err ) );
         }
 
         wp_send_json_success( array( 'message' => 'Question moved successfully.' ) );
