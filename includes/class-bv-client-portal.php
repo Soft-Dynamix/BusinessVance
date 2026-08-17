@@ -1480,7 +1480,7 @@ class BV_Client_Portal {
                             <?php $sig_val = $val; ?>
                             <div class="bv-q-signature-wrap<?php echo $sig_val ? ' bv-q-sig-confirmed' : ''; ?>">
                                 <?php if ( $sig_val && preg_match( '/^data:image/', $sig_val ) ) : ?>
-                                    <img src="<?php echo esc_attr( $sig_val ); ?>" alt="Signature" style="width:100%;height:160px;object-fit:contain;background:repeating-linear-gradient(0deg,transparent,transparent 39px,#f3f4f6 39px,#f3f4f6 40px),repeating-linear-gradient(90deg,transparent,transparent 39px,#f3f4f6 39px,#f3f4f6 40px);background-size:40px 40px;border-radius:8px;" />
+                                    <img src="<?php echo esc_attr( $sig_val ); ?>" alt="Signature" data-qid="<?php echo $qid; ?>" style="width:100%;height:160px;object-fit:contain;background:repeating-linear-gradient(0deg,transparent,transparent 39px,#f3f4f6 39px,#f3f4f6 40px),repeating-linear-gradient(90deg,transparent,transparent 39px,#f3f4f6 39px,#f3f4f6 40px);background-size:40px 40px;border-radius:8px;" />
                                     <div class="bv-q-sig-actions">
                                         <button type="button" class="bv-q-sig-clear" style="display:inline-flex;">&#9998; <?php echo esc_html__( 'Clear & Re-sign', 'businessvance-services-manager' ); ?></button>
                                         <span class="bv-q-sig-hint" style="display:block;margin:0;flex:1;text-align:right;">&#10003; <?php echo esc_html__( 'Signature on file', 'businessvance-services-manager' ); ?></span>

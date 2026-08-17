@@ -3,6 +3,7 @@
  * @since 2.0.0  Updated 2.5.0 for document requirements, questionnaire fixes
  * @since 2.7.20 Fixed repeatable/checkbox/address serialization, added multifile/signature/static fields
  * @since 2.7.20 Moved inline handlers here for reliability, added rating hover, fixed all field types
+ * @since 2.7.22 Rewrote signature pad: one-time init, mobile fix, clear & re-sign from saved image
  */
 (function($) {
     'use strict';
@@ -473,17 +474,31 @@
     }
 
     // ============================================
-    // Signature Pad
+    // Signature Pad — v2.7.22 rewrite
+    // Fixes: mobile scrolling, duplicate listeners, clear & re-sign
     // ============================================
-    $(document).on('mousedown touchstart', '.bv-q-signature-canvas', function(e) {
-        if ($(this).attr('data-signed') === '1') return; // Already signed
-        var canvas = this;
+    var bvSigInitialized = {};  // track canvases by data-qid to prevent duplicate listeners
+
+    function bvInitSignatureCanvas(canvas) {
+        var $canvas = $(canvas);
+        var qid = $canvas.data('qid');
+        if (!qid || bvSigInitialized[qid]) return;
+        bvSigInitialized[qid] = true;
+
         var ctx = canvas.getContext('2d');
-        var rect = canvas.getBoundingClientRect();
         var isDrawing = false;
-        var lastX, lastY;
+        var lastX = 0, lastY = 0;
+
+        // Prevent scrolling on the wrapper when drawing (but allow button taps)
+        var $wrap = $canvas.closest('.bv-q-signature-wrap');
+        $wrap[0].addEventListener('touchmove', function(e) {
+            // Only prevent if the touch is on or started on the canvas
+            if (isDrawing || e.target === canvas) { e.preventDefault(); }
+        }, { passive: false });
 
         function getPos(e) {
+            // Always get fresh rect to handle page scroll/resize
+            var rect = canvas.getBoundingClientRect();
             var touch = e.touches ? e.touches[0] : e;
             return {
                 x: (touch.clientX - rect.left) * (canvas.width / rect.width),
@@ -492,7 +507,9 @@
         }
 
         function startDraw(e) {
+            if (canvas.getAttribute('data-signed') === '1') return;
             e.preventDefault();
+            e.stopPropagation();
             isDrawing = true;
             var pos = getPos(e);
             lastX = pos.x;
@@ -501,7 +518,9 @@
 
         function draw(e) {
             if (!isDrawing) return;
+            if (canvas.getAttribute('data-signed') === '1') { isDrawing = false; return; }
             e.preventDefault();
+            e.stopPropagation();
             var pos = getPos(e);
             ctx.beginPath();
             ctx.moveTo(lastX, lastY);
@@ -513,22 +532,36 @@
             ctx.stroke();
             lastX = pos.x;
             lastY = pos.y;
-            // Show confirm button
-            $(canvas).siblings('.bv-q-sig-confirm').show();
+            // Show confirm button on first stroke
+            $canvas.closest('.bv-q-signature-wrap').find('.bv-q-sig-confirm').show();
         }
 
         function stopDraw(e) {
-            if (e) e.preventDefault();
             isDrawing = false;
         }
 
+        // Mouse events
         canvas.addEventListener('mousedown', startDraw);
         canvas.addEventListener('mousemove', draw);
         canvas.addEventListener('mouseup', stopDraw);
         canvas.addEventListener('mouseleave', stopDraw);
+        // Touch events — passive:false to allow preventDefault (stops page scrolling)
         canvas.addEventListener('touchstart', startDraw, { passive: false });
         canvas.addEventListener('touchmove', draw, { passive: false });
         canvas.addEventListener('touchend', stopDraw);
+    }
+
+    // Initialize any existing canvases on page load
+    $(document).ready(function() {
+        $('.bv-q-signature-canvas').each(function() {
+            bvInitSignatureCanvas(this);
+        });
+    });
+
+    // Also initialize if new canvases appear (e.g. after AJAX)
+    $(document).on('DOMNodeInserted', '.bv-q-signature-wrap', function(e) {
+        var canvas = $(e.target).closest('.bv-q-signature-wrap').find('.bv-q-signature-canvas')[0];
+        if (canvas) bvInitSignatureCanvas(canvas);
     });
 
     // Confirm signature
@@ -544,11 +577,16 @@
         }
     });
 
-    // Clear signature
-    $(document).on('click', '.bv-q-sig-clear', function() {
+    // Clear signature — handles both canvas and already-saved image states
+    $(document).on('click', '.bv-q-sig-clear', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
         var $wrap = $(this).closest('.bv-q-signature-wrap');
         var canvas = $wrap.find('.bv-q-signature-canvas')[0];
+        var qid = $wrap.find('.bv-q-signature-canvas').data('qid') || $wrap.find('img').data('qid');
+
         if (canvas) {
+            // Canvas exists — just clear it
             var ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             canvas.removeAttribute('data-signed');
@@ -556,6 +594,20 @@
             $(this).hide();
             $wrap.find('.bv-q-sig-confirm').hide();
             $wrap.removeClass('bv-q-sig-confirmed');
+        } else {
+            // Already-signed state: img is shown, replace with fresh canvas
+            var $img = $wrap.find('img');
+            if ($img.length && qid) {
+                // Remove initialized flag FIRST so new canvas gets fresh listeners
+                delete bvSigInitialized[qid];
+                var $canvas = $('<canvas class="bv-q-signature-canvas" data-qid="' + qid + '" width="600" height="160"><\/canvas>');
+                var $actions = $('<div class="bv-q-sig-actions"><button type="button" class="bv-q-sig-confirm">&#10003; Confirm Signature<\/button><button type="button" class="bv-q-sig-clear">&#10005; Clear<\/button><\/div>');
+                var $hint = $('<p class="bv-q-sig-hint">Draw your signature above using your mouse or finger<\/p>');
+                // Remove existing content and add canvas
+                $wrap.empty().removeClass('bv-q-sig-confirmed').append($canvas).append($actions).append($hint);
+                // Initialize the new canvas for drawing (only once!)
+                bvInitSignatureCanvas($canvas[0]);
+            }
         }
     });
 

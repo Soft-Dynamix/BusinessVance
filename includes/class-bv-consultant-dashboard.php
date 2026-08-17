@@ -33,6 +33,7 @@ class BV_Consultant_Dashboard {
         add_action( 'wp_ajax_bv_cd_download_report', array( $this, 'ajax_download_report' ) );
         add_action( 'wp_ajax_bv_cd_download_questionnaire', array( $this, 'ajax_download_questionnaire' ) );
         add_action( 'wp_ajax_bv_cd_download_questionnaire_html', array( $this, 'ajax_download_questionnaire_html' ) );
+        add_action( 'wp_ajax_bv_cd_download_qfile', array( $this, 'ajax_download_questionnaire_file' ) );
     }
 
     public function add_menu_page() {
@@ -311,7 +312,7 @@ class BV_Consultant_Dashboard {
         <div id="bv-cd-panel-questionnaire" class="bv-cd-panel" style="<?php echo $active_tab === 'questionnaire' ? '' : 'display:none'; ?>">
             <?php if ( ! empty( $responses_by_service ) ) : ?>
             <div style="margin-bottom:12px; display:flex; gap:8px; flex-wrap:wrap;">
-                <button type="button" class="button button-primary" onclick="bv_cd_download_questionnaire_html(<?php echo $project_id; ?>)">📄 <?php echo esc_html__( 'Download Report (HTML)', 'businessvance-services-manager' ); ?></button>
+                <button type="button" class="button button-primary" onclick="bv_cd_download_questionnaire_html(<?php echo $project_id; ?>)">📄 <?php echo esc_html__( 'Open Report (PDF)', 'businessvance-services-manager' ); ?></button>
                 <button type="button" class="button button-secondary" onclick="bv_cd_download_questionnaire(<?php echo $project_id; ?>)">⬇ <?php echo esc_html__( 'Download Data (CSV)', 'businessvance-services-manager' ); ?></button>
             </div>
             <?php endif; ?>
@@ -338,8 +339,31 @@ class BV_Consultant_Dashboard {
                         $val = $r->response_value;
                         // Decode JSON values for display
                         $display_val = $val;
+                        $is_html = false;  // flag: output contains safe HTML (multifile links)
                         $json_val = json_decode( $val, true );
-                        if ( is_array( $json_val ) ) {
+                        // Check if it's a data URL (signature)
+                        if ( preg_match( '/^data:image/', $val ) ) {
+                            $display_val = '✍️ [Signature provided]';
+                        }
+                        // Check multifile JSON with URLs — BEFORE repeatable table check
+                        // (multifile is also an array of arrays, but has 'url' key)
+                        elseif ( $json_val && isset( $json_val[0] ) && isset( $json_val[0]['url'] ) ) {
+                            $display_val = '';
+                            $is_html = true;
+                            $nonce = wp_create_nonce( 'bv_consultant_dashboard' );
+                            foreach ( $json_val as $f ) {
+                                $display_val .= '<div style="margin-bottom:4px;">' . esc_html( $f['name'] ?? 'File' );
+                                if ( ! empty( $f['size'] ) ) $display_val .= ' <small>(' . esc_html( $f['size'] ) . ')</small>';
+                                if ( ! empty( $f['file'] ) ) {
+                                    $dl_url = admin_url( 'admin-ajax.php?action=bv_cd_download_qfile&nonce=' . $nonce . '&project_id=' . $project_id . '&file=' . rawurlencode( $f['file'] ) );
+                                    $display_val .= ' — <a href="' . esc_url( $dl_url ) . '" class="button button-small" style="margin-left:4px;">⬇ Download</a>';
+                                } elseif ( ! empty( $f['url'] ) ) {
+                                    $display_val .= ' — <a href="' . esc_url( $f['url'] ) . '" target="_blank" class="button button-small" style="margin-left:4px;">⬇ Open</a>';
+                                }
+                                $display_val .= '</div>';
+                            }
+                        }
+                        elseif ( is_array( $json_val ) ) {
                             if ( isset( $json_val[0] ) && is_array( $json_val[0] ) ) {
                                 // Repeatable table: 2D array
                                 $display_val = '';
@@ -351,23 +375,12 @@ class BV_Consultant_Dashboard {
                                 $display_val = implode( ', ', $json_val );
                             }
                         }
-                        // Check if it's a data URL (signature)
-                        if ( preg_match( '/^data:image/', $val ) ) {
-                            $display_val = '✍️ [Signature provided]';
-                        }
-                        // Check if multifile JSON with URLs
-                        if ( $json_val && isset( $json_val[0] ) && isset( $json_val[0]['url'] ) ) {
-                            $display_val = '';
-                            foreach ( $json_val as $f ) {
-                                $display_val .= ( $f['name'] ?? 'File' ) . ( isset( $f['url'] ) ? ' — <a href="' . esc_url( $f['url'] ) . '" target="_blank">Download</a>' : '' ) . "\n";
-                            }
-                        }
                     ?>
                     <tr>
                         <?php if ( ! $has_multiple_services ) : ?><td><small><?php echo esc_html( $r->service_name ); ?></small></td><?php endif; ?>
                         <td><small><?php echo esc_html( $r->section_title ); ?></small></td>
                         <td><?php echo esc_html( $r->label ); ?><?php if ( $r->help_text ) : ?><br><small style="color:#888;"><?php echo esc_html( $r->help_text ); ?></small><?php endif; ?></td>
-                        <td><?php echo nl2br( esc_html( $display_val ) ); ?></td>
+                        <td><?php echo $is_html ? $display_val : nl2br( esc_html( $display_val ) ); ?></td>
                     </tr>
                     <?php endforeach; ?>
                     </tbody>
@@ -902,6 +915,8 @@ class BV_Consultant_Dashboard {
 
         $has_multiple = count( $grouped ) > 1;
         $generated_at = current_time( 'mysql' );
+        $nonce = wp_create_nonce( 'bv_consultant_dashboard' );
+        $service_names = ! empty( $services ) ? wp_list_pluck( $services, 'name' ) : array();
 
         // Build professional HTML document
         ob_start();
@@ -913,9 +928,9 @@ class BV_Consultant_Dashboard {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><?php echo esc_html( $project->project_number . ' — Questionnaire Responses' ); ?></title>
 <style>
-    @page { margin: 20mm 15mm; size: A4; }
+    @page { margin: 18mm 15mm; size: A4; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1a1a2e; line-height: 1.6; padding: 40px; max-width: 900px; margin: 0 auto; background: #fff; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1a1a2e; line-height: 1.6; padding: 40px; max-width: 900px; margin: 0 auto; background: #fff; padding-top: 70px; }
 
     /* Header */
     .doc-header { border-bottom: 3px solid #002B5C; padding-bottom: 20px; margin-bottom: 30px; }
@@ -925,10 +940,15 @@ class BV_Consultant_Dashboard {
     .doc-meta span { display: inline-flex; align-items: center; gap: 6px; }
     .doc-meta strong { color: #1a1a2e; }
 
+    /* TOC */
+    .toc { background: #f8f9fb; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin-bottom: 28px; }
+    .toc h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: #666; margin-bottom: 10px; }
+    .toc ol { margin-left: 20px; font-size: 13px; color: #002B5C; }
+    .toc ol li { margin-bottom: 4px; }
+
     /* Service groups */
     .service-section { margin-bottom: 36px; page-break-inside: avoid; }
     .service-header { background: #002B5C; color: #fff; padding: 10px 16px; border-radius: 6px; font-size: 16px; font-weight: 700; margin-bottom: 16px; }
-    .service-header + .section-header { margin-top: 0; }
 
     /* Section headers */
     .section-header { font-size: 14px; font-weight: 700; color: #002B5C; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #d1d5db; padding-bottom: 6px; margin: 20px 0 12px; page-break-after: avoid; }
@@ -937,6 +957,7 @@ class BV_Consultant_Dashboard {
     .q-row { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f0f0f0; page-break-inside: avoid; }
     .q-label { flex: 0 0 38%; font-weight: 600; font-size: 13px; color: #333; vertical-align: top; }
     .q-label .q-help { display: block; font-weight: 400; font-size: 11px; color: #999; margin-top: 2px; }
+    .q-label .q-type { display: inline-block; font-weight: 400; font-size: 10px; color: #9CA3AF; background: #f3f4f6; padding: 1px 6px; border-radius: 3px; margin-left: 6px; text-transform: uppercase; }
     .q-value { flex: 1; font-size: 13px; color: #1a1a2e; white-space: pre-wrap; word-wrap: break-word; }
     .q-value.empty { color: #bbb; font-style: italic; }
 
@@ -945,23 +966,42 @@ class BV_Consultant_Dashboard {
     .rep-table th { background: #f1f5f9; padding: 6px 10px; text-align: left; font-weight: 600; border: 1px solid #e2e8f0; }
     .rep-table td { padding: 5px 10px; border: 1px solid #e2e8f0; }
 
+    /* File attachments */
+    .mf-file { margin-bottom: 6px; font-size: 13px; }
+    .mf-file-name { font-weight: 600; }
+    .mf-file-size { color: #888; font-size: 12px; }
+    .mf-file-dl { color: #002B5C; font-size: 12px; margin-left: 6px; }
+
+    /* Signature */
+    .sig-img { max-width: 300px; height: 80px; object-fit: contain; border-bottom: 1px solid #ccc; }
+
     /* Footer */
     .doc-footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #d1d5db; font-size: 11px; color: #999; text-align: center; }
 
-    /* Print button (screen only) */
-    .print-btn { position: fixed; top: 20px; right: 20px; padding: 10px 20px; background: #002B5C; color: #fff; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 1000; }
-    .print-btn:hover { background: #0A2647; }
+    /* Print bar (screen only) */
+    .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #002B5C; color: #fff; padding: 10px 20px; display: flex; justify-content: center; align-items: center; gap: 16px; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.15); font-size: 14px; }
+    .print-bar span { opacity: 0.8; }
+    .print-btn, .close-btn { padding: 8px 20px; border-radius: 6px; font-size: 14px; cursor: pointer; border: none; font-weight: 600; }
+    .print-btn { background: #fff; color: #002B5C; }
+    .print-btn:hover { background: #f0f0f0; }
+    .close-btn { background: rgba(255,255,255,0.15); color: #fff; }
+    .close-btn:hover { background: rgba(255,255,255,0.25); }
 
     @media print {
-        body { padding: 0; max-width: none; }
-        .print-btn { display: none !important; }
+        body { padding: 0; max-width: none; padding-top: 0; }
+        .print-bar { display: none !important; }
         .service-section { page-break-inside: avoid; }
         .q-row { page-break-inside: avoid; }
+        .toc { page-break-after: always; }
     }
 </style>
 </head>
 <body>
-<button class="print-btn" onclick="window.print()">🖨 Print / Save as PDF</button>
+<div class="print-bar">
+    <span>Use your browser's Print function to save this as a PDF</span>
+    <button class="print-btn" onclick="window.print()">🖨 Save as PDF</button>
+    <button class="close-btn" onclick="window.close()">✕ Close</button>
+</div>
 
 <div class="doc-header">
     <h1><?php echo esc_html( $project->project_number ); ?> — Questionnaire Responses</h1>
@@ -973,15 +1013,38 @@ class BV_Consultant_Dashboard {
         <?php if ( $project->client_phone ) : ?><span>Phone: <strong><?php echo esc_html( $project->client_phone ); ?></strong></span><?php endif; ?>
         <span>Generated: <strong><?php echo esc_html( date( 'd M Y H:i', strtotime( $generated_at ) ) ); ?></strong></span>
     </div>
-    <?php if ( ! empty( $services ) ) : ?>
-    <div style="margin-top:12px; font-size:12px; color:#666;">Services: <?php echo esc_html( implode( ', ', wp_list_pluck( $services, 'name' ) ) ); ?></div>
+    <?php if ( ! empty( $service_names ) ) : ?>
+    <div style="margin-top:12px; font-size:12px; color:#666;">Services Purchased: <strong><?php echo esc_html( implode( ', ', $service_names ) ); ?></strong></div>
     <?php endif; ?>
 </div>
 
+<?php if ( $has_multiple ) : ?>
+<div class="toc">
+    <h3>Table of Contents — Services</h3>
+    <ol>
+    <?php foreach ( $grouped as $sname => $svc_responses ) : ?>
+        <li><strong><?php echo esc_html( $sname ); ?></strong>
+        <?php
+        $sections_in_svc = array();
+        foreach ( $svc_responses as $sr ) {
+            if ( ! in_array( $sr->section_title, $sections_in_svc ) ) {
+                $sections_in_svc[] = $sr->section_title;
+            }
+        }
+        if ( count( $sections_in_svc ) > 1 ) {
+            echo ' — Sections: ' . esc_html( implode( ', ', $sections_in_svc ) );
+        }
+        ?>
+        </li>
+    <?php endforeach; ?>
+    </ol>
+</div>
+<?php endif; ?>
+
 <?php foreach ( $grouped as $service_name => $service_responses ) : ?>
 <?php if ( $has_multiple ) : ?>
-<div class="service-section">
-    <div class="service-header"><?php echo esc_html( $service_name ); ?></div>
+<div class="service-section" style="page-break-before: always;">
+    <div class="service-header">Service: <?php echo esc_html( $service_name ); ?></div>
 <?php endif; ?>
 
 <?php
@@ -994,7 +1057,7 @@ foreach ( $service_responses as $r ) :
 <?php endif; ?>
 
     <div class="q-row">
-        <div class="q-label"><?php echo esc_html( $r->label ); ?><?php if ( $r->help_text ) : ?><span class="q-help"><?php echo esc_html( $r->help_text ); ?></span><?php endif; ?></div>
+        <div class="q-label"><?php echo esc_html( $r->label ); ?><span class="q-type"><?php echo esc_html( $r->type ); ?></span><?php if ( $r->help_text ) : ?><span class="q-help"><?php echo esc_html( $r->help_text ); ?></span><?php endif; ?></div>
         <div class="q-value<?php echo empty( $r->response_value ) || $r->response_value === '[]' ? ' empty' : ''; ?>">
         <?php
         $val = $r->response_value;
@@ -1003,7 +1066,16 @@ foreach ( $service_responses as $r ) :
         // Signature
         if ( preg_match( '/^data:image/', $val ) ) :
         ?>
-            <img src="<?php echo esc_attr( $val ); ?>" alt="Client Signature" style="max-width:300px;height:80px;object-fit:contain;border-bottom:1px solid #ccc;" />
+            <img src="<?php echo esc_attr( $val ); ?>" alt="Client Signature" class="sig-img" />
+        <?php
+        // Multifile JSON with URLs
+        elseif ( $json_val && isset( $json_val[0] ) && isset( $json_val[0]['url'] ) ) :
+        ?>
+            <div class="mf-list"><?php foreach ( $json_val as $f ) : ?>
+                <div class="mf-file">
+                    <span class="mf-file-name"><?php echo esc_html( $f['name'] ?? 'File' ); ?></span><?php if ( ! empty( $f['size'] ) ) : ?> <span class="mf-file-size"><?php echo esc_html( $f['size'] ); ?></span><?php endif; ?><?php if ( ! empty( $f['file'] ) ) : ?> <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=bv_cd_download_qfile&nonce=' . $nonce . '&project_id=' . $project_id . '&file=' . rawurlencode( $f['file'] ) ) ); ?>" class="mf-file-dl">⬇ Download</a><?php elseif ( ! empty( $f['url'] ) ) : ?> <a href="<?php echo esc_url( $f['url'] ); ?>" class="mf-file-dl" target="_blank">⬇ Open</a><?php endif; ?>
+                </div>
+            <?php endforeach; ?></div>
         <?php
         // Repeatable table (2D array)
         elseif ( is_array( $json_val ) && isset( $json_val[0] ) && is_array( $json_val[0] ) ) :
@@ -1024,13 +1096,6 @@ foreach ( $service_responses as $r ) :
         // Checkbox/array values
         elseif ( is_array( $json_val ) ) :
             echo esc_html( implode( ', ', $json_val ) );
-        // Multifile JSON with URLs
-        elseif ( $json_val && isset( $json_val[0]['url'] ) ) :
-            foreach ( $json_val as $f ) :
-                echo esc_html( $f['name'] ?? 'File' );
-                if ( ! empty( $f['size'] ) ) echo ' (' . esc_html( $f['size'] ) . ')';
-                echo '<br>';
-            endforeach;
         // Plain text / empty
         else :
             echo empty( $val ) || $val === '[]' ? '—' : nl2br( esc_html( $val ) );
@@ -1059,14 +1124,8 @@ foreach ( $service_responses as $r ) :
         <?php
         $html = ob_get_clean();
 
-        $filename = sanitize_file_name( $project->project_number . '_' . sanitize_file_name( $project->client_name ) . '_questionnaire.html' );
-
+        // Output as HTML page (not attachment) — opens in new window, user can print/save as PDF
         header( 'Content-Type: text/html; charset=utf-8' );
-        header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
-        header( 'Cache-Control: no-cache, no-store, must-revalidate' );
-        header( 'Pragma: no-cache' );
-        header( 'Expires: 0' );
-
         echo $html;
         exit;
     }
@@ -1115,7 +1174,16 @@ foreach ( $service_responses as $r ) :
             // Flatten JSON values for CSV
             $val = $r->response_value;
             $json_val = json_decode( $val, true );
-            if ( is_array( $json_val ) ) {
+            if ( preg_match( '/^data:image/', $val ) ) {
+                $val = '[Signature]';
+            } elseif ( $json_val && isset( $json_val[0] ) && isset( $json_val[0]['url'] ) ) {
+                // Multifile: list names with sizes and URLs
+                $parts = array();
+                foreach ( $json_val as $f ) {
+                    $parts[] = ( $f['name'] ?? 'File' ) . ( ! empty( $f['size'] ) ? ' (' . $f['size'] . ')' : '' ) . ( ! empty( $f['url'] ) ? ' — ' . $f['url'] : '' );
+                }
+                $val = implode( '; ', $parts );
+            } elseif ( is_array( $json_val ) ) {
                 if ( isset( $json_val[0] ) && is_array( $json_val[0] ) ) {
                     // Repeatable table: flatten to "row1: col1 | col2; row2: col1 | col2"
                     $flat = array();
@@ -1125,7 +1193,6 @@ foreach ( $service_responses as $r ) :
                     $val = implode( ', ', $json_val );
                 }
             }
-            if ( preg_match( '/^data:image/', $val ) ) { $val = '[Signature]'; }
 
             $csv_rows[] = array(
                 $r->service_name,
@@ -1149,6 +1216,60 @@ foreach ( $service_responses as $r ) :
             fputcsv( $output, $row );
         }
         fclose( $output );
+        exit;
+    }
+
+    /**
+     * Download a file attached to a questionnaire multifile response.
+     * Validates that the file belongs to a questionnaire response for the project.
+     *
+     * @since 2.7.22
+     * @return void
+     */
+    public function ajax_download_questionnaire_file() {
+        check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) wp_die( esc_html__( 'Access denied', 'businessvance-services-manager' ) );
+
+        $project_id = absint( $_GET['project_id'] ?? $_POST['project_id'] ?? 0 );
+        $filename   = sanitize_file_name( $_GET['file'] ?? $_POST['file'] ?? '' );
+        if ( ! $project_id || ! $filename ) wp_die( esc_html__( 'Invalid request', 'businessvance-services-manager' ) );
+
+        // Security: verify the file belongs to a questionnaire response for this project
+        global $wpdb;
+        $found = $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}bv_questionnaire_responses 
+             WHERE project_id = %d AND response_value LIKE %s",
+            $project_id, '%' . $wpdb->esc_like( $filename ) . '%'
+        ) );
+        if ( ! $found ) wp_die( esc_html__( 'File not found', 'businessvance-services-manager' ) );
+
+        // Build the file path from uploads
+        $upload_dir = wp_upload_dir();
+        $filepath   = $upload_dir['basedir'] . '/bv-documents/' . $filename;
+        if ( ! file_exists( $filepath ) ) wp_die( esc_html__( 'File not found on disk', 'businessvance-services-manager' ) );
+
+        // Determine MIME type
+        $mime_types = array(
+            'pdf'  => 'application/pdf',
+            'doc'  => 'application/msword',
+            'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'xls'  => 'application/vnd.ms-excel',
+            'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'jpg'  => 'image/jpeg', 'jpeg' => 'image/jpeg',
+            'png'  => 'image/png', 'gif' => 'image/gif',
+            'csv'  => 'text/csv', 'txt' => 'text/plain',
+            'zip'  => 'application/zip',
+            'ppt'  => 'application/vnd.ms-powerpoint',
+            'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        );
+        $ext  = strtolower( pathinfo( $filename, PATHINFO_EXTENSION ) );
+        $mime = isset( $mime_types[ $ext ] ) ? $mime_types[ $ext ] : 'application/octet-stream';
+
+        header( 'Content-Type: ' . $mime );
+        header( 'Content-Disposition: attachment; filename="' . basename( $filename ) . '"' );
+        header( 'Content-Length: ' . filesize( $filepath ) );
+        header( 'Cache-Control: no-cache' );
+        readfile( $filepath );
         exit;
     }
 
