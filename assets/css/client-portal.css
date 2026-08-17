@@ -260,6 +260,79 @@
         .bv-questionnaire-section { max-width: 100%; }
     }
 
+    /* ============================================
+       Repeatable Table
+       ============================================ */
+    .bv-q-repeatable-wrap { width: 100%; }
+    .bv-q-rep-table { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 8px; border: 1.5px solid #e5e7eb; }
+    .bv-q-rep-table table { width: 100%; border-collapse: collapse; min-width: 400px; }
+    .bv-q-rep-table thead { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); }
+    .bv-q-rep-table th { padding: 10px 12px; font-size: 13px; font-weight: 600; color: #374151; text-align: left; border-bottom: 2px solid #e5e7eb; white-space: nowrap; }
+    .bv-q-rep-table td { padding: 4px 6px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+    .bv-q-rep-table tr:last-child td { border-bottom: none; }
+    .bv-q-rep-table tr:hover td { background: #f8fafc; }
+    .bv-q-rep-cell { width: 100%; padding: 8px 10px !important; border: 1.5px solid #e5e7eb !important; border-radius: 6px !important; font-size: 13px !important; box-sizing: border-box !important; min-width: 80px; transition: border-color 0.2s ease; }
+    .bv-q-rep-cell:focus { outline: none; border-color: var(--bv-primary) !important; box-shadow: 0 0 0 2px rgba(0,43,92,0.1) !important; }
+    .bv-q-rep-remove { background: none; border: none; color: #9CA3AF; font-size: 20px; cursor: pointer; padding: 4px 8px; border-radius: 4px; transition: all 0.15s ease; line-height: 1; }
+    .bv-q-rep-remove:hover { color: #DC2626; background: #FEF2F2; }
+    .bv-q-rep-add-row { margin-top: 10px; display: inline-flex; align-items: center; gap: 6px; }
+
+    @media (max-width: 600px) {
+        .bv-q-rep-table { border-radius: 6px; }
+        .bv-q-rep-table table { min-width: 300px; font-size: 12px; }
+        .bv-q-rep-table th { padding: 8px 8px; font-size: 12px; }
+        .bv-q-rep-table td { padding: 3px 4px; }
+        .bv-q-rep-cell { padding: 6px 8px !important; font-size: 12px !important; min-width: 60px; }
+    }
+
+    /* ============================================
+       Multi-File Upload
+       ============================================ */
+    .bv-q-multifile-wrap { width: 100%; }
+    .bv-q-multifile-dropzone { border: 2px dashed #d1d5db; border-radius: 10px; padding: 24px 16px; text-align: center; background: #f9fafb; cursor: pointer; transition: all 0.2s ease; margin-bottom: 12px; }
+    .bv-q-multifile-dropzone:hover, .bv-q-multifile-dropzone.dragover { border-color: var(--bv-primary); background: rgba(0,43,92,0.03); }
+    .bv-q-multifile-dropzone-icon { font-size: 32px; margin-bottom: 8px; display: block; color: #9CA3AF; }
+    .bv-q-multifile-dropzone-text { font-size: 14px; color: #6b7280; }
+    .bv-q-multifile-dropzone-text strong { color: var(--bv-primary); }
+    .bv-q-multifile-input { display: none; }
+    .bv-q-multifile-list { display: flex; flex-direction: column; gap: 8px; }
+    .bv-q-mf-file { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; color: #374151; }
+    .bv-q-mf-file-icon { font-size: 18px; flex-shrink: 0; }
+    .bv-q-mf-file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bv-q-mf-file-size { color: #9CA3AF; font-size: 12px; flex-shrink: 0; }
+    .bv-q-mf-remove { background: none; border: none; color: #9CA3AF; cursor: pointer; font-size: 18px; padding: 2px 6px; border-radius: 4px; transition: all 0.15s; flex-shrink: 0; }
+    .bv-q-mf-remove:hover { color: #DC2626; background: #FEF2F2; }
+
+    /* ============================================
+       Static Text & Static Image (display-only)
+       ============================================ */
+    .bv-q-static-text { background: linear-gradient(135deg, #f8fafc 0%, #f0f4f8 100%); border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px 20px; margin: 0; color: #374151; font-size: 14px; line-height: 1.7; }
+    .bv-q-static-text p { margin: 0 0 10px; }
+    .bv-q-static-text p:last-child { margin-bottom: 0; }
+    .bv-q-static-image { text-align: center; }
+    .bv-q-static-image img { max-width: 100%; height: auto; border-radius: 10px; border: 1px solid #e5e7eb; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .bv-q-static-image figcaption { margin-top: 8px; font-size: 13px; color: #6b7280; font-style: italic; }
+
+    /* ============================================
+       Signature Pad
+       ============================================ */
+    .bv-q-signature-wrap { border: 2px solid #d1d5db; border-radius: 10px; background: #fff; overflow: hidden; transition: border-color 0.2s ease; }
+    .bv-q-signature-wrap:hover { border-color: #c8cdd3; }
+    .bv-q-signature-wrap.bv-q-sig-confirmed { border-color: #059669; box-shadow: 0 0 0 3px rgba(5,150,105,0.1); }
+    .bv-q-signature-canvas { display: block; width: 100%; height: 160px; cursor: crosshair; touch-action: none; background: repeating-linear-gradient(0deg, transparent, transparent 39px, #f3f4f6 39px, #f3f4f6 40px), repeating-linear-gradient(90deg, transparent, transparent 39px, #f3f4f6 39px, #f3f4f6 40px); background-size: 40px 40px; }
+    .bv-q-signature-canvas[style*="pointer-events: none"] { cursor: default; }
+    .bv-q-sig-actions { display: flex; gap: 8px; padding: 10px 14px; background: #f8f9fb; border-top: 1px solid #e5e7eb; }
+    .bv-q-sig-confirm, .bv-q-sig-clear { padding: 6px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s ease; }
+    .bv-q-sig-confirm { background: #059669; color: #fff; display: none; }
+    .bv-q-sig-confirm:hover { background: #047857; }
+    .bv-q-sig-clear { background: #f3f4f6; color: #6b7280; border: 1px solid #e5e7eb; display: none; }
+    .bv-q-sig-clear:hover { background: #fee2e2; color: #DC2626; border-color: #fca5a5; }
+    .bv-q-sig-hint { font-size: 12px; color: #9CA3AF; font-style: italic; margin-top: 6px; }
+
+    @media (max-width: 600px) {
+        .bv-q-signature-canvas { height: 120px; }
+    }
+
     /* Messages */
     .bv-messages-list { display: flex; flex-direction: column; gap: 12px; }
     .bv-message-bubble { padding: 14px 18px; border-radius: 12px; max-width: 80%; font-size: 14px; line-height: 1.6; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }

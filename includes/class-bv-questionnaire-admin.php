@@ -479,6 +479,7 @@ class BV_Questionnaire_Admin {
             'text', 'textarea', 'number', 'email', 'phone', 'date',
             'select', 'radio', 'checkbox', 'heading', 'paragraph', 'file',
             'url', 'time', 'range', 'color', 'address', 'wysiwyg', 'rating', 'repeatable',
+            'multifile', 'static_text', 'static_image', 'signature',
         );
 
         if ( ! in_array( $type, $allowed_types, true ) ) {
@@ -549,6 +550,24 @@ class BV_Questionnaire_Admin {
                         'label' => sanitize_text_field( $line ),
                     );
                 }
+            }
+        } elseif ( $type === 'static_image' && ! empty( $options_text ) ) {
+            // Static image: first line is optional caption
+            $lines = array_filter( array_map( 'trim', explode( "\n", $options_text ) ) );
+            if ( ! empty( $lines ) ) {
+                $options[] = array(
+                    'value' => '',
+                    'label' => sanitize_text_field( $lines[0] ),
+                );
+            }
+        } elseif ( $type === 'multifile' && ! empty( $options_text ) ) {
+            // Multifile: first line is allowed extensions (comma-separated)
+            $exts = trim( explode( "\n", $options_text )[0] );
+            if ( $exts ) {
+                $options[] = array(
+                    'value' => sanitize_text_field( $exts ),
+                    'label' => 'Allowed: ' . $exts,
+                );
             }
         }
 

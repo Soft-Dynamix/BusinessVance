@@ -98,14 +98,20 @@
             + '<option value="rating"' + (t==='rating'?' selected':'') + '>Star Rating</option>'
             + '<option value="address"' + (t==='address'?' selected':'') + '>Address Block</option>'
             + '<option value="repeatable"' + (t==='repeatable'?' selected':'') + '>Repeatable Table</option>'
+            + '<option value="signature"' + (t==='signature'?' selected':'') + '>Signature Pad</option>'
+            + '</optgroup>'
+            + '<optgroup label="Uploads">'
+            + '<option value="file"' + (t==='file'?' selected':'') + '>File Upload</option>'
+            + '<option value="multifile"' + (t==='multifile'?' selected':'') + '>Multiple File Upload</option>'
             + '</optgroup>'
             + '<optgroup label="Rich Content">'
             + '<option value="wysiwyg"' + (t==='wysiwyg'?' selected':'') + '>Rich Text Editor</option>'
-            + '<option value="file"' + (t==='file'?' selected':'') + '>File Upload</option>'
             + '</optgroup>'
             + '<optgroup label="Display Only">'
             + '<option value="heading"' + (t==='heading'?' selected':'') + '>Heading</option>'
             + '<option value="paragraph"' + (t==='paragraph'?' selected':'') + '>Paragraph</option>'
+            + '<option value="static_text"' + (t==='static_text'?' selected':'') + '>Static Text (styled)</option>'
+            + '<option value="static_image"' + (t==='static_image'?' selected':'') + '>Static Image</option>'
             + '</optgroup>';
         return h;
     }
@@ -171,7 +177,11 @@
         'color':    { placeholder: '', help_text: 'Choose a color' },
         'address':  { placeholder: '' },
         'repeatable': { placeholder: '', help_text: 'Set options: column names, one per line' },
-        'wysiwyg':  { placeholder: '' }
+        'wysiwyg':  { placeholder: '' },
+        'multifile': { placeholder: '', help_text: 'Clients can upload multiple files as attachments' },
+        'signature': { placeholder: '', help_text: 'Client will sign digitally in the form' },
+        'static_text': { placeholder: '', help_text: 'Rich text content displayed on the form (not submittable)' },
+        'static_image': { placeholder: 'https://example.com/image.jpg', help_text: 'Image displayed on the form (not submittable). Put image URL in placeholder field. Optional: put caption in options (one line).' }
     };
 
     function bvQTApplyTypeDefaults($typeSelect, $placeholder, $helpText) {
@@ -199,7 +209,7 @@
         return type === 'rating';
     }
     function bvQTNeedsPlaceholder(type) {
-        return !(type === 'heading' || type === 'paragraph' || type === 'checkbox' || type === 'color' || type === 'rating' || type === 'address' || type === 'wysiwyg' || type === 'range' || type === 'time' || type === 'date' || type === 'file');
+        return !(type === 'heading' || type === 'paragraph' || type === 'checkbox' || type === 'color' || type === 'rating' || type === 'address' || type === 'wysiwyg' || type === 'range' || type === 'time' || type === 'date' || type === 'file' || type === 'multifile' || type === 'signature' || type === 'static_text' || type === 'repeatable');
     }
 
     // ── Column Builder (Repeatable Table) ──
@@ -1092,7 +1102,7 @@
         $(document).on('change', '.bv-qt-new-q-type-select', function() {
             var t = $(this).val();
             var $form = $(this).closest('.bv-qt-inline-q-form');
-            $form.find('.bv-qt-new-q-options-row').toggle(bvQTNeedsOptions(t));
+            $form.find('.bv-qt-new-q-options-row').toggle(bvQTNeedsOptions(t) || t === 'static_image' || t === 'multifile');
             $form.find('.bv-qt-new-q-cols-row').toggle(bvQTNeedsColumns(t));
             $form.find('.bv-qt-new-q-range-row').toggle(bvQTNeedsRange(t));
             $form.find('.bv-qt-new-q-rating-row').toggle(bvQTNeedsRating(t));
@@ -1130,6 +1140,8 @@
                 optionsText = min + '\n' + max + '\n' + step;
             } else if (bvQTNeedsRating(type)) {
                 optionsText = $form.find('#bvq-new-rating-stars').val() || '5';
+            } else if (type === 'static_image' || type === 'multifile') {
+                optionsText = $form.find('#bvq-new-options').val() || '';
             }
             $.post(ajaxurl, {
                 action: 'bv_qt_save_question', nonce: BVQT.nonce,
@@ -1193,6 +1205,18 @@
                         optsText += v + '|' + l + '\n';
                         if (l) optsLabelsOnly += l + '\n';
                     });
+                } else if (q.type === 'static_image' && q.options && Array.isArray(q.options)) {
+                    // Static image: load caption from options
+                    $.each(q.options, function(i, o) {
+                        var l = typeof o === 'object' ? (o.label || '') : o;
+                        if (l) optsLabelsOnly += l + '\n';
+                    });
+                } else if (q.type === 'multifile' && q.options && Array.isArray(q.options)) {
+                    // Multifile: load allowed extensions from options
+                    $.each(q.options, function(i, o) {
+                        var v = typeof o === 'object' ? (o.value || '') : o;
+                        if (v) optsText += v + '\n';
+                    });
                 }
                 var displayOpts = optsLabelsOnly.trim() || optsText.trim();
 
@@ -1211,7 +1235,7 @@
                 }
 
                 // Check visibility for options, columns, range, rating and placeholder
-                var showOpts = bvQTNeedsOptions(q.type);
+                var showOpts = bvQTNeedsOptions(q.type) || q.type === 'static_image' || q.type === 'multifile';
                 var showCols = bvQTNeedsColumns(q.type);
                 var showRange = bvQTNeedsRange(q.type);
                 var showRating = bvQTNeedsRating(q.type);
@@ -1335,7 +1359,7 @@
         $(document).on('change', '#bvq-type', function() {
             var t = $(this).val();
             var $form = $(this).closest('.bv-qt-edit-q-form');
-            $form.find('.bvq-options-row').toggle(bvQTNeedsOptions(t));
+            $form.find('.bvq-options-row').toggle(bvQTNeedsOptions(t) || t === 'static_image' || t === 'multifile');
             $form.find('.bvq-cols-row').toggle(bvQTNeedsColumns(t));
             $form.find('.bvq-range-row').toggle(bvQTNeedsRange(t));
             $form.find('.bvq-rating-row').toggle(bvQTNeedsRating(t));
@@ -1371,6 +1395,8 @@
                 optionsText = min + '\n' + max + '\n' + step;
             } else if (bvQTNeedsRating(type)) {
                 optionsText = $('#bvq-rating-stars').val() || '5';
+            } else if (type === 'static_image' || type === 'multifile') {
+                optionsText = $('#bvq-options').val() || '';
             }
             $.post(ajaxurl, {
                 action: 'bv_qt_save_question', nonce: BVQT.nonce,
@@ -1605,7 +1631,9 @@
             'select': 'Dropdown', 'radio': 'Radio', 'checkbox': 'Checkbox',
             'range': 'Range / Slider', 'color': 'Color', 'rating': 'Star Rating',
             'address': 'Address', 'repeatable': 'Repeatable Table', 'wysiwyg': 'Rich Text',
-            'heading': 'Heading', 'paragraph': 'Paragraph', 'file': 'File Upload'
+            'heading': 'Heading', 'paragraph': 'Paragraph', 'file': 'File Upload',
+            'multifile': 'Multi-File Upload', 'signature': 'Signature Pad',
+            'static_text': 'Static Text', 'static_image': 'Static Image'
         };
 
         // Question type colors for preview badges
@@ -1615,7 +1643,9 @@
             'select': '#0e7732', 'radio': '#0e7732', 'checkbox': '#0e7732',
             'range': '#7e5bf0', 'color': '#b32d2e', 'rating': '#f59e0b',
             'address': '#0891b2', 'repeatable': '#0891b2', 'wysiwyg': '#7e5bf0',
-            'heading': '#646970', 'paragraph': '#646970', 'file': '#b32d2e'
+            'heading': '#646970', 'paragraph': '#646970', 'file': '#b32d2e',
+            'multifile': '#b32d2e', 'signature': '#7c3aed',
+            'static_text': '#646970', 'static_image': '#646970'
         };
 
         // Store parsed data for import confirmation

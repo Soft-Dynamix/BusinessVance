@@ -28,6 +28,7 @@ class BV_Client_Portal {
         add_action( 'wp_ajax_bv_portal_sign_agreement', array( $this, 'ajax_sign_agreement' ) );
         add_action( 'wp_ajax_bv_portal_send_message', array( $this, 'ajax_send_message' ) );
         add_action( 'wp_ajax_bv_portal_download_report', array( $this, 'ajax_download_report' ) );
+        add_action( 'wp_ajax_bv_portal_upload_multifile', array( $this, 'ajax_upload_multifile' ) );
 
         // Ensure bv_project_documents has document_requirement_id column
         // Only runs on admin_init to avoid running on every frontend page load.
@@ -67,7 +68,8 @@ class BV_Client_Portal {
                 'ajax_url' => admin_url( 'admin-ajax.php' ),
                 'nonce'    => wp_create_nonce( 'bv_portal_action' ),
             ) );
-            // Inline JS for new field types: star rating, repeatable table, other option toggle
+            // Inline JS for star rating, repeatable table (fixed q_ prefix), other option toggle
+            // Signature/multifile logic is in client-portal.js
             wp_add_inline_script( 'bv-client-portal', "
 jQuery(function($){
     // Star rating click handler
@@ -79,18 +81,18 @@ jQuery(function($){
         });
         wrap.find('input[type=hidden]').val(val);
     });
-    // Repeatable table: add row
+    // Repeatable table: add row (fixed: uses data-qid and header column count)
     $(document).on('click', '.bv-q-rep-add-row', function(){
-        var table = $(this).closest('.bv-q-repeatable-wrap').find('tbody');
-        var lastRow = table.find('tr:last');
-        var rowHtml = lastRow.length ? lastRow.html() : '<td><input type=\"text\" class=\"bv-q-rep-cell\" /></td>';
+        var $wrap = $(this).closest('.bv-q-repeatable-wrap');
+        var table = $wrap.find('tbody');
+        var qid = $wrap.data('qid');
+        var colCount = $wrap.find('thead th').length - 1;
         var newIdx = table.find('tr').length;
         var newRow = $('<tr></tr>');
-        var cells = lastRow.find('input').length || 1;
-        for(var c=0; c<cells; c++){
-            newRow.append('<td><input type=\"text\" name=\"' + table.closest('[data-qid]').data('qid') + '[' + newIdx + '][' + c + ']\" class=\"bv-q-rep-cell\" /></td>');
+        for(var c=0; c<colCount; c++){
+            newRow.append('<td><input type=\'text\' name=\'q_' + qid + '[' + newIdx + '][' + c + ']\' class=\'bv-q-rep-cell\' /></td>');
         }
-        newRow.append('<td><button type=\"button\" class=\"bv-q-rep-remove\" title=\"Remove row\">&times;</button></td>');
+        newRow.append('<td><button type=\'button\' class=\'bv-q-rep-remove\' title=\'Remove row\'>&times;</button></td>');
         table.append(newRow);
     });
     // Repeatable table: remove row
@@ -1355,10 +1357,10 @@ jQuery(function($){
                         </div>
                     <?php else : ?>
                     <div class="bv-q-field">
-                        <?php if ( $q->type !== 'heading' && $q->type !== 'paragraph' ) : ?>
+                        <?php if ( ! in_array( $q->type, array( 'heading', 'paragraph', 'static_text', 'static_image' ), true ) ) : ?>
                         <label for="q_<?php echo $qid; ?>"><?php echo esc_html( $q->label ); ?><?php if ( $q->is_required ) echo ' <span class="bv-required">*</span>'; ?></label>
                         <?php endif; ?>
-                        <?php if ( ! empty( $q->help_text ) ) : ?>
+                        <?php if ( ! empty( $q->help_text ) && ! in_array( $q->type, array( 'static_text', 'static_image' ), true ) ) : ?>
                         <small class="bv-q-help"><?php echo esc_html( $q->help_text ); ?></small>
                         <?php endif; ?>
 
@@ -1435,8 +1437,90 @@ jQuery(function($){
                                 <?php foreach ( $rows as $ri => $row ) : ?>
                                 <tr><?php foreach ( $col_defs as $ci => $col ) : ?><td><input type="text" name="q_<?php echo $qid; ?>[<?php echo $ri; ?>][<?php echo $ci; ?>]" value="<?php echo esc_attr( $row[$ci] ?? '' ); ?>" class="bv-q-rep-cell" /></td><?php endforeach; ?><td><button type="button" class="bv-q-rep-remove" title="Remove row">&times;</button></td></tr>
                                 <?php endforeach; ?>
+                                <?php if ( empty( $rows ) ) : ?>
+                                <tr><?php foreach ( $col_defs as $ci => $col ) : ?><td><input type="text" name="q_<?php echo $qid; ?>[0][<?php echo $ci; ?>]" value="" class="bv-q-rep-cell" /></td><?php endforeach; ?><td><button type="button" class="bv-q-rep-remove" title="Remove row">&times;</button></td></tr>
+                                <?php endif; ?>
                                 </tbody></table></div>
                                 <button type="button" class="bv-q-rep-add-row button button-small"><?php echo esc_html__( '+ Add Row', 'businessvance-services-manager' ); ?></button>
+                            </div>
+                        <?php elseif ( $q->type === 'multifile' ) : ?>
+                            <?php
+                            $saved_files = json_decode( $val, true ) ?: array();
+                            $accept = '';
+                            if ( is_array( $options ) && ! empty( $options[0] ) ) {
+                                $exts = is_array( $options[0] ) ? ( $options[0]['value'] ?? '' ) : $options[0];
+                                if ( $exts ) $accept = ' accept=".' . implode( ',.', array_map( 'trim', explode( ',', $exts ) ) ) . '"';
+                            }
+                            ?>
+                            <div class="bv-q-multifile-wrap" data-qid="<?php echo $qid; ?>">
+                                <div class="bv-q-multifile-dropzone" data-qid="<?php echo $qid; ?>">
+                                    <span class="bv-q-multifile-dropzone-icon">&#128194;</span>
+                                    <div class="bv-q-multifile-dropzone-text"><?php echo esc_html__( 'Drag files here or', 'businessvance-services-manager' ); ?> <strong><?php echo esc_html__( 'browse', 'businessvance-services-manager' ); ?></strong></div>
+                                </div>
+                                <input type="file" class="bv-q-multifile-input" data-qid="<?php echo $qid; ?>" multiple<?php echo $accept; ?> />
+                                <div class="bv-q-multifile-list">
+                                <?php foreach ( $saved_files as $sf ) : ?>
+                                    <div class="bv-q-mf-file" data-filename="<?php echo esc_attr( is_array($sf) ? ($sf['name'] ?? '') : $sf ); ?>">
+                                        <span class="bv-q-mf-file-icon">&#128196;</span>
+                                        <span class="bv-q-mf-file-name"><?php echo esc_html( is_array($sf) ? ($sf['name'] ?? '') : $sf ); ?></span>
+                                        <?php if ( is_array($sf) && ! empty( $sf['url'] ) ) : ?>
+                                        <a href="<?php echo esc_url( $sf['url'] ); ?>" target="_blank" class="bv-q-mf-file-icon" title="Download">&#128279;</a>
+                                        <?php endif; ?>
+                                        <?php if ( is_array($sf) && ! empty( $sf['size'] ) ) : ?>
+                                        <span class="bv-q-mf-file-size"><?php echo esc_html( $sf['size'] ); ?></span>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endforeach; ?>
+                                </div>
+                                <input type="hidden" class="bv-q-multifile-data" data-qid="<?php echo $qid; ?>" value="<?php echo esc_attr( $val ); ?>" />
+                            </div>
+                        <?php elseif ( $q->type === 'static_text' ) : ?>
+                            <div class="bv-q-static-text"><?php echo wp_kses_post( $q->label ); ?></div>
+                        <?php elseif ( $q->type === 'static_image' ) : ?>
+                            <?php
+                            $img_url = '';
+                            $img_caption = '';
+                            if ( is_array( $options ) && ! empty( $options[0] ) ) {
+                                $img_url = is_array( $options[0] ) ? ( $options[0]['value'] ?? $options[0]['label'] ?? '' ) : $options[0];
+                            }
+                            if ( is_array( $options ) && ! empty( $options[1] ) ) {
+                                $img_caption = is_array( $options[1] ) ? ( $options[1]['label'] ?? '' ) : $options[1];
+                            }
+                            if ( ! $img_url && ! empty( $q->placeholder ) ) {
+                                $img_url = $q->placeholder;
+                            }
+                            // Caption from options line 2
+                            if ( ! $img_caption && is_array( $options ) && ! empty( $options[1] ) ) {
+                                $img_caption = is_array( $options[1] ) ? ( $options[1]['label'] ?? '' ) : $options[1];
+                            }
+                            ?>
+                            <figure class="bv-q-static-image">
+                            <?php if ( $img_url ) : ?>
+                                <img src="<?php echo esc_url( $img_url ); ?>" alt="<?php echo esc_attr( $q->label ); ?>" loading="lazy" />
+                            <?php else : ?>
+                                <div style="padding:40px;background:#f3f4f6;border-radius:10px;color:#9CA3AF;"><?php echo esc_html__( 'No image URL configured. Set the image URL in the placeholder field.', 'businessvance-services-manager' ); ?></div>
+                            <?php endif; ?>
+                            <?php if ( $img_caption ) : ?>
+                                <figcaption><?php echo esc_html( $img_caption ); ?></figcaption>
+                            <?php endif; ?>
+                            </figure>
+                        <?php elseif ( $q->type === 'signature' ) : ?>
+                            <?php $sig_val = $val; ?>
+                            <div class="bv-q-signature-wrap<?php echo $sig_val ? ' bv-q-sig-confirmed' : ''; ?>">
+                                <?php if ( $sig_val && preg_match( '/^data:image/', $sig_val ) ) : ?>
+                                    <img src="<?php echo esc_attr( $sig_val ); ?>" alt="Signature" style="width:100%;height:160px;object-fit:contain;background:repeating-linear-gradient(0deg,transparent,transparent 39px,#f3f4f6 39px,#f3f4f6 40px),repeating-linear-gradient(90deg,transparent,transparent 39px,#f3f4f6 39px,#f3f4f6 40px);background-size:40px 40px;border-radius:8px;" />
+                                    <div class="bv-q-sig-actions">
+                                        <button type="button" class="bv-q-sig-clear" style="display:inline-flex;">&#9998; <?php echo esc_html__( 'Clear & Re-sign', 'businessvance-services-manager' ); ?></button>
+                                        <span class="bv-q-sig-hint" style="display:block;margin:0;flex:1;text-align:right;">&#10003; <?php echo esc_html__( 'Signature on file', 'businessvance-services-manager' ); ?></span>
+                                    </div>
+                                <?php else : ?>
+                                    <canvas class="bv-q-signature-canvas" data-qid="<?php echo $qid; ?>" width="600" height="160"></canvas>
+                                    <div class="bv-q-sig-actions">
+                                        <button type="button" class="bv-q-sig-confirm">&#10003; <?php echo esc_html__( 'Confirm Signature', 'businessvance-services-manager' ); ?></button>
+                                        <button type="button" class="bv-q-sig-clear">&#10005; <?php echo esc_html__( 'Clear', 'businessvance-services-manager' ); ?></button>
+                                    </div>
+                                    <p class="bv-q-sig-hint"><?php echo esc_html__( 'Draw your signature above using your mouse or finger', 'businessvance-services-manager' ); ?></p>
+                                <?php endif; ?>
                             </div>
                         <?php elseif ( $q->type === 'wysiwyg' ) : ?>
                             <?php wp_editor( $val, 'q_' . $qid, array( 'textarea_name' => 'q_' . $qid, 'textarea_rows' => 6, 'media_buttons' => false, 'teeny' => true, 'quicktags' => true ) ); ?>
@@ -1818,6 +1902,71 @@ jQuery(function($){
         }
 
         wp_send_json_success( esc_html__( 'Document uploaded successfully', 'businessvance-services-manager' ) );
+    }
+
+    /**
+     * Handle multiple file upload for the multifile questionnaire field type.
+     * Files are uploaded to the BV upload directory and metadata is returned as JSON.
+     *
+     * @since 2.7.19
+     * @return void
+     */
+    public function ajax_upload_multifile() {
+        check_ajax_referer( 'bv_portal_action', 'nonce' );
+        if ( ! is_user_logged_in() ) wp_send_json_error( esc_html__( 'Not logged in', 'businessvance-services-manager' ) );
+
+        $project_id = absint( $_POST['project_id'] ?? 0 );
+        if ( ! $project_id ) wp_send_json_error( esc_html__( 'Missing project ID.', 'businessvance-services-manager' ) );
+        $project = $this->verify_project_access( $project_id );
+        if ( ! $project ) wp_send_json_error( esc_html__( 'Project not found or access denied.', 'businessvance-services-manager' ) );
+
+        if ( empty( $_FILES['files'] ) ) wp_send_json_error( esc_html__( 'No files uploaded.', 'businessvance-services-manager' ) );
+
+        $upload_dir  = wp_upload_dir();
+        $upload_base = $upload_dir['basedir'] . '/bv-documents';
+        $upload_url  = $upload_dir['baseurl'] . '/bv-documents';
+        if ( ! file_exists( $upload_base ) ) wp_mkdir_p( $upload_base );
+
+        $files    = $_FILES['files'];
+        $uploaded = array();
+        $allowed  = array( 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'csv', 'txt', 'zip', 'ppt', 'pptx' );
+
+        // Handle single file or multiple
+        $file_names = is_array( $files['name'] ) ? $files['name'] : array( $files['name'] );
+        $file_tmps  = is_array( $files['tmp_name'] ) ? $files['tmp_name'] : array( $files['tmp_name'] );
+        $file_sizes = is_array( $files['size'] ) ? $files['size'] : array( $files['size'] );
+
+        for ( $i = 0; $i < count( $file_names ); $i++ ) {
+            $name = sanitize_file_name( $file_names[ $i ] );
+            $ext  = strtolower( pathinfo( $name, PATHINFO_EXTENSION ) );
+
+            if ( ! in_array( $ext, $allowed, true ) ) {
+                $uploaded[] = array( 'name' => $name, 'error' => 'File type .' . esc_html( $ext ) . ' not allowed.' );
+                continue;
+            }
+
+            if ( $file_sizes[ $i ] > 10 * 1024 * 1024 ) {
+                $uploaded[] = array( 'name' => $name, 'error' => 'File exceeds 10MB limit.' );
+                continue;
+            }
+
+            $filename   = $project_id . '_mf_' . time() . '_' . $i . '_' . $name;
+            $upload_path = $upload_base . '/' . $filename;
+
+            if ( ! move_uploaded_file( $file_tmps[ $i ], $upload_path ) ) {
+                $uploaded[] = array( 'name' => $name, 'error' => 'Upload failed.' );
+                continue;
+            }
+
+            $uploaded[] = array(
+                'name' => $name,
+                'file' => $filename,
+                'size' => size_format( $file_sizes[ $i ] ),
+                'url'  => $upload_url . '/' . $filename,
+            );
+        }
+
+        wp_send_json_success( $uploaded );
     }
 
     /**
