@@ -261,6 +261,19 @@
     }
 
     /* ============================================
+       Star Rating
+       ============================================ */
+    .bv-q-rating-wrap { display: inline-flex; align-items: center; gap: 4px; padding: 4px 0; }
+    .bv-q-star { display: inline-block; font-size: 32px; line-height: 1; cursor: pointer; transition: color 0.15s ease, transform 0.15s ease; -webkit-tap-highlight-color: transparent; user-select: none; padding: 2px 3px; }
+    .bv-q-star:hover { transform: scale(1.2); }
+    .bv-q-star:active { transform: scale(0.95); }
+    .bv-q-star-filled { color: #f59e0b !important; }
+    .bv-q-star-empty { color: #d1d5db !important; }
+    @media (max-width: 600px) {
+        .bv-q-star { font-size: 28px; padding: 2px 2px; }
+    }
+
+    /* ============================================
        Repeatable Table
        ============================================ */
     .bv-q-repeatable-wrap { width: 100%; }

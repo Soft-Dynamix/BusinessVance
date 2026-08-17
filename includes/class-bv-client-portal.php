@@ -68,43 +68,7 @@ class BV_Client_Portal {
                 'ajax_url' => admin_url( 'admin-ajax.php' ),
                 'nonce'    => wp_create_nonce( 'bv_portal_action' ),
             ) );
-            // Inline JS for star rating, repeatable table (fixed q_ prefix), other option toggle
-            // Signature/multifile logic is in client-portal.js
-            wp_add_inline_script( 'bv-client-portal', "
-jQuery(function($){
-    // Star rating click handler
-    $(document).on('click', '.bv-q-star', function(){
-        var val = $(this).data('val');
-        var wrap = $(this).closest('.bv-q-rating-wrap');
-        wrap.find('.bv-q-star').each(function(){
-            $(this).css('color', $(this).data('val') <= val ? '#f59e0b' : '#d1d5db');
-        });
-        wrap.find('input[type=hidden]').val(val);
-    });
-    // Repeatable table: add row (fixed: uses data-qid and header column count)
-    $(document).on('click', '.bv-q-rep-add-row', function(){
-        var $wrap = $(this).closest('.bv-q-repeatable-wrap');
-        var table = $wrap.find('tbody');
-        var qid = $wrap.data('qid');
-        var colCount = $wrap.find('thead th').length - 1;
-        var newIdx = table.find('tr').length;
-        var newRow = $('<tr></tr>');
-        for(var c=0; c<colCount; c++){
-            newRow.append('<td><input type=\'text\' name=\'q_' + qid + '[' + newIdx + '][' + c + ']\' class=\'bv-q-rep-cell\' /></td>');
-        }
-        newRow.append('<td><button type=\'button\' class=\'bv-q-rep-remove\' title=\'Remove row\'>&times;</button></td>');
-        table.append(newRow);
-    });
-    // Repeatable table: remove row
-    $(document).on('click', '.bv-q-rep-remove', function(){
-        var tbody = $(this).closest('tbody');
-        if(tbody.find('tr').length > 1) $(this).closest('tr').remove();
-    });
-    // Other option toggle (radio and checkbox)
-    $(document).on('change', '.bv-q-other-option input[type=radio], .bv-q-other-option input[type=checkbox]', function(){
-        $(this).closest('.bv-q-other-option').find('.bv-q-other-input').toggle(this.checked);
-    });
-});" );
+            // Star rating, repeatable table, other option toggle, multifile, signature logic are all in client-portal.js
         }
     }
 
@@ -1475,23 +1439,31 @@ jQuery(function($){
                                 <input type="hidden" class="bv-q-multifile-data" data-qid="<?php echo $qid; ?>" value="<?php echo esc_attr( $val ); ?>" />
                             </div>
                         <?php elseif ( $q->type === 'static_text' ) : ?>
-                            <div class="bv-q-static-text"><?php echo wp_kses_post( $q->label ); ?></div>
+                            <?php
+                            // Get content from saved options (stored as single-element array with content in label)
+                            $static_content = '';
+                            if ( is_array( $options ) && ! empty( $options[0] ) ) {
+                                $static_content = is_array( $options[0] ) ? ( $options[0]['label'] ?? $options[0]['value'] ?? '' ) : (string) $options[0];
+                            }
+                            // Fallback to label if no content was saved
+                            if ( ! $static_content ) {
+                                $static_content = $q->label;
+                            }
+                            ?>
+                            <div class="bv-q-static-text"><?php echo wp_kses_post( $static_content ); ?></div>
                         <?php elseif ( $q->type === 'static_image' ) : ?>
                             <?php
                             $img_url = '';
                             $img_caption = '';
                             if ( is_array( $options ) && ! empty( $options[0] ) ) {
-                                $img_url = is_array( $options[0] ) ? ( $options[0]['value'] ?? $options[0]['label'] ?? '' ) : $options[0];
-                            }
-                            if ( is_array( $options ) && ! empty( $options[1] ) ) {
-                                $img_caption = is_array( $options[1] ) ? ( $options[1]['label'] ?? '' ) : $options[1];
+                                // New format: [0] has URL in value/label, [1] has caption
+                                $img_url = is_array( $options[0] ) ? ( $options[0]['value'] ?? $options[0]['label'] ?? '' ) : (string) $options[0];
+                                if ( ! empty( $options[1] ) ) {
+                                    $img_caption = is_array( $options[1] ) ? ( $options[1]['label'] ?? '' ) : (string) $options[1];
+                                }
                             }
                             if ( ! $img_url && ! empty( $q->placeholder ) ) {
                                 $img_url = $q->placeholder;
-                            }
-                            // Caption from options line 2
-                            if ( ! $img_caption && is_array( $options ) && ! empty( $options[1] ) ) {
-                                $img_caption = is_array( $options[1] ) ? ( $options[1]['label'] ?? '' ) : $options[1];
                             }
                             ?>
                             <figure class="bv-q-static-image">

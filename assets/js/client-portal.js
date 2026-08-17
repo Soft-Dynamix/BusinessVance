@@ -1,7 +1,8 @@
 /**
  * BusinessVance Client Portal - Frontend JavaScript
  * @since 2.0.0  Updated 2.5.0 for document requirements, questionnaire fixes
- * @since 2.7.19 Fixed repeatable/checkbox/address serialization, added multifile/signature/static fields
+ * @since 2.7.20 Fixed repeatable/checkbox/address serialization, added multifile/signature/static fields
+ * @since 2.7.20 Moved inline handlers here for reliability, added rating hover, fixed all field types
  */
 (function($) {
     'use strict';
@@ -20,7 +21,7 @@
     // ============================================
     window.bv_sign_agreement = function(projectId) {
         var name = $('#bv-sign-name').val();
-        if (!name) { alert(bv_portal.i18n?.enter_name || 'Please enter your full legal name.'); return; }
+        if (!name) { alert(bv_portal.i18n && bv_portal.i18n.enter_name ? bv_portal.i18n.enter_name : 'Please enter your full legal name.'); return; }
         $('#bv-agreement-status').html('<em>Signing...</em>');
         $.post(bv_portal.ajax_url, {
             action: 'bv_portal_sign_agreement',
@@ -151,6 +152,110 @@
     };
 
     // ============================================
+    // Star Rating — Click + Hover
+    // ============================================
+    $(document).on('click', '.bv-q-star', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var val = parseInt($(this).data('val'), 10);
+        if (isNaN(val)) return;
+        var $wrap = $(this).closest('.bv-q-rating-wrap');
+        $wrap.find('.bv-q-star').each(function() {
+            var sv = parseInt($(this).data('val'), 10);
+            if (sv <= val) {
+                $(this).removeClass('bv-q-star-empty').addClass('bv-q-star-filled');
+                $(this).css('color', '#f59e0b');
+            } else {
+                $(this).removeClass('bv-q-star-filled').addClass('bv-q-star-empty');
+                $(this).css('color', '#d1d5db');
+            }
+        });
+        var $hidden = $wrap.find('input[type=hidden]');
+        if ($hidden.length) $hidden.val(val);
+    });
+
+    // Hover preview for rating stars
+    $(document).on('mouseenter', '.bv-q-star', function() {
+        var val = parseInt($(this).data('val'), 10);
+        if (isNaN(val)) return;
+        var $wrap = $(this).closest('.bv-q-rating-wrap');
+        $wrap.find('.bv-q-star').each(function() {
+            var sv = parseInt($(this).data('val'), 10);
+            if (sv <= val) {
+                $(this).css('color', '#fbbf24'); // lighter gold on hover
+                $(this).css('transform', 'scale(1.15)');
+            } else {
+                $(this).css('color', '#d1d5db');
+                $(this).css('transform', 'scale(1)');
+            }
+        });
+    });
+    $(document).on('mouseleave', '.bv-q-rating-wrap', function() {
+        var $wrap = $(this);
+        var currentVal = parseInt($wrap.find('input[type=hidden]').val(), 10) || 0;
+        $wrap.find('.bv-q-star').each(function() {
+            var sv = parseInt($(this).data('val'), 10);
+            $(this).css('transform', 'scale(1)');
+            if (sv <= currentVal) {
+                $(this).css('color', '#f59e0b');
+            } else {
+                $(this).css('color', '#d1d5db');
+            }
+        });
+    });
+
+    // ============================================
+    // Repeatable Table — Add Row
+    // ============================================
+    $(document).on('click', '.bv-q-rep-add-row', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var $wrap = $(this).closest('.bv-q-repeatable-wrap');
+        var $tbody = $wrap.find('tbody');
+        var qid = $wrap.data('qid');
+        if (!qid) return;
+        var colCount = $wrap.find('thead th').length - 1; // last th is actions
+        if (colCount < 1) colCount = 1;
+        var newIdx = $tbody.find('tr').length;
+        var newRow = $('<tr></tr>');
+        for (var c = 0; c < colCount; c++) {
+            newRow.append($('<td></td>').html(
+                '<input type="text" name="q_' + qid + '[' + newIdx + '][' + c + ']" class="bv-q-rep-cell" />'
+            ));
+        }
+        newRow.append($('<td></td>').html(
+            '<button type="button" class="bv-q-rep-remove" title="Remove row">&times;</button>'
+        ));
+        $tbody.append(newRow);
+        // Focus the first cell of the new row
+        newRow.find('.bv-q-rep-cell').first().focus();
+    });
+
+    // ============================================
+    // Repeatable Table — Remove Row
+    // ============================================
+    $(document).on('click', '.bv-q-rep-remove', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var $tbody = $(this).closest('tbody');
+        if ($tbody.find('tr').length > 1) {
+            $(this).closest('tr').fadeOut(150, function() { $(this).remove(); });
+        }
+    });
+
+    // ============================================
+    // Other Option Toggle (radio/checkbox)
+    // ============================================
+    $(document).on('change', '.bv-q-other-option input[type=radio], .bv-q-other-option input[type=checkbox]', function() {
+        var $otherInput = $(this).closest('.bv-q-other-option').find('.bv-q-other-input');
+        if ($(this).is(':checked')) {
+            $otherInput.show().focus();
+        } else {
+            $otherInput.hide().val('');
+        }
+    });
+
+    // ============================================
     // Helper: Extract question ID from name attribute
     // Handles: q_123, q_123[], q_123[0][1], q_123[street]
     // ============================================
@@ -237,6 +342,13 @@
             }
         }
 
+        // Radio group — return the checked value
+        var firstType = $fields.first().attr('type');
+        if (firstType === 'radio') {
+            var checkedVal = $fields.filter(':checked').val();
+            return checkedVal !== undefined ? checkedVal : '';
+        }
+
         // Simple field
         return $fields.first().val();
     }
@@ -249,6 +361,11 @@
         var $form = $(this);
         var projectId = $form.data('project-id');
         var responses = {};
+
+        // Trigger tinyMCE save so textarea values are up-to-date
+        if (typeof window.tinyMCE !== 'undefined' && window.tinyMCE.activeEditor) {
+            window.tinyMCE.triggerSave();
+        }
 
         // Collect all unique question IDs
         var qids = {};

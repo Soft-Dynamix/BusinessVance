@@ -1,6 +1,6 @@
 /**
  * BusinessVance Questionnaire Admin — JavaScript
- * @version 2.7.19
+ * @version 2.7.20
  */
 (function($) {
     'use strict';
@@ -208,8 +208,17 @@
     function bvQTNeedsRating(type) {
         return type === 'rating';
     }
+    function bvQTNeedsStaticText(type) {
+        return type === 'static_text';
+    }
+    function bvQTNeedsStaticImage(type) {
+        return type === 'static_image';
+    }
+    function bvQTNeedsMultifile(type) {
+        return type === 'multifile';
+    }
     function bvQTNeedsPlaceholder(type) {
-        return !(type === 'heading' || type === 'paragraph' || type === 'checkbox' || type === 'color' || type === 'rating' || type === 'address' || type === 'wysiwyg' || type === 'range' || type === 'time' || type === 'date' || type === 'file' || type === 'multifile' || type === 'signature' || type === 'static_text' || type === 'repeatable');
+        return !(type === 'heading' || type === 'paragraph' || type === 'checkbox' || type === 'color' || type === 'rating' || type === 'address' || type === 'wysiwyg' || type === 'range' || type === 'time' || type === 'date' || type === 'file' || type === 'multifile' || type === 'signature' || type === 'static_text' || type === 'repeatable' || type === 'static_image');
     }
 
     // ── Column Builder (Repeatable Table) ──
@@ -1053,6 +1062,13 @@
                 .replace(/id="bv-qt-q-rating-row"/g, 'id="bvq-new-rating-row" class="bv-qt-new-q-rating-row"')
                 .replace(/id="bv-qt-q-rating-stars"/g, 'id="bvq-new-rating-stars"')
                 .replace(/id="bv-qt-q-rating-preview"/g, 'id="bvq-new-rating-preview"')
+                .replace(/id="bv-qt-q-static-text-row"/g, 'id="bvq-new-static-text-row" class="bv-qt-new-q-static-text-row"')
+                .replace(/id="bv-qt-q-static-text-content"/g, 'id="bvq-new-static-text-content"')
+                .replace(/id="bv-qt-q-static-image-row"/g, 'id="bvq-new-static-image-row" class="bv-qt-new-q-static-image-row"')
+                .replace(/id="bv-qt-q-static-image-url"/g, 'id="bvq-new-static-image-url"')
+                .replace(/id="bv-qt-q-static-image-caption"/g, 'id="bvq-new-static-image-caption"')
+                .replace(/id="bv-qt-q-multifile-row"/g, 'id="bvq-new-multifile-row" class="bv-qt-new-q-multifile-row"')
+                .replace(/id="bv-qt-q-multifile-exts"/g, 'id="bvq-new-multifile-exts"')
                 .replace(/bv-qt-save-q-btn/g, 'bv-qt-save-new-q')
                 .replace(/bv-qt-cancel-q-btn/g, 'bv-qt-cancel-new-q');
 
@@ -1074,6 +1090,9 @@
             wrapper.find('.bv-qt-new-q-range-row').toggle(bvQTNeedsRange(initType));
             wrapper.find('.bv-qt-new-q-rating-row').toggle(bvQTNeedsRating(initType));
             wrapper.find('.bv-qt-new-q-placeholder-row').toggle(bvQTNeedsPlaceholder(initType));
+            wrapper.find('.bv-qt-new-q-static-text-row').toggle(bvQTNeedsStaticText(initType));
+            wrapper.find('.bv-qt-new-q-static-image-row').toggle(bvQTNeedsStaticImage(initType));
+            wrapper.find('.bv-qt-new-q-multifile-row').toggle(bvQTNeedsMultifile(initType));
 
             // Initialize column builder with default columns if repeatable
             if (bvQTNeedsColumns(initType)) {
@@ -1098,15 +1117,18 @@
             wrapper[0].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         });
 
-        // Toggle options/placeholder/columns/range/rating visibility in new question form
+        // Toggle options/placeholder/columns/range/rating/static visibility in new question form
         $(document).on('change', '.bv-qt-new-q-type-select', function() {
             var t = $(this).val();
             var $form = $(this).closest('.bv-qt-inline-q-form');
-            $form.find('.bv-qt-new-q-options-row').toggle(bvQTNeedsOptions(t) || t === 'static_image' || t === 'multifile');
+            $form.find('.bv-qt-new-q-options-row').toggle(bvQTNeedsOptions(t));
             $form.find('.bv-qt-new-q-cols-row').toggle(bvQTNeedsColumns(t));
             $form.find('.bv-qt-new-q-range-row').toggle(bvQTNeedsRange(t));
             $form.find('.bv-qt-new-q-rating-row').toggle(bvQTNeedsRating(t));
             $form.find('.bv-qt-new-q-placeholder-row').toggle(bvQTNeedsPlaceholder(t));
+            $form.find('.bv-qt-new-q-static-text-row').toggle(bvQTNeedsStaticText(t));
+            $form.find('.bv-qt-new-q-static-image-row').toggle(bvQTNeedsStaticImage(t));
+            $form.find('.bv-qt-new-q-multifile-row').toggle(bvQTNeedsMultifile(t));
             // Apply smart defaults on type change
             bvQTApplyTypeDefaults($(this), $form.find('#bvq-new-placeholder'), $form.find('#bvq-new-help'));
             // Initialize column builder when switching to repeatable
@@ -1140,8 +1162,14 @@
                 optionsText = min + '\n' + max + '\n' + step;
             } else if (bvQTNeedsRating(type)) {
                 optionsText = $form.find('#bvq-new-rating-stars').val() || '5';
-            } else if (type === 'static_image' || type === 'multifile') {
-                optionsText = $form.find('#bvq-new-options').val() || '';
+            } else if (bvQTNeedsStaticText(type)) {
+                optionsText = $form.find('#bvq-new-static-text-content').val() || '';
+            } else if (bvQTNeedsStaticImage(type)) {
+                var imgUrl = $form.find('#bvq-new-static-image-url').val() || '';
+                var imgCaption = $form.find('#bvq-new-static-image-caption').val() || '';
+                optionsText = imgUrl + '\n' + imgCaption;
+            } else if (bvQTNeedsMultifile(type)) {
+                optionsText = $form.find('#bvq-new-multifile-exts').val() || '';
             }
             $.post(ajaxurl, {
                 action: 'bv_qt_save_question', nonce: BVQT.nonce,
@@ -1234,12 +1262,42 @@
                     ratingStars = String(q.options[0]).replace(/[^0-9]/g, '') || '5';
                 }
 
-                // Check visibility for options, columns, range, rating and placeholder
-                var showOpts = bvQTNeedsOptions(q.type) || q.type === 'static_image' || q.type === 'multifile';
+                // Check visibility for options, columns, range, rating, static types and placeholder
+                var showOpts = bvQTNeedsOptions(q.type);
                 var showCols = bvQTNeedsColumns(q.type);
                 var showRange = bvQTNeedsRange(q.type);
                 var showRating = bvQTNeedsRating(q.type);
+                var showStaticText = bvQTNeedsStaticText(q.type);
+                var showStaticImage = bvQTNeedsStaticImage(q.type);
+                var showMultifile = bvQTNeedsMultifile(q.type);
                 var showPH = bvQTNeedsPlaceholder(q.type);
+
+                // Extract static text content from options
+                var staticTextContent = '';
+                if (q.type === 'static_text' && q.options && Array.isArray(q.options)) {
+                    var stLines = [];
+                    $.each(q.options, function(i, o) {
+                        var l = typeof o === 'object' ? (o.label || o.value || '') : String(o);
+                        if (l) stLines.push(l);
+                    });
+                    staticTextContent = stLines.join('\n');
+                }
+
+                // Extract static image URL and caption
+                var staticImageUrl = q.placeholder || '';
+                var staticImageCaption = '';
+                if (q.type === 'static_image' && q.options && Array.isArray(q.options)) {
+                    var imgVal0 = q.options[0] ? (typeof q.options[0] === 'object' ? (q.options[0].value || q.options[0].label || '') : String(q.options[0])) : '';
+                    var imgVal1 = q.options[1] ? (typeof q.options[1] === 'object' ? (q.options[1].label || '') : String(q.options[1])) : '';
+                    if (imgVal0) staticImageUrl = imgVal0;
+                    if (imgVal1) staticImageCaption = imgVal1;
+                }
+
+                // Extract multifile extensions
+                var multifileExts = '';
+                if (q.type === 'multifile' && q.options && Array.isArray(q.options) && q.options[0]) {
+                    multifileExts = typeof q.options[0] === 'object' ? (q.options[0].value || '') : String(q.options[0]);
+                }
 
                 // Build column presets HTML
                 var colPresetsHtml = '<div class="bv-qt-col-presets-row">'
@@ -1334,6 +1392,39 @@
                     + '</div>'
                     + '</td>'
                     + '</tr>'
+                    // Static Text Content row
+                    + '<tr class="bvq-static-text-row"' + (showStaticText ? '' : ' style="display:none;"') + '>'
+                    + '<th scope="row">'
+                    + '<label>Static Text Content</label>'
+                    + '<p class="description" style="margin:6px 0 0;font-weight:400;">HTML or plain text to display on the form.</p>'
+                    + '</th>'
+                    + '<td>'
+                    + '<textarea id="bvq-static-text-content" rows="5" class="large-text" placeholder="Enter the text or HTML content to display...">' + escHtml(staticTextContent) + '</textarea>'
+                    + '</td>'
+                    + '</tr>'
+                    // Static Image row
+                    + '<tr class="bvq-static-image-row"' + (showStaticImage ? '' : ' style="display:none;"') + '>'
+                    + '<th scope="row">'
+                    + '<label>Image Settings</label>'
+                    + '<p class="description" style="margin:6px 0 0;font-weight:400;">Set the image URL and optional caption.</p>'
+                    + '</th>'
+                    + '<td>'
+                    + '<p><label style="font-weight:600;">Image URL</label></p>'
+                    + '<input type="url" id="bvq-static-image-url" class="large-text" value="' + escAttr(staticImageUrl) + '" placeholder="https://example.com/image.jpg" />'
+                    + '<p style="margin-top:10px;"><label style="font-weight:600;">Caption (optional)</label></p>'
+                    + '<input type="text" id="bvq-static-image-caption" class="large-text" value="' + escAttr(staticImageCaption) + '" placeholder="Optional image caption" />'
+                    + '</td>'
+                    + '</tr>'
+                    // Multifile row
+                    + '<tr class="bvq-multifile-row"' + (showMultifile ? '' : ' style="display:none;"') + '>'
+                    + '<th scope="row">'
+                    + '<label>Allowed File Types</label>'
+                    + '<p class="description" style="margin:6px 0 0;font-weight:400;">Comma-separated extensions (e.g. pdf,doc,jpg,png).</p>'
+                    + '</th>'
+                    + '<td>'
+                    + '<input type="text" id="bvq-multifile-exts" class="large-text" value="' + escAttr(multifileExts) + '" placeholder="pdf,doc,docx,jpg,png" />'
+                    + '</td>'
+                    + '</tr>'
                     + '</table>'
                     + '<div class="bv-qt-qform-actions">'
                     + '<button type="button" class="button button-primary" id="bvq-save">Save Question</button> '
@@ -1355,15 +1446,18 @@
             });
         });
 
-        // Toggle options/placeholder/columns/range/rating visibility for edit form
+        // Toggle options/placeholder/columns/range/rating/static visibility for edit form
         $(document).on('change', '#bvq-type', function() {
             var t = $(this).val();
             var $form = $(this).closest('.bv-qt-edit-q-form');
-            $form.find('.bvq-options-row').toggle(bvQTNeedsOptions(t) || t === 'static_image' || t === 'multifile');
+            $form.find('.bvq-options-row').toggle(bvQTNeedsOptions(t));
             $form.find('.bvq-cols-row').toggle(bvQTNeedsColumns(t));
             $form.find('.bvq-range-row').toggle(bvQTNeedsRange(t));
             $form.find('.bvq-rating-row').toggle(bvQTNeedsRating(t));
             $form.find('.bvq-placeholder-row').toggle(bvQTNeedsPlaceholder(t));
+            $form.find('.bvq-static-text-row').toggle(bvQTNeedsStaticText(t));
+            $form.find('.bvq-static-image-row').toggle(bvQTNeedsStaticImage(t));
+            $form.find('.bvq-multifile-row').toggle(bvQTNeedsMultifile(t));
             // Initialize column builder when switching to repeatable
             if (bvQTNeedsColumns(t)) {
                 var $colBuilder = $form.find('#bvq-edit-col-builder');
@@ -1395,8 +1489,14 @@
                 optionsText = min + '\n' + max + '\n' + step;
             } else if (bvQTNeedsRating(type)) {
                 optionsText = $('#bvq-rating-stars').val() || '5';
-            } else if (type === 'static_image' || type === 'multifile') {
-                optionsText = $('#bvq-options').val() || '';
+            } else if (bvQTNeedsStaticText(type)) {
+                optionsText = $('#bvq-static-text-content').val() || '';
+            } else if (bvQTNeedsStaticImage(type)) {
+                var eImgUrl = $('#bvq-static-image-url').val() || '';
+                var eImgCaption = $('#bvq-static-image-caption').val() || '';
+                optionsText = eImgUrl + '\n' + eImgCaption;
+            } else if (bvQTNeedsMultifile(type)) {
+                optionsText = $('#bvq-multifile-exts').val() || '';
             }
             $.post(ajaxurl, {
                 action: 'bv_qt_save_question', nonce: BVQT.nonce,

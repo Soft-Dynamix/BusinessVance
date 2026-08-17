@@ -551,14 +551,25 @@ class BV_Questionnaire_Admin {
                     );
                 }
             }
-        } elseif ( $type === 'static_image' && ! empty( $options_text ) ) {
-            // Static image: first line is optional caption
-            $lines = array_filter( array_map( 'trim', explode( "\n", $options_text ) ) );
-            if ( ! empty( $lines ) ) {
-                $options[] = array(
+        } elseif ( $type === 'static_text' && ! empty( $options_text ) ) {
+            // Static text: store content as a single-element array
+            // Line 1 = the HTML/text content to display
+            $options = array(
+                array(
                     'value' => '',
-                    'label' => sanitize_text_field( $lines[0] ),
-                );
+                    'label' => $options_text,  // raw content, will be output with wp_kses_post
+                ),
+            );
+        } elseif ( $type === 'static_image' && ! empty( $options_text ) ) {
+            // Static image: first line = image URL, second line = caption
+            $lines = array_filter( array_map( 'trim', explode( "\n", $options_text ) ) );
+            $img_url = isset( $lines[0] ) ? esc_url_raw( $lines[0] ) : '';
+            $img_caption = isset( $lines[1] ) ? sanitize_text_field( $lines[1] ) : '';
+            $options = array(
+                array( 'value' => $img_url, 'label' => $img_url ),
+            );
+            if ( $img_caption ) {
+                $options[] = array( 'value' => '', 'label' => $img_caption );
             }
         } elseif ( $type === 'multifile' && ! empty( $options_text ) ) {
             // Multifile: first line is allowed extensions (comma-separated)
@@ -936,14 +947,20 @@ class BV_Questionnaire_Admin {
                                     <option value="rating">Star Rating</option>
                                     <option value="address">Address Block</option>
                                     <option value="repeatable">Repeatable Table</option>
+                                    <option value="signature">Signature Pad</option>
+                                    </optgroup>
+                                    <optgroup label="Uploads">
+                                    <option value="file">File Upload</option>
+                                    <option value="multifile">Multiple File Upload</option>
                                     </optgroup>
                                     <optgroup label="Rich Content">
                                     <option value="wysiwyg">Rich Text Editor</option>
-                                    <option value="file">File Upload</option>
                                     </optgroup>
                                     <optgroup label="Display Only">
                                     <option value="heading">Heading</option>
                                     <option value="paragraph">Paragraph</option>
+                                    <option value="static_text">Static Text (styled)</option>
+                                    <option value="static_image">Static Image</option>
                                     </optgroup>
                                 </select>
                             </td>
@@ -1063,6 +1080,39 @@ class BV_Questionnaire_Admin {
                                 </div>
                             </td>
                         </tr>
+                        <!-- Static Text Content -->
+                        <tr id="bv-qt-q-static-text-row" style="display:none;">
+                            <th scope="row">
+                                <label>Static Text Content</label>
+                                <p class="description" style="margin:6px 0 0;font-weight:400;">HTML or plain text to display on the form. This content is shown to clients but not submitted.</p>
+                            </th>
+                            <td>
+                                <textarea id="bv-qt-q-static-text-content" rows="5" class="large-text" placeholder="Enter the text or HTML content to display..."></textarea>
+                            </td>
+                        </tr>
+                        <!-- Static Image Settings -->
+                        <tr id="bv-qt-q-static-image-row" style="display:none;">
+                            <th scope="row">
+                                <label>Image Settings</label>
+                                <p class="description" style="margin:6px 0 0;font-weight:400;">Set the image URL and optional caption. The image is displayed on the form but not submitted.</p>
+                            </th>
+                            <td>
+                                <p><label for="bv-qt-q-static-image-url" style="font-weight:600;">Image URL</label></p>
+                                <input type="url" id="bv-qt-q-static-image-url" class="large-text" placeholder="https://example.com/image.jpg" />
+                                <p style="margin-top:10px;"><label for="bv-qt-q-static-image-caption" style="font-weight:600;">Caption (optional)</label></p>
+                                <input type="text" id="bv-qt-q-static-image-caption" class="large-text" placeholder="Optional image caption" />
+                            </td>
+                        </tr>
+                        <!-- Multifile Settings -->
+                        <tr id="bv-qt-q-multifile-row" style="display:none;">
+                            <th scope="row">
+                                <label>Allowed File Types</label>
+                                <p class="description" style="margin:6px 0 0;font-weight:400;">Comma-separated file extensions (e.g. pdf,doc,jpg,png). Leave blank to allow all.</p>
+                            </th>
+                            <td>
+                                <input type="text" id="bv-qt-q-multifile-exts" class="large-text" placeholder="pdf,doc,docx,jpg,png" />
+                            </td>
+                        </tr>
                     </table>
                     <div class="bv-qt-qform-actions">
                         <button type="button" class="bv-qt-save-q-btn button button-primary">Save Question</button>
@@ -1159,6 +1209,7 @@ class BV_Questionnaire_Admin {
         'text', 'textarea', 'number', 'email', 'phone', 'date',
         'select', 'radio', 'checkbox', 'heading', 'paragraph', 'file',
         'url', 'time', 'range', 'color', 'address', 'wysiwyg', 'rating', 'repeatable',
+        'multifile', 'static_text', 'static_image', 'signature',
     );
 
     /**
