@@ -32,6 +32,7 @@ class BV_Consultant_Dashboard {
         add_action( 'wp_ajax_bv_cd_create_project', array( $this, 'ajax_create_project' ) );
         add_action( 'wp_ajax_bv_cd_download_report', array( $this, 'ajax_download_report' ) );
         add_action( 'wp_ajax_bv_cd_download_questionnaire', array( $this, 'ajax_download_questionnaire' ) );
+        add_action( 'wp_ajax_bv_cd_download_questionnaire_html', array( $this, 'ajax_download_questionnaire_html' ) );
     }
 
     public function add_menu_page() {
@@ -200,14 +201,30 @@ class BV_Consultant_Dashboard {
         $messages   = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_project_messages WHERE project_id = %d ORDER BY created_at ASC", $project_id ) );
         $notes      = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_project_notes WHERE project_id = %d ORDER BY created_at DESC", $project_id ) );
 
-        // Questionnaire responses
-        $responses = $wpdb->get_results( $wpdb->prepare(
-            "SELECT r.*, q.label, q.type, qs.title as section_title
+        // Questionnaire responses — grouped by service
+        $responses_raw = $wpdb->get_results( $wpdb->prepare(
+            "SELECT r.response_value, r.service_id, q.label, q.type, q.help_text,
+                    qs.title as section_title, qs.display_order as section_order,
+                    q.display_order as question_order,
+                    COALESCE(s.name, 'General') as service_name
              FROM {$wpdb->prefix}bv_questionnaire_responses r
              JOIN {$wpdb->prefix}bv_questionnaire_questions q ON r.question_id = q.id
              JOIN {$wpdb->prefix}bv_questionnaire_sections qs ON q.section_id = qs.id
+             LEFT JOIN {$wpdb->prefix}bv_services s ON r.service_id = s.id
              WHERE r.project_id = %d
-             ORDER BY qs.display_order, q.display_order", $project_id ) );
+             ORDER BY COALESCE(s.name, 'zzz'), qs.display_order, q.display_order",
+            $project_id ) );
+
+        // Group responses by service, then by section
+        $responses_by_service = array();
+        foreach ( $responses_raw as $r ) {
+            $sname = $r->service_name;
+            if ( ! isset( $responses_by_service[ $sname ] ) ) {
+                $responses_by_service[ $sname ] = array();
+            }
+            $responses_by_service[ $sname ][] = $r;
+        }
+        $has_multiple_services = count( $responses_by_service ) > 1;
 
         $back_url = admin_url( 'admin.php?page=bv-consultant-dashboard' );
         $statuses = array( 'awaiting-agreement', 'awaiting-questionnaire', 'awaiting-documents', 'in-progress', 'quality-check', 'completed', 'delivered', 'archived' );
@@ -292,26 +309,70 @@ class BV_Consultant_Dashboard {
         </div>
 
         <div id="bv-cd-panel-questionnaire" class="bv-cd-panel" style="<?php echo $active_tab === 'questionnaire' ? '' : 'display:none'; ?>">
-            <?php if ( ! empty( $responses ) ) : ?>
-            <div style="margin-bottom:12px;">
-                <button type="button" class="button button-secondary" onclick="bv_cd_download_questionnaire(<?php echo $project_id; ?>)">⬇ <?php echo esc_html__( 'Download Responses (CSV)', 'businessvance-services-manager' ); ?></button>
+            <?php if ( ! empty( $responses_by_service ) ) : ?>
+            <div style="margin-bottom:12px; display:flex; gap:8px; flex-wrap:wrap;">
+                <button type="button" class="button button-primary" onclick="bv_cd_download_questionnaire_html(<?php echo $project_id; ?>)">📄 <?php echo esc_html__( 'Download Report (HTML)', 'businessvance-services-manager' ); ?></button>
+                <button type="button" class="button button-secondary" onclick="bv_cd_download_questionnaire(<?php echo $project_id; ?>)">⬇ <?php echo esc_html__( 'Download Data (CSV)', 'businessvance-services-manager' ); ?></button>
             </div>
             <?php endif; ?>
-            <?php if (empty($responses)) : ?>
+            <?php if ( empty( $responses_by_service ) ) : ?>
             <div class="bv-cd-card"><p><?php echo esc_html__( 'No questionnaire responses submitted yet.', 'businessvance-services-manager' ); ?></p></div>
             <?php else : ?>
-            <table class="widefat striped bv-cd-table">
-                <thead><tr><th><?php echo esc_html__( 'Section', 'businessvance-services-manager' ); ?></th><th><?php echo esc_html__( 'Question', 'businessvance-services-manager' ); ?></th><th><?php echo esc_html__( 'Response', 'businessvance-services-manager' ); ?></th></tr></thead>
-                <tbody>
-                <?php foreach ($responses as $r) : ?>
-                <tr>
-                    <td><small><?php echo esc_html($r->section_title); ?></small></td>
-                    <td><?php echo esc_html($r->label); ?></td>
-                    <td><?php echo nl2br(esc_html($r->response_value)); ?></td>
-                </tr>
+                <?php foreach ( $responses_by_service as $service_name => $service_responses ) : ?>
+                <?php if ( $has_multiple_services ) : ?>
+                <div class="bv-cd-service-group-header"><?php echo esc_html( $service_name ); ?></div>
+                <?php endif; ?>
+                <table class="widefat striped bv-cd-table" style="margin-bottom:20px;">
+                    <thead><tr>
+                        <?php if ( ! $has_multiple_services ) : ?><th><?php echo esc_html__( 'Service', 'businessvance-services-manager' ); ?></th><?php endif; ?>
+                        <th><?php echo esc_html__( 'Section', 'businessvance-services-manager' ); ?></th>
+                        <th><?php echo esc_html__( 'Question', 'businessvance-services-manager' ); ?></th>
+                        <th><?php echo esc_html__( 'Response', 'businessvance-services-manager' ); ?></th>
+                    </tr></thead>
+                    <tbody>
+                    <?php
+                    $current_section = '';
+                    $section_count = 0;
+                    foreach ( $service_responses as $r ) :
+                        $section_count++;
+                        $val = $r->response_value;
+                        // Decode JSON values for display
+                        $display_val = $val;
+                        $json_val = json_decode( $val, true );
+                        if ( is_array( $json_val ) ) {
+                            if ( isset( $json_val[0] ) && is_array( $json_val[0] ) ) {
+                                // Repeatable table: 2D array
+                                $display_val = '';
+                                foreach ( $json_val as $row ) {
+                                    $display_val .= implode( ' | ', $row ) . "\n";
+                                }
+                            } else {
+                                // Checkbox or simple array
+                                $display_val = implode( ', ', $json_val );
+                            }
+                        }
+                        // Check if it's a data URL (signature)
+                        if ( preg_match( '/^data:image/', $val ) ) {
+                            $display_val = '✍️ [Signature provided]';
+                        }
+                        // Check if multifile JSON with URLs
+                        if ( $json_val && isset( $json_val[0] ) && isset( $json_val[0]['url'] ) ) {
+                            $display_val = '';
+                            foreach ( $json_val as $f ) {
+                                $display_val .= ( $f['name'] ?? 'File' ) . ( isset( $f['url'] ) ? ' — <a href="' . esc_url( $f['url'] ) . '" target="_blank">Download</a>' : '' ) . "\n";
+                            }
+                        }
+                    ?>
+                    <tr>
+                        <?php if ( ! $has_multiple_services ) : ?><td><small><?php echo esc_html( $r->service_name ); ?></small></td><?php endif; ?>
+                        <td><small><?php echo esc_html( $r->section_title ); ?></small></td>
+                        <td><?php echo esc_html( $r->label ); ?><?php if ( $r->help_text ) : ?><br><small style="color:#888;"><?php echo esc_html( $r->help_text ); ?></small><?php endif; ?></td>
+                        <td><?php echo nl2br( esc_html( $display_val ) ); ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
                 <?php endforeach; ?>
-                </tbody>
-            </table>
             <?php endif; ?>
         </div>
 
@@ -470,12 +531,16 @@ class BV_Consultant_Dashboard {
         $messages  = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_project_messages WHERE project_id = %d ORDER BY created_at ASC", $pid ) );
         $notes     = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_project_notes WHERE project_id = %d ORDER BY created_at DESC", $pid ) );
         $responses = $wpdb->get_results( $wpdb->prepare(
-            "SELECT r.*, q.label, q.type, qs.title as section_title
+            "SELECT r.response_value, r.service_id, q.label, q.type, q.help_text,
+                    qs.title as section_title, qs.display_order as section_order,
+                    q.display_order as question_order,
+                    COALESCE(s.name, 'General') as service_name
              FROM {$wpdb->prefix}bv_questionnaire_responses r
              JOIN {$wpdb->prefix}bv_questionnaire_questions q ON r.question_id = q.id
              JOIN {$wpdb->prefix}bv_questionnaire_sections qs ON q.section_id = qs.id
+             LEFT JOIN {$wpdb->prefix}bv_services s ON r.service_id = s.id
              WHERE r.project_id = %d
-             ORDER BY qs.display_order, q.display_order", $pid ) );
+             ORDER BY COALESCE(s.name, 'zzz'), qs.display_order, q.display_order", $pid ) );
 
         wp_send_json_success( array(
             'project'   => $project,
@@ -782,9 +847,235 @@ class BV_Consultant_Dashboard {
     }
 
     /**
-     * Download questionnaire responses as CSV.
+     * Download questionnaire responses as professional HTML document.
+     * Opens as a standalone file that can be printed to PDF or opened in Word.
      *
-     * @since 2.5.0
+     * @since 2.7.21
+     * @return void
+     */
+    public function ajax_download_questionnaire_html() {
+        check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) wp_die( esc_html__( 'Access denied', 'businessvance-services-manager' ) );
+
+        $project_id = absint( $_GET['project_id'] ?? $_POST['project_id'] ?? 0 );
+        if ( ! $project_id ) wp_die( esc_html__( 'Invalid project', 'businessvance-services-manager' ) );
+
+        global $wpdb;
+        $project = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}bv_projects WHERE id = %d", $project_id
+        ) );
+        if ( ! $project ) wp_die( esc_html__( 'Project not found', 'businessvance-services-manager' ) );
+
+        // Get services for this project
+        $services = $wpdb->get_results( $wpdb->prepare(
+            "SELECT s.name, s.price FROM {$wpdb->prefix}bv_project_services ps
+             JOIN {$wpdb->prefix}bv_services s ON ps.service_id = s.id
+             WHERE ps.project_id = %d ORDER BY s.name",
+            $project_id
+        ) );
+
+        // Get all responses with service, section, question info
+        $responses = $wpdb->get_results( $wpdb->prepare(
+            "SELECT r.response_value, r.service_id, r.created_at as answered_at,
+                    q.label, q.type, q.help_text,
+                    qs.title as section_title, qs.display_order as section_order,
+                    q.display_order as question_order,
+                    COALESCE(s.name, 'General') as service_name
+             FROM {$wpdb->prefix}bv_questionnaire_responses r
+             JOIN {$wpdb->prefix}bv_questionnaire_questions q ON r.question_id = q.id
+             JOIN {$wpdb->prefix}bv_questionnaire_sections qs ON q.section_id = qs.id
+             LEFT JOIN {$wpdb->prefix}bv_services s ON r.service_id = s.id
+             WHERE r.project_id = %d
+             ORDER BY COALESCE(s.name, 'zzz'), qs.display_order, q.display_order",
+            $project_id
+        ) );
+
+        // Group by service, then by section
+        $grouped = array();
+        foreach ( $responses as $r ) {
+            $sname = $r->service_name;
+            if ( ! isset( $grouped[ $sname ] ) ) {
+                $grouped[ $sname ] = array();
+            }
+            $grouped[ $sname ][] = $r;
+        }
+
+        $has_multiple = count( $grouped ) > 1;
+        $generated_at = current_time( 'mysql' );
+
+        // Build professional HTML document
+        ob_start();
+        ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title><?php echo esc_html( $project->project_number . ' — Questionnaire Responses' ); ?></title>
+<style>
+    @page { margin: 20mm 15mm; size: A4; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1a1a2e; line-height: 1.6; padding: 40px; max-width: 900px; margin: 0 auto; background: #fff; }
+
+    /* Header */
+    .doc-header { border-bottom: 3px solid #002B5C; padding-bottom: 20px; margin-bottom: 30px; }
+    .doc-header h1 { font-size: 22px; color: #002B5C; margin-bottom: 4px; }
+    .doc-header .subtitle { font-size: 13px; color: #666; }
+    .doc-meta { display: flex; flex-wrap: wrap; gap: 24px; margin-top: 16px; font-size: 13px; color: #444; }
+    .doc-meta span { display: inline-flex; align-items: center; gap: 6px; }
+    .doc-meta strong { color: #1a1a2e; }
+
+    /* Service groups */
+    .service-section { margin-bottom: 36px; page-break-inside: avoid; }
+    .service-header { background: #002B5C; color: #fff; padding: 10px 16px; border-radius: 6px; font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+    .service-header + .section-header { margin-top: 0; }
+
+    /* Section headers */
+    .section-header { font-size: 14px; font-weight: 700; color: #002B5C; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #d1d5db; padding-bottom: 6px; margin: 20px 0 12px; page-break-after: avoid; }
+
+    /* Question rows */
+    .q-row { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f0f0f0; page-break-inside: avoid; }
+    .q-label { flex: 0 0 38%; font-weight: 600; font-size: 13px; color: #333; vertical-align: top; }
+    .q-label .q-help { display: block; font-weight: 400; font-size: 11px; color: #999; margin-top: 2px; }
+    .q-value { flex: 1; font-size: 13px; color: #1a1a2e; white-space: pre-wrap; word-wrap: break-word; }
+    .q-value.empty { color: #bbb; font-style: italic; }
+
+    /* Table for repeatable data */
+    .rep-table { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 12px; }
+    .rep-table th { background: #f1f5f9; padding: 6px 10px; text-align: left; font-weight: 600; border: 1px solid #e2e8f0; }
+    .rep-table td { padding: 5px 10px; border: 1px solid #e2e8f0; }
+
+    /* Footer */
+    .doc-footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #d1d5db; font-size: 11px; color: #999; text-align: center; }
+
+    /* Print button (screen only) */
+    .print-btn { position: fixed; top: 20px; right: 20px; padding: 10px 20px; background: #002B5C; color: #fff; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 1000; }
+    .print-btn:hover { background: #0A2647; }
+
+    @media print {
+        body { padding: 0; max-width: none; }
+        .print-btn { display: none !important; }
+        .service-section { page-break-inside: avoid; }
+        .q-row { page-break-inside: avoid; }
+    }
+</style>
+</head>
+<body>
+<button class="print-btn" onclick="window.print()">🖨 Print / Save as PDF</button>
+
+<div class="doc-header">
+    <h1><?php echo esc_html( $project->project_number ); ?> — Questionnaire Responses</h1>
+    <div class="subtitle">BusinessVance Consulting — Client Questionnaire Report</div>
+    <div class="doc-meta">
+        <span>Client: <strong><?php echo esc_html( $project->client_name ); ?></strong></span>
+        <?php if ( $project->client_company ) : ?><span>Company: <strong><?php echo esc_html( $project->client_company ); ?></strong></span><?php endif; ?>
+        <span>Email: <strong><?php echo esc_html( $project->client_email ); ?></strong></span>
+        <?php if ( $project->client_phone ) : ?><span>Phone: <strong><?php echo esc_html( $project->client_phone ); ?></strong></span><?php endif; ?>
+        <span>Generated: <strong><?php echo esc_html( date( 'd M Y H:i', strtotime( $generated_at ) ) ); ?></strong></span>
+    </div>
+    <?php if ( ! empty( $services ) ) : ?>
+    <div style="margin-top:12px; font-size:12px; color:#666;">Services: <?php echo esc_html( implode( ', ', wp_list_pluck( $services, 'name' ) ) ); ?></div>
+    <?php endif; ?>
+</div>
+
+<?php foreach ( $grouped as $service_name => $service_responses ) : ?>
+<?php if ( $has_multiple ) : ?>
+<div class="service-section">
+    <div class="service-header"><?php echo esc_html( $service_name ); ?></div>
+<?php endif; ?>
+
+<?php
+$current_section = '';
+foreach ( $service_responses as $r ) :
+    if ( $r->section_title !== $current_section ) :
+        $current_section = $r->section_title;
+?>
+    <div class="section-header"><?php echo esc_html( $current_section ); ?></div>
+<?php endif; ?>
+
+    <div class="q-row">
+        <div class="q-label"><?php echo esc_html( $r->label ); ?><?php if ( $r->help_text ) : ?><span class="q-help"><?php echo esc_html( $r->help_text ); ?></span><?php endif; ?></div>
+        <div class="q-value<?php echo empty( $r->response_value ) || $r->response_value === '[]' ? ' empty' : ''; ?>">
+        <?php
+        $val = $r->response_value;
+        $json_val = json_decode( $val, true );
+
+        // Signature
+        if ( preg_match( '/^data:image/', $val ) ) :
+        ?>
+            <img src="<?php echo esc_attr( $val ); ?>" alt="Client Signature" style="max-width:300px;height:80px;object-fit:contain;border-bottom:1px solid #ccc;" />
+        <?php
+        // Repeatable table (2D array)
+        elseif ( is_array( $json_val ) && isset( $json_val[0] ) && is_array( $json_val[0] ) ) :
+            $col_count = 0;
+            foreach ( $json_val as $row ) { if ( count( $row ) > $col_count ) $col_count = count( $row ); }
+        ?>
+            <table class="rep-table"><thead><tr><th>#</th><?php for ( $c = 0; $c < $col_count; $c++ ) : ?><th>Column <?php echo $c + 1; ?></th><?php endfor; ?></tr></thead>
+            <tbody><?php foreach ( $json_val as $ri => $row ) : ?><tr><td><?php echo $ri + 1; ?></td><?php for ( $c = 0; $c < $col_count; $c++ ) : ?><td><?php echo esc_html( $row[ $c ] ?? '' ); ?></td><?php endfor; ?></tr><?php endforeach; ?></tbody></table>
+        <?php
+        // Address (keyed object)
+        elseif ( is_array( $json_val ) && ! isset( $json_val[0] ) ) :
+            $addr_labels = array( 'street' => 'Street', 'city' => 'City', 'state' => 'State/Province', 'zip' => 'ZIP/Postal Code', 'country' => 'Country' );
+            foreach ( $addr_labels as $key => $label ) :
+                if ( ! empty( $json_val[ $key ] ) ) :
+                    echo esc_html( $label ) . ': ' . esc_html( $json_val[ $key ] ) . '<br>';
+                endif;
+            endforeach;
+        // Checkbox/array values
+        elseif ( is_array( $json_val ) ) :
+            echo esc_html( implode( ', ', $json_val ) );
+        // Multifile JSON with URLs
+        elseif ( $json_val && isset( $json_val[0]['url'] ) ) :
+            foreach ( $json_val as $f ) :
+                echo esc_html( $f['name'] ?? 'File' );
+                if ( ! empty( $f['size'] ) ) echo ' (' . esc_html( $f['size'] ) . ')';
+                echo '<br>';
+            endforeach;
+        // Plain text / empty
+        else :
+            echo empty( $val ) || $val === '[]' ? '—' : nl2br( esc_html( $val ) );
+        endif;
+        ?>
+        </div>
+    </div>
+<?php endforeach; ?>
+
+<?php if ( $has_multiple ) : ?>
+</div>
+<?php endif; ?>
+<?php endforeach; ?>
+
+<?php if ( empty( $grouped ) ) : ?>
+<div style="text-align:center;padding:60px 20px;color:#999;font-size:15px;">No questionnaire responses have been submitted for this project.</div>
+<?php endif; ?>
+
+<div class="doc-footer">
+    Generated by BusinessVance Services Manager on <?php echo esc_html( date( 'd F Y \a\t H:i', strtotime( $generated_at ) ) ); ?>
+    &nbsp;·&nbsp; Project: <?php echo esc_html( $project->project_number ); ?>
+</div>
+
+</body>
+</html>
+        <?php
+        $html = ob_get_clean();
+
+        $filename = sanitize_file_name( $project->project_number . '_' . sanitize_file_name( $project->client_name ) . '_questionnaire.html' );
+
+        header( 'Content-Type: text/html; charset=utf-8' );
+        header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+        header( 'Cache-Control: no-cache, no-store, must-revalidate' );
+        header( 'Pragma: no-cache' );
+        header( 'Expires: 0' );
+
+        echo $html;
+        exit;
+    }
+
+    /**
+     * Download questionnaire responses as CSV (data processing format).
+     * Includes service name column for multi-service projects.
+     *
+     * @since 2.5.0  Updated 2.7.21 to include service names
      * @return void
      */
     public function ajax_download_questionnaire() {
@@ -796,33 +1087,52 @@ class BV_Consultant_Dashboard {
 
         global $wpdb;
         $project = $wpdb->get_row( $wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}bv_projects WHERE id = %d",
-            $project_id
+            "SELECT * FROM {$wpdb->prefix}bv_projects WHERE id = %d", $project_id
         ) );
         if ( ! $project ) wp_die( esc_html__( 'Project not found', 'businessvance-services-manager' ) );
 
-        // Get all responses with section/question info
+        // Get all responses with service, section, question info
         $responses = $wpdb->get_results( $wpdb->prepare(
-            "SELECT r.response_value, q.label, q.type, qs.title as section_title, qs.display_order as section_order, q.display_order as question_order
+            "SELECT r.response_value, r.service_id, q.label, q.type,
+                    qs.title as section_title, qs.display_order as section_order,
+                    q.display_order as question_order,
+                    COALESCE(s.name, 'General') as service_name
              FROM {$wpdb->prefix}bv_questionnaire_responses r
              JOIN {$wpdb->prefix}bv_questionnaire_questions q ON r.question_id = q.id
              JOIN {$wpdb->prefix}bv_questionnaire_sections qs ON q.section_id = qs.id
+             LEFT JOIN {$wpdb->prefix}bv_services s ON r.service_id = s.id
              WHERE r.project_id = %d
-             ORDER BY qs.display_order, q.display_order",
+             ORDER BY COALESCE(s.name, 'zzz'), qs.display_order, q.display_order",
             $project_id
         ) );
 
-        // Build CSV
+        // Build CSV with service column
         $filename = sanitize_file_name( $project->project_number . '_' . sanitize_file_name( $project->client_name ) . '_questionnaire.csv' );
         $csv_rows = array();
-        $csv_rows[] = array( 'Section', 'Question', 'Type', 'Client Response' );
+        $csv_rows[] = array( 'Service', 'Section', 'Question', 'Type', 'Client Response' );
 
         foreach ( $responses as $r ) {
+            // Flatten JSON values for CSV
+            $val = $r->response_value;
+            $json_val = json_decode( $val, true );
+            if ( is_array( $json_val ) ) {
+                if ( isset( $json_val[0] ) && is_array( $json_val[0] ) ) {
+                    // Repeatable table: flatten to "row1: col1 | col2; row2: col1 | col2"
+                    $flat = array();
+                    foreach ( $json_val as $row ) { $flat[] = implode( ' | ', $row ); }
+                    $val = implode( '; ', $flat );
+                } else {
+                    $val = implode( ', ', $json_val );
+                }
+            }
+            if ( preg_match( '/^data:image/', $val ) ) { $val = '[Signature]'; }
+
             $csv_rows[] = array(
+                $r->service_name,
                 $r->section_title,
                 $r->label,
                 $r->type,
-                $r->response_value,
+                $val,
             );
         }
 
@@ -834,7 +1144,6 @@ class BV_Consultant_Dashboard {
         header( 'Expires: 0' );
 
         $output = fopen( 'php://output', 'w' );
-        // BOM for Excel UTF-8 compatibility
         fprintf( $output, "\xEF\xBB\xBF" );
         foreach ( $csv_rows as $row ) {
             fputcsv( $output, $row );

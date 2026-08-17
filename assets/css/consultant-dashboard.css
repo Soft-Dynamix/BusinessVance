@@ -65,3 +65,7 @@
     .bv-cd-overview-grid { grid-template-columns: 1fr; }
     .bv-cd-project-header { flex-direction: column; }
 }
+
+/* Questionnaire service group headers */
+.bv-cd-service-group-header { background: var(--bv-cd-primary, #002B5C); color: #fff; padding: 8px 14px; border-radius: 6px; font-size: 14px; font-weight: 700; margin: 20px 0 8px; letter-spacing: 0.3px; }
+.bv-cd-service-group-header:first-child { margin-top: 0; }

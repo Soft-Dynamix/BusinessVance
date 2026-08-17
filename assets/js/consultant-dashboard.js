@@ -1,6 +1,7 @@
 /**
  * BusinessVance Consultant Dashboard - Frontend JavaScript
  * @since 2.5.0 Added questionnaire CSV download
+ * @since 2.7.21 Added HTML report download with service grouping
  */
 (function($) {
     'use strict';
@@ -20,6 +21,17 @@
     window.bv_cd_download_questionnaire = function(projectId) {
         var url = bv_cd.ajax_url
             + '?action=bv_cd_download_questionnaire'
+            + '&nonce=' + bv_cd.nonce
+            + '&project_id=' + encodeURIComponent(projectId);
+        window.location.href = url;
+    };
+
+    /**
+     * Download questionnaire responses as professional HTML report.
+     */
+    window.bv_cd_download_questionnaire_html = function(projectId) {
+        var url = bv_cd.ajax_url
+            + '?action=bv_cd_download_questionnaire_html'
             + '&nonce=' + bv_cd.nonce
             + '&project_id=' + encodeURIComponent(projectId);
         window.location.href = url;
