@@ -1871,6 +1871,8 @@ class BV_Client_Portal {
                 $project->project_number
             ) );
             $this->notify_client_completion( $project_id );
+            /** @since 2.7.23 Fire ZIP-package email with all project data */
+            do_action( 'bv_project_completion_email', $project_id );
         }
 
         wp_send_json_success( esc_html__( 'Document uploaded successfully', 'businessvance-services-manager' ) );
@@ -2048,6 +2050,8 @@ class BV_Client_Portal {
                 $project->project_number
             ) );
             $this->notify_client_completion( $project_id );
+            /** @since 2.7.23 Fire ZIP-package email with all project data */
+            do_action( 'bv_project_completion_email', $project_id );
         }
         wp_send_json_success( esc_html__( 'Questionnaire saved successfully', 'businessvance-services-manager' ) );
     }
@@ -2154,6 +2158,8 @@ class BV_Client_Portal {
                 $project->project_number
             ) );
             $this->notify_client_completion( $project_id );
+            /** @since 2.7.23 Fire ZIP-package email with all project data */
+            do_action( 'bv_project_completion_email', $project_id );
         }
         wp_send_json_success( esc_html__( 'Agreement signed successfully', 'businessvance-services-manager' ) );
     }
@@ -2306,20 +2312,6 @@ class BV_Client_Portal {
 
         wp_mail( $consultant_email, $subject, $body, $headers );
 
-        // Fire ZIP-package email only when project reaches 100% completion.
-        // All three 100%-progress call sites use this exact action label.
-        if ( strpos( $action, 'All Client Information Received' ) !== false ) {
-
-            /**
-             * Fires when a client project reaches 100% completion.
-             * The consultant dashboard listens to this to send a ZIP package
-             * containing the questionnaire report, agreement, and uploaded files.
-             *
-             * @since 2.7.23
-             * @param int $project_id
-             */
-            do_action( 'bv_project_completion_email', $project_id );
-        }
     }
 
     /**

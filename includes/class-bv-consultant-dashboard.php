@@ -1399,6 +1399,7 @@ foreach ( $service_questions as $q ) :
         $settings = BV_Settings::get_settings();
         $consultant_email = $settings['consultant_email'] ?? get_option( 'admin_email' );
         if ( empty( $consultant_email ) ) {
+            error_log( sprintf( '[BV 2.7.23] email_project_package_to_consultant skipped for project %d: no consultant email configured.', $project_id ) );
             return false;
         }
 
@@ -1406,8 +1407,11 @@ foreach ( $service_questions as $q ) :
             "SELECT * FROM {$wpdb->prefix}bv_projects WHERE id = %d", $project_id
         ) );
         if ( ! $project ) {
+            error_log( sprintf( '[BV 2.7.23] email_project_package_to_consultant skipped for project %d: project not found.', $project_id ) );
             return false;
         }
+
+        error_log( sprintf( '[BV 2.7.23] email_project_package_to_consultant START for project %d', $project_id ) );
 
         $company_name = $settings['company_name'] ?? 'BusinessVance';
         $dashboard_url = admin_url( 'admin.php?page=bv-consultant-dashboard&project_id=' . $project_id );
@@ -1422,6 +1426,7 @@ foreach ( $service_questions as $q ) :
 
             // --- Generate questionnaire HTML report ---
             $questionnaire_html = $this->build_questionnaire_report_html( $project_id, true );
+            error_log( sprintf( '[BV 2.7.23] Questionnaire report generated for project %d (%d bytes)', $project_id, strlen( $questionnaire_html ) ) );
 
             // --- Collect multifile uploads from questionnaire responses ---
             $multifile_paths  = array();
@@ -1435,7 +1440,6 @@ foreach ( $service_questions as $q ) :
             foreach ( $responses as $r ) {
                 $json = json_decode( $r->response_value, true );
                 if ( is_array( $json ) && isset( $json[0] ) && isset( $json[0]['url'] ) ) {
-                    // This is a multifile response
                     foreach ( $json as $f ) {
                         if ( ! empty( $f['file'] ) ) {
                             $full_path = $bv_docs_dir . $f['file'];
@@ -1455,10 +1459,8 @@ foreach ( $service_questions as $q ) :
             ) );
             foreach ( $documents as $doc ) {
                 if ( ! empty( $doc->filepath ) ) {
-                    // filepath may be absolute or relative to uploads
                     $full_path = $doc->filepath;
                     if ( ! file_exists( $full_path ) ) {
-                        // Try prepending uploads base
                         $full_path = $upload_dir['basedir'] . '/' . ltrim( $doc->filepath, '/' );
                     }
                     if ( file_exists( $full_path ) ) {
@@ -1494,7 +1496,6 @@ foreach ( $service_questions as $q ) :
             $zip_filename = 'project-' . sanitize_file_name( $project->project_number ) . '-package.zip';
             $zip_path     = sys_get_temp_dir() . '/' . $zip_filename;
 
-            // Clean up any leftover temp file
             if ( file_exists( $zip_path ) ) {
                 @unlink( $zip_path );
             }
@@ -1506,20 +1507,16 @@ foreach ( $service_questions as $q ) :
                 return false;
             }
 
-            // Add questionnaire report
             $zip->addFromString( 'questionnaire-report.html', $questionnaire_html );
 
-            // Add agreement if present
             if ( ! empty( $agreement_html ) ) {
                 $zip->addFromString( 'agreement.html', $agreement_html );
             }
 
-            // Add multifile uploads (under questionnaires-files/)
             foreach ( $multifile_paths as $name => $path ) {
                 $zip->addFile( $path, 'questionnaire-files/' . $name );
             }
 
-            // Add required documents (under required-documents/)
             foreach ( $doc_paths as $name => $path ) {
                 $zip->addFile( $path, 'required-documents/' . $name );
             }
@@ -1530,6 +1527,8 @@ foreach ( $service_questions as $q ) :
                 error_log( sprintf( '[BV 2.7.23] ZIP file was not created for project %d', $project_id ) );
                 return false;
             }
+
+            error_log( sprintf( '[BV 2.7.23] ZIP created for project %d: %s (%d bytes)', $project_id, $zip_path, filesize( $zip_path ) ) );
 
             // --- Build email ---
             $tokens = array(
@@ -1571,23 +1570,26 @@ foreach ( $service_questions as $q ) :
                 'From: ' . $company_name . ' <' . $from_email . '>',
             );
 
-            $attachments = array( $zip_path );
-            $sent = wp_mail( $consultant_email, $subject, $body, $headers, $attachments );
+            // --- Send email with ZIP attachment ---
+            $sent = wp_mail( $consultant_email, $subject, $body, $headers, array( $zip_path ) );
 
-            if ( ! $sent ) {
-                error_log( sprintf( '[BV 2.7.23] wp_mail failed for project package email on project %d', $project_id ) );
+            error_log( sprintf( '[BV 2.7.23] wp_mail result for project %d: %s', $project_id, $sent ? 'SUCCESS' : 'FAILED' ) );
+
+            // Clean up temp ZIP AFTER email is sent (not in finally block)
+            if ( file_exists( $zip_path ) ) {
+                @unlink( $zip_path );
             }
+            $zip_path = null; // prevent double-delete
 
             return $sent;
 
         } catch ( Exception $e ) {
             error_log( sprintf( '[BV 2.7.23] Exception in email_project_package_to_consultant for project %d: %s', $project_id, $e->getMessage() ) );
-            return false;
-        } finally {
-            // Always clean up the temp ZIP file
+            // Clean up on error too
             if ( $zip_path && file_exists( $zip_path ) ) {
                 @unlink( $zip_path );
             }
+            return false;
         }
     }
 
