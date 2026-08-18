@@ -886,7 +886,7 @@ class BV_Consultant_Dashboard {
         $doc = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_project_documents WHERE id = %d", $doc_id ) );
         if ( ! $doc || ! file_exists( $doc->filepath ) ) wp_die( 'Document not found' );
         // Validate MIME type against whitelist
-        $allowed_mime_types = array( 'application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/plain', 'application/zip', 'application/octet-stream' );
+        $allowed_mime_types = array( 'application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'text/csv', 'text/plain', 'application/zip', 'application/octet-stream' );
         $mime = in_array( $doc->mime_type, $allowed_mime_types, true ) ? $doc->mime_type : 'application/octet-stream';
         header( 'Content-Type: ' . $mime );
         header( 'Content-Disposition: attachment; filename="' . basename( $doc->filename ) . '"' );
@@ -908,7 +908,7 @@ class BV_Consultant_Dashboard {
         }
         
         // Validate MIME type against whitelist
-        $allowed_mime_types = array( 'application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/plain', 'application/zip', 'application/octet-stream' );
+        $allowed_mime_types = array( 'application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'text/csv', 'text/plain', 'application/zip', 'application/octet-stream' );
         $mime = in_array( $report->mime_type, $allowed_mime_types, true ) ? $report->mime_type : 'application/octet-stream';
         header( 'Content-Type: ' . $mime );
         header( 'Content-Disposition: inline; filename="' . basename( $report->filename ) . '"' );
@@ -1327,6 +1327,65 @@ foreach ( $service_questions as $q ) :
 
 <?php if ( empty( $grouped ) ) : ?>
 <div style="text-align:left;padding:60px 20px;color:#999;font-size:15px;">No questionnaire responses have been submitted for this project.</div>
+<?php endif; ?>
+
+<?php
+// ========== REQUIRED DOCUMENTS SECTION ==========
+$docs = $wpdb->get_results( $wpdb->prepare(
+    "SELECT id, name, filename, filesize, category, uploaded_by, created_at
+     FROM {$wpdb->prefix}bv_project_documents WHERE project_id = %d ORDER BY created_at DESC",
+    $project_id
+) );
+if ( ! empty( $docs ) ) :
+?>
+<div class="service-section" style="margin-top:48px;">
+    <div class="service-header">Required Documents (<?php echo count( $docs ); ?>)</div>
+    <table class="rep-table" style="margin-top:0;">
+        <thead>
+            <tr>
+                <th style="text-align:left;">Document</th>
+                <th style="text-align:left;">Category</th>
+                <th style="text-align:left;">Uploaded By</th>
+                <th style="text-align:left;">Date</th>
+                <th style="text-align:left;">Size</th>
+                <?php if ( ! $for_email ) : ?><th style="text-align:left;">Action</th><?php endif; ?>
+            </tr>
+        </thead>
+        <tbody>
+        <?php foreach ( $docs as $doc ) : ?>
+        <tr>
+            <td style="text-align:left;"><?php echo esc_html( $doc->name ); ?></td>
+            <td style="text-align:left;"><?php echo esc_html( ucfirst( str_replace( '-', ' ', $doc->category ) ) ); ?></td>
+            <td style="text-align:left;"><?php echo esc_html( $doc->uploaded_by ); ?></td>
+            <td style="text-align:left;"><?php echo esc_html( date( 'd M Y H:i', strtotime( $doc->created_at ) ) ); ?></td>
+            <td style="text-align:left;"><?php echo esc_html( size_format( $doc->filesize ) ); ?></td>
+            <?php if ( ! $for_email ) : ?>
+            <td style="text-align:left;"><a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=bv_cd_download_document&nonce=' . $nonce . '&document_id=' . $doc->id ) ); ?>" style="color:#002B5C;font-weight:600;font-size:12px;">⬇ Download</a></td>
+            <?php endif; ?>
+        </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+</div>
+<?php endif; ?>
+
+<?php
+// ========== SIGNED AGREEMENT SECTION ==========
+$agreement_rec = $wpdb->get_row( $wpdb->prepare(
+    "SELECT full_name, signed_at, template_content FROM {$wpdb->prefix}bv_project_agreements WHERE project_id = %d ORDER BY id DESC LIMIT 1",
+    $project_id
+) );
+if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
+?>
+<div class="service-section" style="margin-top:48px;">
+    <div class="service-header">Signed Agreement</div>
+    <div style="padding:16px 20px;">
+        <p style="margin-bottom:12px;font-size:13px;color:#666;">Signed by: <strong style="color:#1a1a2e;"><?php echo esc_html( $agreement_rec->full_name ?? '' ); ?></strong> on <?php echo esc_html( date( 'd M Y \a\t H:i', strtotime( $agreement_rec->signed_at ) ) ); ?></p>
+        <div style="border:1px solid #e2e8f0;border-radius:6px;padding:20px;font-size:13px;line-height:1.7;color:#1a1a2e;">
+            <?php echo wp_kses_post( $agreement_rec->template_content ); ?>
+        </div>
+    </div>
+</div>
 <?php endif; ?>
 
 <div class="doc-footer">
@@ -1775,7 +1834,7 @@ foreach ( $service_questions as $q ) :
                 . '<p style="margin:0 0 16px;">Project <strong>' . esc_html( $project->project_number ) . '</strong> for client <strong>' . esc_html( $project->client_name ) . '</strong> (' . esc_html( $project->client_email ) . ') is now 100% complete.</p>'
                 . '<h3 style="color:#002B5C;margin:20px 0 8px;">Package Contents</h3>'
                 . '<ul style="margin:0 0 12px;padding-left:20px;">'
-                . '<li>Questionnaire Report (HTML) — full client responses</li>'
+                . '<li>Complete Project Report (HTML) — questionnaire responses, required documents, and signed agreement</li>'
                 . ( ! empty( $agreement_html ) ? '<li>Signed Service Agreement (HTML)</li>' : '' )
                 . ( ! empty( $multifile_paths ) ? '<li>' . count( $multifile_paths ) . ' file(s) uploaded via questionnaire</li>' : '' )
                 . ( ! empty( $doc_paths ) ? '<li>' . count( $doc_paths ) . ' required document(s)</li>' : '' )
@@ -1794,7 +1853,7 @@ foreach ( $service_questions as $q ) :
             // Also build a plain text fallback body
             $body_text  = "Project {$project->project_number} for {$project->client_name} ({$project->client_email}) is 100% complete.\n\n";
             $body_text .= "Package Contents:\n";
-            $body_text .= "- questionnaire-report.html (Client questionnaire responses)\n";
+            $body_text .= "- questionnaire-report.html (Complete report: responses, documents, agreement)\n";
             if ( ! empty( $agreement_html ) ) $body_text .= "- agreement.html (Signed service agreement)\n";
             if ( ! empty( $multifile_paths ) ) $body_text .= "- " . count( $multifile_paths ) . " uploaded file(s) from questionnaire\n";
             if ( ! empty( $doc_paths ) ) $body_text .= "- " . count( $doc_paths ) . " required document(s)\n";
