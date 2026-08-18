@@ -137,6 +137,18 @@
             }).fail(function() { alert('Request failed. Please try again.'); });
         });
 
+        // Reset project
+        $(document).on('click', '#bv-cd-reset-project', function() {
+            var $btn = $(this);
+            var pid = $btn.data('project-id');
+            var pnum = $btn.data('project-number') || pid;
+            if (!confirm('Reset project ' + pnum + '?\n\nThis will permanently delete:\n• All questionnaire responses & uploaded files\n• Signed agreement(s)\n• Required documents\n• Delivered reports\n\nThe client will need to redo everything from the start.\n\nThis cannot be undone.')) return;
+            $btn.prop('disabled', true).text('Resetting…');
+            $.post(bv_cd.ajax_url, { action: 'bv_cd_reset_project', nonce: bv_cd.nonce, project_id: pid }, function(r) {
+                if (r.success) { location.reload(); } else { alert(r.data || 'Error resetting project'); $btn.prop('disabled', false).text('↻ Reset Project'); }
+            }).fail(function() { alert('Request failed. Please try again.'); $btn.prop('disabled', false).text('↻ Reset Project'); });
+        });
+
         // Create project
         $('#bv-cd-create-project').on('click', function() {
             var data = { action: 'bv_cd_create_project', nonce: bv_cd.nonce };

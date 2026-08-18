@@ -35,6 +35,7 @@ class BV_Consultant_Dashboard {
         add_action( 'wp_ajax_bv_cd_download_questionnaire_html', array( $this, 'ajax_download_questionnaire_html' ) );
         add_action( 'wp_ajax_bv_cd_download_qfile', array( $this, 'ajax_download_questionnaire_file' ) );
         add_action( 'bv_project_completion_email', array( $this, 'email_project_package_to_consultant' ) );
+        add_action( 'wp_ajax_bv_cd_reset_project', array( $this, 'ajax_reset_project' ) );
     }
 
     public function add_menu_page() {
@@ -260,6 +261,7 @@ class BV_Consultant_Dashboard {
                 <?php if ($project->wc_order_id) : ?>
                 <a href="<?php echo admin_url('post.php?post=' . $project->wc_order_id . '&action=edit'); ?>" class="button">View Order #<?php echo $project->wc_order_id; ?></a>
                 <?php endif; ?>
+                <button type="button" id="bv-cd-reset-project" class="button" style="color:#dc2626;border-color:#dc2626;margin-left:8px;" data-project-id="<?php echo $project_id; ?>" data-project-number="<?php echo esc_attr( $project->project_number ); ?>">&#x21bb; Reset Project</button>
             </div>
         </div>
 
@@ -599,6 +601,109 @@ class BV_Consultant_Dashboard {
         global $wpdb;
         $wpdb->update( $wpdb->prefix . 'bv_projects', array( 'progress_percent' => $progress ), array( 'id' => $pid ), array( '%d' ), array( '%d' ) );
         wp_send_json_success();
+    }
+
+    /**
+     * Reset a project so the client can redo all requirements.
+     * Clears: questionnaire responses, signed agreement, uploaded documents,
+     * delivered reports. Resets status to awaiting-agreement and progress to 0.
+     *
+     * @since 2.7.23
+     * @return void
+     */
+    public function ajax_reset_project() {
+        check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( 'Unauthorized' );
+        }
+
+        $pid = absint( $_POST['project_id'] );
+        if ( ! $pid ) {
+            wp_send_json_error( 'Invalid project ID' );
+        }
+
+        global $wpdb;
+        $project = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_projects WHERE id = %d", $pid ) );
+        if ( ! $project ) {
+            wp_send_json_error( 'Project not found' );
+        }
+
+        $p = $wpdb->prefix;
+        $deleted_counts = array();
+        $upload_dir = wp_upload_dir();
+        $bv_docs_dir = $upload_dir['basedir'] . '/bv-documents/';
+
+        // 1. Delete questionnaire multifile attachments (stored in response JSON)
+        $deleted_counts['multifiles'] = 0;
+        $q_responses = $wpdb->get_results( $wpdb->prepare( "SELECT response_value FROM {$p}bv_questionnaire_responses WHERE project_id = %d", $pid ) );
+        foreach ( $q_responses as $qr ) {
+            $json = json_decode( $qr->response_value, true );
+            if ( is_array( $json ) && isset( $json[0] ) && isset( $json[0]['file'] ) ) {
+                foreach ( $json as $f ) {
+                    if ( ! empty( $f['file'] ) ) {
+                        $fpath = $bv_docs_dir . $f['file'];
+                        if ( file_exists( $fpath ) ) {
+                            @unlink( $fpath );
+                            $deleted_counts['multifiles']++;
+                        }
+                    }
+                }
+            }
+        }
+        // Now delete the response rows
+        $deleted_counts['responses'] = (int) $wpdb->delete( $p . 'bv_questionnaire_responses', array( 'project_id' => $pid ), array( '%d' ) );
+
+        // 2. Delete signed agreements
+        $deleted_counts['agreements'] = (int) $wpdb->delete( $p . 'bv_project_agreements', array( 'project_id' => $pid ), array( '%d' ) );
+
+        // 3. Delete uploaded documents (and their files)
+        $docs = $wpdb->get_results( $wpdb->prepare( "SELECT id, filepath FROM {$p}bv_project_documents WHERE project_id = %d", $pid ) );
+        $deleted_counts['documents'] = 0;
+        foreach ( $docs as $doc ) {
+            if ( ! empty( $doc->filepath ) && file_exists( $doc->filepath ) ) {
+                @unlink( $doc->filepath );
+            }
+            $deleted_counts['documents']++;
+        }
+        $wpdb->delete( $p . 'bv_project_documents', array( 'project_id' => $pid ), array( '%d' ) );
+
+        // 4. Delete delivered reports (and their files)
+        $reports = $wpdb->get_results( $wpdb->prepare( "SELECT id, filepath FROM {$p}bv_project_reports WHERE project_id = %d", $pid ) );
+        $deleted_counts['reports'] = 0;
+        foreach ( $reports as $rpt ) {
+            if ( ! empty( $rpt->filepath ) && file_exists( $rpt->filepath ) ) {
+                @unlink( $rpt->filepath );
+            }
+            $deleted_counts['reports']++;
+        }
+        $wpdb->delete( $p . 'bv_project_reports', array( 'project_id' => $pid ), array( '%d' ) );
+
+        // 5. Reset project status and progress
+        $wpdb->update( $p . 'bv_projects',
+            array( 'status' => 'awaiting-agreement', 'progress_percent' => 0 ),
+            array( 'id' => $pid ),
+            array( '%s', '%d' ), array( '%d' )
+        );
+
+        // 6. Log the reset
+        $desc = sprintf(
+            'Project reset by consultant. Cleared: %d response(s), %d agreement(s), %d document(s), %d report(s), %d multifile(s).',
+            $deleted_counts['responses'],
+            $deleted_counts['agreements'],
+            $deleted_counts['documents'],
+            $deleted_counts['reports'],
+            $deleted_counts['multifiles']
+        );
+        $wpdb->insert( $p . 'bv_activity_log', array(
+            'project_id'  => $pid,
+            'entity_type' => 'project',
+            'entity_id'   => $pid,
+            'action'      => 'reset',
+            'description' => $desc,
+            'user_id'     => get_current_user_id(),
+        ), array( '%d', '%s', '%d', '%s', '%s', '%d' ) );
+
+        wp_send_json_success( $desc );
     }
 
     public function ajax_upload_report() {
