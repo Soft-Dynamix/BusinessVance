@@ -2305,6 +2305,21 @@ class BV_Client_Portal {
         );
 
         wp_mail( $consultant_email, $subject, $body, $headers );
+
+        // Fire ZIP-package email only when project reaches 100% completion.
+        // All three 100%-progress call sites use this exact action label.
+        if ( strpos( $action, 'All Client Information Received' ) !== false ) {
+
+            /**
+             * Fires when a client project reaches 100% completion.
+             * The consultant dashboard listens to this to send a ZIP package
+             * containing the questionnaire report, agreement, and uploaded files.
+             *
+             * @since 2.7.23
+             * @param int $project_id
+             */
+            do_action( 'bv_project_completion_email', $project_id );
+        }
     }
 
     /**

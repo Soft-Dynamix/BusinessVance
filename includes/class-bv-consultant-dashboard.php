@@ -34,6 +34,7 @@ class BV_Consultant_Dashboard {
         add_action( 'wp_ajax_bv_cd_download_questionnaire', array( $this, 'ajax_download_questionnaire' ) );
         add_action( 'wp_ajax_bv_cd_download_questionnaire_html', array( $this, 'ajax_download_questionnaire_html' ) );
         add_action( 'wp_ajax_bv_cd_download_qfile', array( $this, 'ajax_download_questionnaire_file' ) );
+        add_action( 'bv_project_completion_email', array( $this, 'email_project_package_to_consultant' ) );
     }
 
     public function add_menu_page() {
@@ -860,10 +861,384 @@ class BV_Consultant_Dashboard {
     }
 
     /**
-     * Download questionnaire responses as professional HTML document.
-     * Opens as a standalone file that can be printed to PDF or opened in Word.
+     * Build the complete questionnaire report HTML body for a project.
+     * Queries ALL questions (including display-only types) and renders every field.
+     * Reusable by both the download handler and the email-on-completion system.
      *
-     * @since 2.7.21
+     * @since 2.7.23
+     * @param int  $project_id  The project ID.
+     * @param bool $for_email   If true, omits print bar and interactive elements.
+     * @return string Complete HTML document.
+     */
+    public function build_questionnaire_report_html( $project_id, $for_email = false ) {
+        global $wpdb;
+        $project = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}bv_projects WHERE id = %d", $project_id
+        ) );
+        if ( ! $project ) return '<p>Project not found.</p>';
+
+        $services = $wpdb->get_results( $wpdb->prepare(
+            "SELECT s.id, s.name, s.price FROM {$wpdb->prefix}bv_project_services ps
+             JOIN {$wpdb->prefix}bv_services s ON ps.service_id = s.id
+             WHERE ps.project_id = %d ORDER BY s.name",
+            $project_id
+        ) );
+        $service_names = ! empty( $services ) ? wp_list_pluck( $services, 'name' ) : array();
+        $service_ids  = ! empty( $services ) ? wp_list_pluck( $services, 'id' ) : array();
+
+        // --- Get all template IDs linked to this project's services ---
+        $template_ids = array();
+        if ( ! empty( $service_ids ) ) {
+            $ph = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
+            // From junction table
+            $junction_ids = $wpdb->get_col( $wpdb->prepare(
+                "SELECT DISTINCT questionnaire_template_id FROM {$wpdb->prefix}bv_service_questionnaires WHERE service_id IN ($ph)",
+                ...$service_ids
+            ) );
+            $template_ids = array_merge( $template_ids, array_map( 'absint', $junction_ids ) );
+            // Legacy: service.questionnaire_template_id
+            $legacy_ids = $wpdb->get_col( $wpdb->prepare(
+                "SELECT DISTINCT questionnaire_template_id FROM {$wpdb->prefix}bv_services WHERE id IN ($ph) AND questionnaire_template_id > 0",
+                ...$service_ids
+            ) );
+            $template_ids = array_merge( $template_ids, array_map( 'absint', $legacy_ids ) );
+            $template_ids = array_unique( $template_ids );
+        }
+
+        // --- Get ALL questions for these templates, with responses ---
+        $all_questions = array();
+        if ( ! empty( $template_ids ) ) {
+            $tpl_ph = implode( ',', array_fill( 0, count( $template_ids ), '%d' ) );
+            $all_questions = $wpdb->get_results( $wpdb->prepare(
+                "SELECT q.id as question_id, q.label, q.type, q.help_text, q.options as question_options,
+                        q.placeholder, q.is_required,
+                        qs.title as section_title, qs.display_order as section_order,
+                        q.display_order as question_order,
+                        r.response_value,
+                        COALESCE(s.name, 'General') as service_name
+                 FROM {$wpdb->prefix}bv_questionnaire_questions q
+                 JOIN {$wpdb->prefix}bv_questionnaire_sections qs ON q.section_id = qs.id
+                 JOIN {$wpdb->prefix}bv_service_questionnaires sq ON sq.questionnaire_template_id = qs.template_id
+                 JOIN {$wpdb->prefix}bv_project_services ps ON ps.service_id = sq.service_id AND ps.project_id = %d
+                 LEFT JOIN {$wpdb->prefix}bv_services s ON sq.service_id = s.id
+                 LEFT JOIN {$wpdb->prefix}bv_questionnaire_responses r ON r.question_id = q.id AND r.project_id = %d
+                 WHERE qs.template_id IN ($tpl_ph)
+                 ORDER BY COALESCE(s.name, 'zzz'), qs.display_order, q.display_order",
+                $project_id, $project_id, ...$template_ids
+            ) );
+        }
+
+        // Group by service, then by section
+        $grouped = array();
+        foreach ( $all_questions as $q ) {
+            $sname = $q->service_name;
+            if ( ! isset( $grouped[ $sname ] ) ) {
+                $grouped[ $sname ] = array();
+            }
+            $grouped[ $sname ][] = $q;
+        }
+
+        // Also try legacy query for templates not in junction table
+        if ( empty( $all_questions ) && ! empty( $template_ids ) ) {
+            $tpl_ph = implode( ',', array_fill( 0, count( $template_ids ), '%d' ) );
+            $legacy_qs = $wpdb->get_results( $wpdb->prepare(
+                "SELECT q.id as question_id, q.label, q.type, q.help_text, q.options as question_options,
+                        q.placeholder, q.is_required,
+                        qs.title as section_title, qs.display_order as section_order,
+                        q.display_order as question_order,
+                        r.response_value,
+                        COALESCE(s.name, 'General') as service_name
+                 FROM {$wpdb->prefix}bv_questionnaire_questions q
+                 JOIN {$wpdb->prefix}bv_questionnaire_sections qs ON q.section_id = qs.id
+                 JOIN {$wpdb->prefix}bv_services s ON s.questionnaire_template_id = qs.template_id
+                 JOIN {$wpdb->prefix}bv_project_services ps ON ps.service_id = s.id AND ps.project_id = %d
+                 LEFT JOIN {$wpdb->prefix}bv_questionnaire_responses r ON r.question_id = q.id AND r.project_id = %d
+                 WHERE qs.template_id IN ($tpl_ph)
+                 ORDER BY COALESCE(s.name, 'zzz'), qs.display_order, q.display_order",
+                $project_id, $project_id, ...$template_ids
+            ) );
+            foreach ( $legacy_qs as $q ) {
+                $sname = $q->service_name;
+                if ( ! isset( $grouped[ $sname ] ) ) $grouped[ $sname ] = array();
+                $grouped[ $sname ][] = $q;
+            }
+        }
+
+        $has_multiple  = count( $grouped ) > 1;
+        $generated_at  = current_time( 'mysql' );
+        $nonce         = wp_create_nonce( 'bv_consultant_dashboard' );
+
+        ob_start();
+        ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title><?php echo esc_html( $project->project_number . ' — Questionnaire Responses' ); ?></title>
+<style>
+    @page { margin: 18mm 15mm; size: A4; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1a1a2e; line-height: 1.6; padding: 40px; max-width: 900px; margin: 0 auto; background: #fff; <?php if ( ! $for_email ) echo 'padding-top: 70px;'; ?> }
+    .doc-header { border-bottom: 3px solid #002B5C; padding-bottom: 20px; margin-bottom: 30px; }
+    .doc-header h1 { font-size: 22px; color: #002B5C; margin-bottom: 4px; text-align: left; }
+    .doc-header .subtitle { font-size: 13px; color: #666; text-align: left; }
+    .doc-meta { display: flex; flex-wrap: wrap; gap: 24px; margin-top: 16px; font-size: 13px; color: #444; text-align: left; }
+    .doc-meta span { text-align: left; }
+    .doc-meta strong { color: #1a1a2e; }
+    .svc-list { margin-top: 12px; font-size: 12px; color: #666; text-align: left; }
+    .svc-list strong { color: #1a1a2e; }
+    .toc { background: #f8f9fb; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin-bottom: 28px; text-align: left; }
+    .toc h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: #666; margin-bottom: 10px; }
+    .toc ol { margin-left: 20px; font-size: 13px; color: #002B5C; }
+    .toc ol li { margin-bottom: 4px; }
+    .service-section { margin-bottom: 36px; page-break-inside: avoid; }
+    .service-header { background: #002B5C; color: #fff; padding: 10px 16px; border-radius: 6px; font-size: 16px; font-weight: 700; margin-bottom: 16px; text-align: left; }
+    .section-header { font-size: 14px; font-weight: 700; color: #002B5C; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #d1d5db; padding-bottom: 6px; margin: 20px 0 12px; page-break-after: avoid; text-align: left; }
+    .q-heading { font-size: 15px; font-weight: 700; color: #1a1a2e; margin: 16px 0 8px; text-align: left; }
+    .q-paragraph { font-size: 13px; color: #555; margin-bottom: 12px; text-align: left; }
+    .q-static-text { font-size: 13px; color: #444; margin-bottom: 12px; padding: 10px 14px; background: #f8f9fb; border-radius: 6px; border-left: 3px solid #002B5C; text-align: left; }
+    .q-static-image { margin-bottom: 12px; text-align: left; }
+    .q-static-image img { max-width: 400px; border-radius: 6px; border: 1px solid #e2e8f0; }
+    .q-static-image figcaption { font-size: 11px; color: #888; margin-top: 4px; }
+    .q-row { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f0f0f0; page-break-inside: avoid; text-align: left; }
+    .q-label { flex: 0 0 38%; font-weight: 600; font-size: 13px; color: #333; text-align: left; }
+    .q-label .q-help { display: block; font-weight: 400; font-size: 11px; color: #999; margin-top: 2px; }
+    .q-value { flex: 1; font-size: 13px; color: #1a1a2e; white-space: pre-wrap; word-wrap: break-word; text-align: left; }
+    .q-value.empty { color: #bbb; font-style: italic; }
+    .q-stars { font-size: 22px; color: #f59e0b; letter-spacing: 2px; }
+    .rep-table { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 12px; text-align: left; }
+    .rep-table th { background: #f1f5f9; padding: 6px 10px; text-align: left; font-weight: 600; border: 1px solid #e2e8f0; }
+    .rep-table td { padding: 5px 10px; border: 1px solid #e2e8f0; text-align: left; }
+    .mf-file { margin-bottom: 6px; font-size: 13px; text-align: left; }
+    .mf-file-name { font-weight: 600; }
+    .mf-file-size { color: #888; font-size: 12px; }
+    .mf-file-dl { color: #002B5C; font-size: 12px; margin-left: 6px; }
+    .sig-img { max-width: 300px; height: 80px; object-fit: contain; border-bottom: 1px solid #ccc; }
+    .doc-footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #d1d5db; font-size: 11px; color: #999; text-align: center; }
+    <?php if ( ! $for_email ) : ?>
+    .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #002B5C; color: #fff; padding: 10px 20px; display: flex; justify-content: center; align-items: center; gap: 16px; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.15); font-size: 14px; }
+    .print-bar span { opacity: 0.8; }
+    .print-btn, .close-btn { padding: 8px 20px; border-radius: 6px; font-size: 14px; cursor: pointer; border: none; font-weight: 600; }
+    .print-btn { background: #fff; color: #002B5C; }
+    .print-btn:hover { background: #f0f0f0; }
+    .close-btn { background: rgba(255,255,255,0.15); color: #fff; }
+    .close-btn:hover { background: rgba(255,255,255,0.25); }
+    <?php endif; ?>
+    @media print {
+        body { padding: 0; max-width: none; padding-top: 0; }
+        .print-bar { display: none !important; }
+        .service-section { page-break-inside: avoid; }
+        .q-row { page-break-inside: avoid; }
+        .toc { page-break-after: always; }
+    }
+</style>
+</head>
+<body>
+<?php if ( ! $for_email ) : ?>
+<div class="print-bar">
+    <span>Use your browser's Print function to save this as a PDF</span>
+    <button class="print-btn" onclick="window.print()">🖨 Save as PDF</button>
+    <button class="close-btn" onclick="window.close()">✕ Close</button>
+</div>
+<?php endif; ?>
+
+<div class="doc-header">
+    <h1><?php echo esc_html( $project->project_number ); ?> — Questionnaire Responses</h1>
+    <div class="subtitle">BusinessVance Consulting — Client Questionnaire Report</div>
+    <div class="doc-meta">
+        <span>Client: <strong><?php echo esc_html( $project->client_name ); ?></strong></span>
+        <?php if ( $project->client_company ) : ?><span>Company: <strong><?php echo esc_html( $project->client_company ); ?></strong></span><?php endif; ?>
+        <span>Email: <strong><?php echo esc_html( $project->client_email ); ?></strong></span>
+        <?php if ( $project->client_phone ) : ?><span>Phone: <strong><?php echo esc_html( $project->client_phone ); ?></strong></span><?php endif; ?>
+        <span>Generated: <strong><?php echo esc_html( date( 'd M Y H:i', strtotime( $generated_at ) ) ); ?></strong></span>
+    </div>
+    <?php if ( ! empty( $service_names ) ) : ?>
+    <div class="svc-list">Services Purchased: <strong><?php echo esc_html( implode( ', ', $service_names ) ); ?></strong></div>
+    <?php endif; ?>
+</div>
+
+<?php if ( $has_multiple ) : ?>
+<div class="toc">
+    <h3>Table of Contents — Services</h3>
+    <ol>
+    <?php foreach ( $grouped as $sname => $svc_qs ) : ?>
+        <li><strong><?php echo esc_html( $sname ); ?></strong>
+        <?php
+        $secs = array();
+        foreach ( $svc_qs as $sq ) { if ( ! in_array( $sq->section_title, $secs ) ) $secs[] = $sq->section_title; }
+        if ( count( $secs ) > 1 ) echo ' — Sections: ' . esc_html( implode( ', ', $secs ) );
+        ?>
+        </li>
+    <?php endforeach; ?>
+    </ol>
+</div>
+<?php endif; ?>
+
+<?php foreach ( $grouped as $service_name => $service_questions ) : ?>
+<?php if ( $has_multiple ) : ?>
+<div class="service-section" style="page-break-before: always;">
+    <div class="service-header">Service: <?php echo esc_html( $service_name ); ?></div>
+<?php endif; ?>
+
+<?php
+$current_section = '';
+foreach ( $service_questions as $q ) :
+    // Section header
+    if ( $q->section_title !== $current_section ) :
+        $current_section = $q->section_title;
+?>
+    <div class="section-header"><?php echo esc_html( $current_section ); ?></div>
+<?php endif; ?>
+
+<?php
+    $qtype   = $q->type;
+    $qlabel  = $q->label;
+    $qhelp   = $q->help_text;
+    $qopts   = json_decode( $q->question_options, true );
+    $qval    = $q->response_value;
+    $qjson   = is_string( $qval ) ? json_decode( $qval, true ) : null;
+
+    // ---- HEADING ----
+    if ( $qtype === 'heading' ) :
+?>
+    <div class="q-heading"><?php echo esc_html( $qlabel ); ?></div>
+<?php
+    // ---- PARAGRAPH ----
+    elseif ( $qtype === 'paragraph' ) :
+?>
+    <div class="q-paragraph"><?php echo nl2br( esc_html( $qlabel ) ); ?></div>
+<?php
+    // ---- STATIC TEXT ----
+    elseif ( $qtype === 'static_text' ) :
+        $static_content = '';
+        if ( is_array( $qopts ) && ! empty( $qopts[0] ) ) {
+            $static_content = is_array( $qopts[0] ) ? ( $qopts[0]['label'] ?? $qopts[0]['value'] ?? '' ) : (string) $qopts[0];
+        }
+        if ( ! $static_content ) $static_content = $qlabel;
+?>
+    <div class="q-static-text"><?php echo wp_kses_post( $static_content ); ?></div>
+<?php
+    // ---- STATIC IMAGE ----
+    elseif ( $qtype === 'static_image' ) :
+        $img_url = '';
+        $img_caption = '';
+        if ( is_array( $qopts ) && ! empty( $qopts[0] ) ) {
+            $img_url = is_array( $qopts[0] ) ? ( $qopts[0]['value'] ?? $qopts[0]['label'] ?? '' ) : (string) $qopts[0];
+            if ( ! empty( $qopts[1] ) ) $img_caption = is_array( $qopts[1] ) ? ( $qopts[1]['label'] ?? '' ) : (string) $qopts[1];
+        }
+        if ( ! $img_url && ! empty( $q->placeholder ) ) $img_url = $q->placeholder;
+?>
+    <figure class="q-static-image">
+    <?php if ( $img_url ) : ?>
+        <img src="<?php echo esc_url( $img_url ); ?>" alt="<?php echo esc_attr( $qlabel ); ?>" />
+        <?php if ( $img_caption ) : ?><figcaption><?php echo esc_html( $img_caption ); ?></figcaption><?php endif; ?>
+    <?php else : ?>
+        <p style="color:#999;font-style:italic;">[No image configured]</p>
+    <?php endif; ?>
+    </figure>
+<?php
+    // ---- ALL OTHER FIELDS WITH RESPONSES ----
+    else :
+        $is_empty = empty( $qval ) || $qval === '[]';
+?>
+    <div class="q-row">
+        <div class="q-label"><?php echo esc_html( $qlabel ); ?><?php if ( $qhelp ) : ?><span class="q-help"><?php echo esc_html( $qhelp ); ?></span><?php endif; ?></div>
+        <div class="q-value<?php echo $is_empty ? ' empty' : ''; ?>">
+        <?php
+        // Signature
+        if ( preg_match( '/^data:image/', $qval ) ) :
+        ?>
+            <img src="<?php echo esc_attr( $qval ); ?>" alt="Client Signature" class="sig-img" />
+        <?php
+        // Multifile JSON with URLs (check BEFORE repeatable table)
+        elseif ( $qjson && isset( $qjson[0] ) && isset( $qjson[0]['url'] ) ) :
+        ?>
+            <div class="mf-list"><?php foreach ( $qjson as $f ) : ?>
+                <div class="mf-file">
+                    <span class="mf-file-name"><?php echo esc_html( $f['name'] ?? 'File' ); ?></span><?php if ( ! empty( $f['size'] ) ) : ?> <span class="mf-file-size"><?php echo esc_html( $f['size'] ); ?></span><?php endif; ?><?php if ( ! empty( $f['file'] ) && ! $for_email ) : ?> <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=bv_cd_download_qfile&nonce=' . $nonce . '&project_id=' . $project_id . '&file=' . rawurlencode( $f['file'] ) ) ); ?>" class="mf-file-dl">⬇ Download</a><?php elseif ( ! empty( $f['file'] ) && $for_email ) : ?> <span class="mf-file-size"><?php echo esc_html( $f['name'] ?? $f['file'] ); ?></span><?php elseif ( ! empty( $f['url'] ) ) : ?> <a href="<?php echo esc_url( $f['url'] ); ?>" class="mf-file-dl" target="_blank">⬇ Open</a><?php endif; ?>
+                </div>
+            <?php endforeach; ?></div>
+        <?php
+        // Repeatable table (2D array) — use column names from question options
+        elseif ( is_array( $qjson ) && isset( $qjson[0] ) && is_array( $qjson[0] ) ) :
+            $col_headers = array();
+            if ( is_array( $qopts ) ) {
+                foreach ( $qopts as $col ) {
+                    if ( is_array( $col ) && ! empty( $col['label'] ) ) {
+                        $col_headers[] = $col['label'];
+                    }
+                }
+            }
+            $col_count = 0;
+            foreach ( $qjson as $row ) { if ( count( $row ) > $col_count ) $col_count = count( $row ); }
+            // Fill missing headers
+            while ( count( $col_headers ) < $col_count ) { $col_headers[] = 'Column ' . ( count( $col_headers ) + 1 ); }
+        ?>
+            <table class="rep-table"><thead><tr><th>#</th><?php foreach ( $col_headers as $ch ) : ?><th><?php echo esc_html( $ch ); ?></th><?php endforeach; ?></tr></thead>
+            <tbody><?php foreach ( $qjson as $ri => $row ) : ?><tr><td><?php echo $ri + 1; ?></td><?php foreach ( $col_headers as $ci => $ch ) : ?><td><?php echo esc_html( $row[ $ci ] ?? '' ); ?></td><?php endforeach; ?></tr><?php endforeach; ?></tbody></table>
+        <?php
+        // Rating — render as stars
+        elseif ( $qtype === 'rating' ) :
+            $rating_val = intval( $qval );
+            $max_stars  = 5;
+            if ( is_array( $qopts ) && ! empty( $qopts[0] ) ) {
+                $max_stars = max( 1, intval( is_array( $qopts[0] ) ? ( $qopts[0]['value'] ?? $qopts[0] ) : $qopts[0] ) );
+            }
+            $stars_html = '';
+            for ( $si = 1; $si <= $max_stars; $si++ ) {
+                $stars_html .= $si <= $rating_val ? '★' : '☆';
+            }
+            echo '<span class="q-stars">' . esc_html( $stars_html ) . '</span>';
+            echo ' <span style="font-size:12px;color:#666;">(' . intval( $qval ) . '/' . $max_stars . ')</span>';
+        // Address (keyed object)
+        elseif ( is_array( $qjson ) && ! isset( $qjson[0] ) ) :
+            $addr_labels = array( 'street' => 'Street', 'city' => 'City', 'state' => 'State/Province', 'zip' => 'ZIP/Postal Code', 'country' => 'Country' );
+            foreach ( $addr_labels as $key => $label ) :
+                if ( ! empty( $qjson[ $key ] ) ) :
+                    echo esc_html( $label ) . ': ' . esc_html( $qjson[ $key ] ) . '<br>';
+                endif;
+            endforeach;
+        // Checkbox/array values (not multifile, not repeatable)
+        elseif ( is_array( $qjson ) ) :
+            echo esc_html( implode( ', ', $qjson ) );
+        // WYSIWYG — render as HTML
+        elseif ( $qtype === 'wysiwyg' ) :
+            echo $is_empty ? '—' : wp_kses_post( $qval );
+        // Plain text / empty
+        else :
+            echo $is_empty ? '—' : nl2br( esc_html( $qval ) );
+        endif;
+        ?>
+        </div>
+    </div>
+<?php endif; // end field type switch ?>
+<?php endforeach; // end questions loop ?>
+
+<?php if ( $has_multiple ) : ?>
+</div>
+<?php endif; ?>
+<?php endforeach; // end services loop ?>
+
+<?php if ( empty( $grouped ) ) : ?>
+<div style="text-align:left;padding:60px 20px;color:#999;font-size:15px;">No questionnaire responses have been submitted for this project.</div>
+<?php endif; ?>
+
+<div class="doc-footer">
+    Generated by BusinessVance Services Manager on <?php echo esc_html( date( 'd F Y \a\t H:i', strtotime( $generated_at ) ) ); ?>
+    &nbsp;·&nbsp; Project: <?php echo esc_html( $project->project_number ); ?>
+</div>
+
+</body>
+</html>
+        <?php
+        return ob_get_clean();
+    }
+
+    /**
+     * AJAX handler: Open questionnaire report as HTML in a new window.
+     *
+     * @since 2.7.21  Rewritten 2.7.23 to show ALL question types with proper formatting.
      * @return void
      */
     public function ajax_download_questionnaire_html() {
@@ -873,50 +1248,12 @@ class BV_Consultant_Dashboard {
         $project_id = absint( $_GET['project_id'] ?? $_POST['project_id'] ?? 0 );
         if ( ! $project_id ) wp_die( esc_html__( 'Invalid project', 'businessvance-services-manager' ) );
 
-        global $wpdb;
-        $project = $wpdb->get_row( $wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}bv_projects WHERE id = %d", $project_id
-        ) );
-        if ( ! $project ) wp_die( esc_html__( 'Project not found', 'businessvance-services-manager' ) );
+        $html = $this->build_questionnaire_report_html( $project_id, false );
 
-        // Get services for this project
-        $services = $wpdb->get_results( $wpdb->prepare(
-            "SELECT s.name, s.price FROM {$wpdb->prefix}bv_project_services ps
-             JOIN {$wpdb->prefix}bv_services s ON ps.service_id = s.id
-             WHERE ps.project_id = %d ORDER BY s.name",
-            $project_id
-        ) );
-
-        // Get all responses with service, section, question info
-        $responses = $wpdb->get_results( $wpdb->prepare(
-            "SELECT r.response_value, r.service_id, r.created_at as answered_at,
-                    q.label, q.type, q.help_text,
-                    qs.title as section_title, qs.display_order as section_order,
-                    q.display_order as question_order,
-                    COALESCE(s.name, 'General') as service_name
-             FROM {$wpdb->prefix}bv_questionnaire_responses r
-             JOIN {$wpdb->prefix}bv_questionnaire_questions q ON r.question_id = q.id
-             JOIN {$wpdb->prefix}bv_questionnaire_sections qs ON q.section_id = qs.id
-             LEFT JOIN {$wpdb->prefix}bv_services s ON r.service_id = s.id
-             WHERE r.project_id = %d
-             ORDER BY COALESCE(s.name, 'zzz'), qs.display_order, q.display_order",
-            $project_id
-        ) );
-
-        // Group by service, then by section
-        $grouped = array();
-        foreach ( $responses as $r ) {
-            $sname = $r->service_name;
-            if ( ! isset( $grouped[ $sname ] ) ) {
-                $grouped[ $sname ] = array();
-            }
-            $grouped[ $sname ][] = $r;
-        }
-
-        $has_multiple = count( $grouped ) > 1;
-        $generated_at = current_time( 'mysql' );
-        $nonce = wp_create_nonce( 'bv_consultant_dashboard' );
-        $service_names = ! empty( $services ) ? wp_list_pluck( $services, 'name' ) : array();
+        header( 'Content-Type: text/html; charset=utf-8' );
+        echo $html;
+        exit;
+    }
 
         // Build professional HTML document
         ob_start();
@@ -1150,7 +1487,6 @@ foreach ( $service_responses as $r ) :
         ) );
         if ( ! $project ) wp_die( esc_html__( 'Project not found', 'businessvance-services-manager' ) );
 
-        // Get all responses with service, section, question info
         $responses = $wpdb->get_results( $wpdb->prepare(
             "SELECT r.response_value, r.service_id, q.label, q.type,
                     qs.title as section_title, qs.display_order as section_order,
@@ -1165,27 +1501,23 @@ foreach ( $service_responses as $r ) :
             $project_id
         ) );
 
-        // Build CSV with service column
         $filename = sanitize_file_name( $project->project_number . '_' . sanitize_file_name( $project->client_name ) . '_questionnaire.csv' );
         $csv_rows = array();
         $csv_rows[] = array( 'Service', 'Section', 'Question', 'Type', 'Client Response' );
 
         foreach ( $responses as $r ) {
-            // Flatten JSON values for CSV
             $val = $r->response_value;
             $json_val = json_decode( $val, true );
             if ( preg_match( '/^data:image/', $val ) ) {
                 $val = '[Signature]';
             } elseif ( $json_val && isset( $json_val[0] ) && isset( $json_val[0]['url'] ) ) {
-                // Multifile: list names with sizes and URLs
                 $parts = array();
                 foreach ( $json_val as $f ) {
-                    $parts[] = ( $f['name'] ?? 'File' ) . ( ! empty( $f['size'] ) ? ' (' . $f['size'] . ')' : '' ) . ( ! empty( $f['url'] ) ? ' — ' . $f['url'] : '' );
+                    $parts[] = ( $f['name'] ?? 'File' ) . ( ! empty( $f['size'] ) ? ' (' . $f['size'] . ')' : '' );
                 }
                 $val = implode( '; ', $parts );
             } elseif ( is_array( $json_val ) ) {
                 if ( isset( $json_val[0] ) && is_array( $json_val[0] ) ) {
-                    // Repeatable table: flatten to "row1: col1 | col2; row2: col1 | col2"
                     $flat = array();
                     foreach ( $json_val as $row ) { $flat[] = implode( ' | ', $row ); }
                     $val = implode( '; ', $flat );
@@ -1194,16 +1526,9 @@ foreach ( $service_responses as $r ) :
                 }
             }
 
-            $csv_rows[] = array(
-                $r->service_name,
-                $r->section_title,
-                $r->label,
-                $r->type,
-                $val,
-            );
+            $csv_rows[] = array( $r->service_name, $r->section_title, $r->label, $r->type, $val );
         }
 
-        // Output CSV
         header( 'Content-Type: text/csv; charset=utf-8' );
         header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
         header( 'Cache-Control: no-cache, no-store, must-revalidate' );
@@ -1212,9 +1537,7 @@ foreach ( $service_responses as $r ) :
 
         $output = fopen( 'php://output', 'w' );
         fprintf( $output, "\xEF\xBB\xBF" );
-        foreach ( $csv_rows as $row ) {
-            fputcsv( $output, $row );
-        }
+        foreach ( $csv_rows as $row ) { fputcsv( $output, $row ); }
         fclose( $output );
         exit;
     }
@@ -1271,6 +1594,213 @@ foreach ( $service_responses as $r ) :
         header( 'Cache-Control: no-cache' );
         readfile( $filepath );
         exit;
+    }
+
+    /**
+     * Email a complete project data package (ZIP) to the consultant when a
+     * client's project reaches 100 % progress. The ZIP contains the
+     * questionnaire HTML report, signed agreement, and all uploaded files.
+     *
+     * @since 2.7.23
+     * @param int $project_id The project ID.
+     * @return bool True if the email was sent successfully, false otherwise.
+     */
+    public function email_project_package_to_consultant( $project_id ) {
+        global $wpdb;
+
+        $settings = BV_Settings::get_settings();
+        $consultant_email = $settings['consultant_email'] ?? get_option( 'admin_email' );
+        if ( empty( $consultant_email ) ) {
+            return false;
+        }
+
+        $project = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}bv_projects WHERE id = %d", $project_id
+        ) );
+        if ( ! $project ) {
+            return false;
+        }
+
+        $company_name = $settings['company_name'] ?? 'BusinessVance';
+        $dashboard_url = admin_url( 'admin.php?page=bv-consultant-dashboard&project_id=' . $project_id );
+        $zip_path      = null;
+
+        try {
+            // --- Check ZipArchive availability ---
+            if ( ! class_exists( 'ZipArchive' ) ) {
+                error_log( '[BV 2.7.23] ZipArchive class not available — skipping project package email.' );
+                return false;
+            }
+
+            // --- Generate questionnaire HTML report ---
+            $questionnaire_html = $this->build_questionnaire_report_html( $project_id, true );
+
+            // --- Collect multifile uploads from questionnaire responses ---
+            $multifile_paths  = array();
+            $responses = $wpdb->get_results( $wpdb->prepare(
+                "SELECT response_value FROM {$wpdb->prefix}bv_questionnaire_responses WHERE project_id = %d",
+                $project_id
+            ) );
+            $upload_dir = wp_upload_dir();
+            $bv_docs_dir = $upload_dir['basedir'] . '/bv-documents/';
+
+            foreach ( $responses as $r ) {
+                $json = json_decode( $r->response_value, true );
+                if ( is_array( $json ) && isset( $json[0] ) && isset( $json[0]['url'] ) ) {
+                    // This is a multifile response
+                    foreach ( $json as $f ) {
+                        if ( ! empty( $f['file'] ) ) {
+                            $full_path = $bv_docs_dir . $f['file'];
+                            if ( file_exists( $full_path ) ) {
+                                $multifile_paths[ $f['file'] ] = $full_path;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // --- Collect required documents from bv_project_documents ---
+            $doc_paths = array();
+            $documents = $wpdb->get_results( $wpdb->prepare(
+                "SELECT filepath FROM {$wpdb->prefix}bv_project_documents WHERE project_id = %d",
+                $project_id
+            ) );
+            foreach ( $documents as $doc ) {
+                if ( ! empty( $doc->filepath ) ) {
+                    // filepath may be absolute or relative to uploads
+                    $full_path = $doc->filepath;
+                    if ( ! file_exists( $full_path ) ) {
+                        // Try prepending uploads base
+                        $full_path = $upload_dir['basedir'] . '/' . ltrim( $doc->filepath, '/' );
+                    }
+                    if ( file_exists( $full_path ) ) {
+                        $basename = basename( $full_path );
+                        $doc_paths[ $basename ] = $full_path;
+                    }
+                }
+            }
+
+            // --- Collect agreement content ---
+            $agreement_html = '';
+            $agreement = $wpdb->get_row( $wpdb->prepare(
+                "SELECT template_content, full_name, signed_at FROM {$wpdb->prefix}bv_project_agreements WHERE project_id = %d ORDER BY id DESC LIMIT 1",
+                $project_id
+            ) );
+            if ( $agreement && ! empty( $agreement->template_content ) ) {
+                $agreement_html = '<!DOCTYPE html>'
+                    . '<html><head><meta charset="UTF-8"><title>Service Agreement</title>'
+                    . '<style>body{font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;max-width:800px;margin:40px auto;padding:20px;color:#1a1a2e;line-height:1.7;}h1{color:#002B5C;border-bottom:3px solid #002B5C;padding-bottom:10px;}.meta{font-size:13px;color:#666;margin-bottom:20px;}</style>'
+                    . '</head><body>'
+                    . '<h1>Service Agreement</h1>'
+                    . '<div class="meta">'
+                    . 'Project: ' . esc_html( $project->project_number ) . '<br>'
+                    . 'Client: ' . esc_html( $project->client_name ) . '<br>'
+                    . 'Signed by: ' . esc_html( $agreement->full_name ?? '' ) . '<br>'
+                    . 'Signed at: ' . esc_html( $agreement->signed_at ?? '' )
+                    . '</div>'
+                    . wp_kses_post( $agreement->template_content )
+                    . '</body></html>';
+            }
+
+            // --- Build ZIP ---
+            $zip_filename = 'project-' . sanitize_file_name( $project->project_number ) . '-package.zip';
+            $zip_path     = sys_get_temp_dir() . '/' . $zip_filename;
+
+            // Clean up any leftover temp file
+            if ( file_exists( $zip_path ) ) {
+                @unlink( $zip_path );
+            }
+
+            $zip = new ZipArchive();
+            $zip_opened = $zip->open( $zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE );
+            if ( $zip_opened !== true ) {
+                error_log( sprintf( '[BV 2.7.23] Failed to create ZIP for project %d: ZipArchive error code %d', $project_id, $zip_opened ) );
+                return false;
+            }
+
+            // Add questionnaire report
+            $zip->addFromString( 'questionnaire-report.html', $questionnaire_html );
+
+            // Add agreement if present
+            if ( ! empty( $agreement_html ) ) {
+                $zip->addFromString( 'agreement.html', $agreement_html );
+            }
+
+            // Add multifile uploads (under questionnaires-files/)
+            foreach ( $multifile_paths as $name => $path ) {
+                $zip->addFile( $path, 'questionnaire-files/' . $name );
+            }
+
+            // Add required documents (under required-documents/)
+            foreach ( $doc_paths as $name => $path ) {
+                $zip->addFile( $path, 'required-documents/' . $name );
+            }
+
+            $zip->close();
+
+            if ( ! file_exists( $zip_path ) ) {
+                error_log( sprintf( '[BV 2.7.23] ZIP file was not created for project %d', $project_id ) );
+                return false;
+            }
+
+            // --- Build email ---
+            $tokens = array(
+                '{project_number}'  => $project->project_number,
+                '{client_name}'     => $project->client_name,
+                '{client_email}'    => $project->client_email,
+                '{company_name}'    => $company_name,
+                '{dashboard_url}'   => $dashboard_url,
+            );
+
+            $subject = $settings['email_project_package_subject'] ?? 'Project {project_number} Complete — All Client Information';
+            $subject = str_replace( array_keys( $tokens ), array_values( $tokens ), $subject );
+
+            $body = $settings['email_project_package_body'] ?? '';
+            if ( empty( $body ) ) {
+                $body  = "Dear Consultant,\n\n";
+                $body .= "Project {project_number} for client {client_name} ({client_email}) is now 100% complete.\n\n";
+                $body .= "A ZIP package containing all client information has been attached to this email:\n\n";
+                $parts = array( 'questionnaire-report.html (Client questionnaire responses)' );
+                if ( ! empty( $agreement_html ) ) {
+                    $parts[] = 'agreement.html (Signed service agreement)';
+                }
+                if ( ! empty( $multifile_paths ) ) {
+                    $parts[] = count( $multifile_paths ) . ' uploaded file(s) from questionnaire responses';
+                }
+                if ( ! empty( $doc_paths ) ) {
+                    $parts[] = count( $doc_paths ) . ' required document(s)';
+                }
+                $body .= "- " . implode( "\n- ", $parts ) . "\n\n";
+                $body .= "You can also view the full project in the Consultant Dashboard:\n";
+                $body .= "{dashboard_url}\n\n";
+                $body .= "Best regards,\n{company_name} System";
+            }
+            $body = str_replace( array_keys( $tokens ), array_values( $tokens ), $body );
+
+            $from_email = ! empty( $settings['email_address'] ) ? $settings['email_address'] : $consultant_email;
+            $headers    = array(
+                'Content-Type: text/plain; charset=UTF-8',
+                'From: ' . $company_name . ' <' . $from_email . '>',
+            );
+
+            $attachments = array( $zip_path );
+            $sent = wp_mail( $consultant_email, $subject, $body, $headers, $attachments );
+
+            if ( ! $sent ) {
+                error_log( sprintf( '[BV 2.7.23] wp_mail failed for project package email on project %d', $project_id ) );
+            }
+
+            return $sent;
+
+        } catch ( Exception $e ) {
+            error_log( sprintf( '[BV 2.7.23] Exception in email_project_package_to_consultant for project %d: %s', $project_id, $e->getMessage() ) );
+            return false;
+        } finally {
+            // Always clean up the temp ZIP file
+            if ( $zip_path && file_exists( $zip_path ) ) {
+                @unlink( $zip_path );
+            }
+        }
     }
 
     /**
