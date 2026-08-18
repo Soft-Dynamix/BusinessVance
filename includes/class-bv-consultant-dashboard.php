@@ -1490,11 +1490,12 @@ foreach ( $service_questions as $q ) :
     }
 
     /**
-     * Email a complete project data package (ZIP) to the consultant when a
-     * client's project reaches 100 % progress. The ZIP contains the
-     * questionnaire HTML report, signed agreement, and all uploaded files.
+     * Email a complete project data package to the consultant when a
+     * client's project reaches 100 % progress. Includes:
+     *  1. A ZIP containing questionnaire HTML, agreement HTML, and all uploaded files
+     *  2. Individual file attachments directly on the email (fallback for ZIP issues)
      *
-     * @since 2.7.23
+     * @since 2.7.23  Rewritten 2.7.24 with robust file resolution, individual attachments, HTML email, and comprehensive logging.
      * @param int $project_id The project ID.
      * @return bool True if the email was sent successfully, false otherwise.
      */
@@ -1504,7 +1505,7 @@ foreach ( $service_questions as $q ) :
         $settings = BV_Settings::get_settings();
         $consultant_email = $settings['consultant_email'] ?? get_option( 'admin_email' );
         if ( empty( $consultant_email ) ) {
-            error_log( sprintf( '[BV 2.7.23] email_project_package_to_consultant skipped for project %d: no consultant email configured.', $project_id ) );
+            error_log( sprintf( '[BV 2.7.24] email_package skipped project %d: no consultant email', $project_id ) );
             return false;
         }
 
@@ -1512,70 +1513,134 @@ foreach ( $service_questions as $q ) :
             "SELECT * FROM {$wpdb->prefix}bv_projects WHERE id = %d", $project_id
         ) );
         if ( ! $project ) {
-            error_log( sprintf( '[BV 2.7.23] email_project_package_to_consultant skipped for project %d: project not found.', $project_id ) );
+            error_log( sprintf( '[BV 2.7.24] email_package skipped project %d: not found', $project_id ) );
             return false;
         }
 
-        error_log( sprintf( '[BV 2.7.23] email_project_package_to_consultant START for project %d', $project_id ) );
+        error_log( sprintf( '[BV 2.7.24] === email_package START project %d ===', $project_id ) );
 
         $company_name = $settings['company_name'] ?? 'BusinessVance';
         $dashboard_url = admin_url( 'admin.php?page=bv-consultant-dashboard&project_id=' . $project_id );
-        $zip_path      = null;
+        $upload_dir   = wp_upload_dir();
+        $bv_docs_dir  = $upload_dir['basedir'] . '/bv-documents';
+        $zip_path     = null;
+        $attachments  = array(); // files to attach individually to the email
 
         try {
-            // --- Check ZipArchive availability ---
             if ( ! class_exists( 'ZipArchive' ) ) {
-                error_log( '[BV 2.7.23] ZipArchive class not available — skipping project package email.' );
-                return false;
+                error_log( '[BV 2.7.24] ZipArchive not available — will attach files individually only.' );
+                $zip_available = false;
+            } else {
+                $zip_available = true;
             }
 
-            // --- Generate questionnaire HTML report ---
+            // =============================================
+            // 1. Generate questionnaire HTML report
+            // =============================================
             $questionnaire_html = $this->build_questionnaire_report_html( $project_id, true );
-            error_log( sprintf( '[BV 2.7.23] Questionnaire report generated for project %d (%d bytes)', $project_id, strlen( $questionnaire_html ) ) );
+            error_log( sprintf( '[BV 2.7.24] Questionnaire HTML: %d bytes', strlen( $questionnaire_html ) );
 
-            // --- Collect multifile uploads from questionnaire responses ---
-            $multifile_paths  = array();
+            // =============================================
+            // 2. Collect multifile uploads from questionnaire
+            // =============================================
+            $multifile_paths = array();
             $responses = $wpdb->get_results( $wpdb->prepare(
                 "SELECT response_value FROM {$wpdb->prefix}bv_questionnaire_responses WHERE project_id = %d",
                 $project_id
             ) );
-            $upload_dir = wp_upload_dir();
-            $bv_docs_dir = $upload_dir['basedir'] . '/bv-documents/';
+            error_log( sprintf( '[BV 2.7.24] Found %d response rows for project %d', count( $responses ), $project_id ) );
 
             foreach ( $responses as $r ) {
-                $json = json_decode( $r->response_value, true );
-                if ( is_array( $json ) && isset( $json[0] ) && isset( $json[0]['url'] ) ) {
-                    foreach ( $json as $f ) {
-                        if ( ! empty( $f['file'] ) ) {
-                            $full_path = $bv_docs_dir . $f['file'];
-                            if ( file_exists( $full_path ) ) {
-                                $multifile_paths[ $f['file'] ] = $full_path;
-                            }
+                $raw = $r->response_value;
+                error_log( sprintf( '[BV 2.7.24] Response raw (first 120 chars): %s', substr( $raw, 0, 120 ) ) );
+
+                $json = json_decode( $raw, true );
+                if ( ! is_array( $json ) || ! isset( $json[0] ) || ! isset( $json[0]['url'] ) ) {
+                    continue; // Not a multifile response
+                }
+
+                error_log( sprintf( '[BV 2.7.24] Multifile response detected with %d file(s)', count( $json ) ) );
+
+                foreach ( $json as $f ) {
+                    if ( empty( $f['file'] ) ) {
+                        error_log( sprintf( '[BV 2.7.24]   Skipping entry with no file key: %s', json_encode( $f ) ) );
+                        continue;
+                    }
+
+                    // Try multiple path patterns
+                    $found_path = null;
+                    $candidates = array(
+                        $bv_docs_dir . '/' . $f['file'],                             // Standard: basedir/bv-documents/filename
+                        $bv_docs_dir . '/' . basename( $f['file'] ),                // Basename only
+                        $upload_dir['basedir'] . '/' . $f['file'],                   // basedir/filename
+                        $f['url'] ? ABSPATH . wp_make_link_relative( $f['url'] ) : '', // From URL
+                    );
+
+                    foreach ( $candidates as $candidate ) {
+                        if ( $candidate && file_exists( $candidate ) ) {
+                            $found_path = $candidate;
+                            break;
                         }
                     }
+
+                    if ( $found_path ) {
+                        $safe_name = basename( $found_path );
+                        $multifile_paths[ $safe_name ] = $found_path;
+                        error_log( sprintf( '[BV 2.7.24]   Found file: %s (%d bytes)', $safe_name, filesize( $found_path ) ) );
+                    } else {
+                        error_log( sprintf( '[BV 2.7.24]   FILE NOT FOUND for: %s', $f['file'] ) );
+                        error_log( sprintf( '[BV 2.7.24]   Tried: %s', implode( ' | ', array_filter( $candidates ) ) ) );
+                    }
                 }
             }
+            error_log( sprintf( '[BV 2.7.24] Total multifile paths found: %d', count( $multifile_paths ) ) );
 
-            // --- Collect required documents from bv_project_documents ---
+            // =============================================
+            // 3. Collect required documents from bv_project_documents
+            // =============================================
             $doc_paths = array();
             $documents = $wpdb->get_results( $wpdb->prepare(
-                "SELECT filepath FROM {$wpdb->prefix}bv_project_documents WHERE project_id = %d",
+                "SELECT filepath, filename, filesize FROM {$wpdb->prefix}bv_project_documents WHERE project_id = %d",
                 $project_id
             ) );
+            error_log( sprintf( '[BV 2.7.24] Found %d required document rows', count( $documents ) ) );
+
             foreach ( $documents as $doc ) {
-                if ( ! empty( $doc->filepath ) ) {
-                    $full_path = $doc->filepath;
-                    if ( ! file_exists( $full_path ) ) {
-                        $full_path = $upload_dir['basedir'] . '/' . ltrim( $doc->filepath, '/' );
-                    }
-                    if ( file_exists( $full_path ) ) {
-                        $basename = basename( $full_path );
-                        $doc_paths[ $basename ] = $full_path;
+                if ( empty( $doc->filepath ) ) {
+                    error_log( '[BV 2.7.24]   Skipping doc with empty filepath' );
+                    continue;
+                }
+
+                error_log( sprintf( '[BV 2.7.24]   Doc filepath from DB: %s', $doc->filepath ) );
+
+                // Try multiple path patterns
+                $found_path = null;
+                $candidates = array(
+                    $doc->filepath,                                           // As stored
+                    $bv_docs_dir . '/' . basename( $doc->filepath ),         // Relative to bv-documents
+                    $upload_dir['basedir'] . '/' . basename( $doc->filepath ),// Relative to uploads
+                );
+
+                foreach ( $candidates as $candidate ) {
+                    if ( $candidate && file_exists( $candidate ) ) {
+                        $found_path = $candidate;
+                        break;
                     }
                 }
-            }
 
-            // --- Collect agreement content ---
+                if ( $found_path ) {
+                    $safe_name = ! empty( $doc->filename ) ? $doc->filename : basename( $found_path );
+                    $doc_paths[ $safe_name ] = $found_path;
+                    error_log( sprintf( '[BV 2.7.24]   Found doc: %s (%d bytes)', $safe_name, filesize( $found_path ) ) );
+                } else {
+                    error_log( sprintf( '[BV 2.7.24]   DOC NOT FOUND: %s', $doc->filepath ) );
+                }
+            }
+            error_log( sprintf( '[BV 2.7.24] Total required doc paths found: %d', count( $doc_paths ) ) );
+
+            // =============================================
+            // 4. Collect agreement
+            // =============================================
             $agreement_html = '';
             $agreement = $wpdb->get_row( $wpdb->prepare(
                 "SELECT template_content, full_name, signed_at FROM {$wpdb->prefix}bv_project_agreements WHERE project_id = %d ORDER BY id DESC LIMIT 1",
@@ -1595,47 +1660,81 @@ foreach ( $service_questions as $q ) :
                     . '</div>'
                     . wp_kses_post( $agreement->template_content )
                     . '</body></html>';
+                error_log( sprintf( '[BV 2.7.24] Agreement HTML: %d bytes', strlen( $agreement_html ) ) );
+            } else {
+                error_log( sprintf( '[BV 2.7.24] No agreement found for project %d', $project_id ) );
             }
 
-            // --- Build ZIP ---
-            $zip_filename = 'project-' . sanitize_file_name( $project->project_number ) . '-package.zip';
-            $zip_path     = sys_get_temp_dir() . '/' . $zip_filename;
+            // =============================================
+            // 5. Collect all file attachments for individual email attachment
+            // =============================================
+            $all_file_paths = array_merge( $multifile_paths, $doc_paths );
+            foreach ( $all_file_paths as $name => $path ) {
+                if ( file_exists( $path ) && is_readable( $path ) ) {
+                    $attachments[] = $path;
+                }
+            }
+            error_log( sprintf( '[BV 2.7.24] Individual attachments prepared: %d', count( $attachments ) ) );
 
-            if ( file_exists( $zip_path ) ) {
-                @unlink( $zip_path );
+            // =============================================
+            // 6. Build ZIP
+            // =============================================
+            if ( $zip_available ) {
+                $zip_filename = 'project-' . sanitize_file_name( $project->project_number ) . '-package.zip';
+                // Use WordPress uploads dir instead of sys_get_temp_dir for reliable access
+                $zip_path = $bv_docs_dir . '/' . $zip_filename;
+
+                if ( ! file_exists( $bv_docs_dir ) ) {
+                    wp_mkdir_p( $bv_docs_dir );
+                }
+
+                if ( file_exists( $zip_path ) ) {
+                    @unlink( $zip_path );
+                }
+
+                $zip = new ZipArchive();
+                $zip_opened = $zip->open( $zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE );
+                if ( $zip_opened !== true ) {
+                    error_log( sprintf( '[BV 2.7.24] ZIP create failed: error code %d, path: %s', $zip_opened, $zip_path ) );
+                    $zip_path = null;
+                } else {
+                    $zip->addFromString( 'questionnaire-report.html', $questionnaire_html );
+
+                    if ( ! empty( $agreement_html ) ) {
+                        $zip->addFromString( 'agreement.html', $agreement_html );
+                    }
+
+                    $mf_count = 0;
+                    foreach ( $multifile_paths as $name => $path ) {
+                        $zip->addFile( $path, 'questionnaire-files/' . $name );
+                        $mf_count++;
+                    }
+
+                    $doc_count = 0;
+                    foreach ( $doc_paths as $name => $path ) {
+                        $zip->addFile( $path, 'required-documents/' . $name );
+                        $doc_count++;
+                    }
+
+                    $zip->close();
+
+                    if ( file_exists( $zip_path ) && filesize( $zip_path ) > 0 ) {
+                        $attachments[] = $zip_path; // Add ZIP as attachment too
+                        error_log( sprintf( '[BV 2.7.24] ZIP created: %s (%d bytes) — contains: 1 HTML report, %s agreement, %d questionnaire files, %d required docs',
+                            $zip_path, filesize( $zip_path ),
+                            empty( $agreement_html ) ? 'no' : '1',
+                            $mf_count, $doc_count
+                        ) );
+                    } else {
+                        error_log( sprintf( '[BV 2.7.24] ZIP file empty or not created at: %s', $zip_path ) );
+                        $zip_path = null;
+                    }
+                }
             }
 
-            $zip = new ZipArchive();
-            $zip_opened = $zip->open( $zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE );
-            if ( $zip_opened !== true ) {
-                error_log( sprintf( '[BV 2.7.23] Failed to create ZIP for project %d: ZipArchive error code %d', $project_id, $zip_opened ) );
-                return false;
-            }
-
-            $zip->addFromString( 'questionnaire-report.html', $questionnaire_html );
-
-            if ( ! empty( $agreement_html ) ) {
-                $zip->addFromString( 'agreement.html', $agreement_html );
-            }
-
-            foreach ( $multifile_paths as $name => $path ) {
-                $zip->addFile( $path, 'questionnaire-files/' . $name );
-            }
-
-            foreach ( $doc_paths as $name => $path ) {
-                $zip->addFile( $path, 'required-documents/' . $name );
-            }
-
-            $zip->close();
-
-            if ( ! file_exists( $zip_path ) ) {
-                error_log( sprintf( '[BV 2.7.23] ZIP file was not created for project %d', $project_id ) );
-                return false;
-            }
-
-            error_log( sprintf( '[BV 2.7.23] ZIP created for project %d: %s (%d bytes)', $project_id, $zip_path, filesize( $zip_path ) ) );
-
-            // --- Build email ---
+            // =============================================
+            // 7. Build and send email (HTML format)
+            // =============================================
             $tokens = array(
                 '{project_number}'  => $project->project_number,
                 '{client_name}'     => $project->client_name,
@@ -1647,50 +1746,90 @@ foreach ( $service_questions as $q ) :
             $subject = $settings['email_project_package_subject'] ?? 'Project {project_number} Complete — All Client Information';
             $subject = str_replace( array_keys( $tokens ), array_values( $tokens ), $subject );
 
-            $body = $settings['email_project_package_body'] ?? '';
-            if ( empty( $body ) ) {
-                $body  = "Dear Consultant,\n\n";
-                $body .= "Project {project_number} for client {client_name} ({client_email}) is now 100% complete.\n\n";
-                $body .= "A ZIP package containing all client information has been attached to this email:\n\n";
-                $parts = array( 'questionnaire-report.html (Client questionnaire responses)' );
-                if ( ! empty( $agreement_html ) ) {
-                    $parts[] = 'agreement.html (Signed service agreement)';
+            // Build file listing for email body
+            $file_listing_html = '';
+            if ( ! empty( $multifile_paths ) ) {
+                $file_listing_html .= '<h3 style="color:#002B5C;margin:16px 0 8px;">Questionnaire Files (' . count( $multifile_paths ) . ')</h3><ul style="margin:0 0 12px;padding-left:20px;">';
+                foreach ( $multifile_paths as $name => $path ) {
+                    $file_listing_html .= '<li>' . esc_html( $name ) . ' (' . size_format( filesize( $path ) ) . ')</li>';
                 }
-                if ( ! empty( $multifile_paths ) ) {
-                    $parts[] = count( $multifile_paths ) . ' uploaded file(s) from questionnaire responses';
-                }
-                if ( ! empty( $doc_paths ) ) {
-                    $parts[] = count( $doc_paths ) . ' required document(s)';
-                }
-                $body .= "- " . implode( "\n- ", $parts ) . "\n\n";
-                $body .= "You can also view the full project in the Consultant Dashboard:\n";
-                $body .= "{dashboard_url}\n\n";
-                $body .= "Best regards,\n{company_name} System";
+                $file_listing_html .= '</ul>';
             }
-            $body = str_replace( array_keys( $tokens ), array_values( $tokens ), $body );
+            if ( ! empty( $doc_paths ) ) {
+                $file_listing_html .= '<h3 style="color:#002B5C;margin:16px 0 8px;">Required Documents (' . count( $doc_paths ) . ')</h3><ul style="margin:0 0 12px;padding-left:20px;">';
+                foreach ( $doc_paths as $name => $path ) {
+                    $file_listing_html .= '<li>' . esc_html( $name ) . ' (' . size_format( filesize( $path ) ) . ')</li>';
+                }
+                $file_listing_html .= '</ul>';
+            }
+            if ( empty( $multifile_paths ) && empty( $doc_paths ) && empty( $agreement_html ) ) {
+                $file_listing_html = '<p style="color:#e67e22;font-weight:600;">⚠ No uploaded files, required documents, or signed agreement were found for this project. Only the questionnaire HTML report is included.</p>';
+            }
+
+            $body_html = '<div style="font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;max-width:680px;margin:0 auto;color:#1a1a2e;line-height:1.6;">'
+                . '<div style="background:#002B5C;color:#fff;padding:24px 28px;border-radius:8px 8px 0 0;">'
+                . '<h1 style="margin:0;font-size:20px;">Project Complete: ' . esc_html( $project->project_number ) . '</h1>'
+                . '<p style="margin:6px 0 0;opacity:0.85;font-size:14px;">All client information has been submitted</p>'
+                . '</div>'
+                . '<div style="background:#fff;padding:28px;border:1px solid #e2e8f0;border-top:none;">'
+                . '<p style="margin:0 0 16px;">Project <strong>' . esc_html( $project->project_number ) . '</strong> for client <strong>' . esc_html( $project->client_name ) . '</strong> (' . esc_html( $project->client_email ) . ') is now 100% complete.</p>'
+                . '<h3 style="color:#002B5C;margin:20px 0 8px;">Package Contents</h3>'
+                . '<ul style="margin:0 0 12px;padding-left:20px;">'
+                . '<li>Questionnaire Report (HTML) — full client responses</li>'
+                . ( ! empty( $agreement_html ) ? '<li>Signed Service Agreement (HTML)</li>' : '' )
+                . ( ! empty( $multifile_paths ) ? '<li>' . count( $multifile_paths ) . ' file(s) uploaded via questionnaire</li>' : '' )
+                . ( ! empty( $doc_paths ) ? '<li>' . count( $doc_paths ) . ' required document(s)</li>' : '' )
+                . '</ul>'
+                . $file_listing_html
+                . '<div style="background:#f8f9fb;border:1px solid #e2e8f0;border-radius:6px;padding:14px 18px;margin-top:20px;">'
+                . '<p style="margin:0 0 6px;font-size:13px;color:#666;">All files are attached to this email individually AND as a ZIP package for your convenience.</p>'
+                . '<p style="margin:0;font-size:13px;"><a href="' . esc_url( $dashboard_url ) . '" style="color:#002B5C;font-weight:600;">Open in Consultant Dashboard →</a></p>'
+                . '</div>'
+                . '</div>'
+                . '<div style="background:#f8f9fb;padding:16px 28px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;font-size:12px;color:#999;text-align:center;">'
+                . esc_html( $company_name ) . ' System · ' . date( 'd F Y H:i' )
+                . '</div>'
+                . '</div>';
+
+            // Also build a plain text fallback body
+            $body_text  = "Project {$project->project_number} for {$project->client_name} ({$project->client_email}) is 100% complete.\n\n";
+            $body_text .= "Package Contents:\n";
+            $body_text .= "- questionnaire-report.html (Client questionnaire responses)\n";
+            if ( ! empty( $agreement_html ) ) $body_text .= "- agreement.html (Signed service agreement)\n";
+            if ( ! empty( $multifile_paths ) ) $body_text .= "- " . count( $multifile_paths ) . " uploaded file(s) from questionnaire\n";
+            if ( ! empty( $doc_paths ) ) $body_text .= "- " . count( $doc_paths ) . " required document(s)\n";
+            $body_text .= "\nAll files are attached to this email.\n";
+            $body_text .= "Dashboard: {$dashboard_url}\n";
 
             $from_email = ! empty( $settings['email_address'] ) ? $settings['email_address'] : $consultant_email;
             $headers    = array(
-                'Content-Type: text/plain; charset=UTF-8',
+                'Content-Type: text/html; charset=UTF-8',
                 'From: ' . $company_name . ' <' . $from_email . '>',
             );
 
-            // --- Send email with ZIP attachment ---
-            $sent = wp_mail( $consultant_email, $subject, $body, $headers, array( $zip_path ) );
+            error_log( sprintf( '[BV 2.7.24] Sending email to %s with %d attachment(s)', $consultant_email, count( $attachments ) ) );
+            error_log( sprintf( '[BV 2.7.24] Attachment paths: %s', implode( ', ', $attachments ) ) );
 
-            error_log( sprintf( '[BV 2.7.23] wp_mail result for project %d: %s', $project_id, $sent ? 'SUCCESS' : 'FAILED' ) );
+            $sent = wp_mail( $consultant_email, $subject, $body_html, $headers, $attachments );
 
-            // Clean up temp ZIP AFTER email is sent (not in finally block)
-            if ( file_exists( $zip_path ) ) {
+            error_log( sprintf( '[BV 2.7.24] wp_mail result for project %d: %s', $project_id, $sent ? 'SUCCESS' : 'FAILED' ) );
+            if ( ! $sent ) {
+                global $phpmailer;
+                if ( $phpmailer && ! empty( $phpmailer->ErrorInfo ) ) {
+                    error_log( sprintf( '[BV 2.7.24] PHPMailer error: %s', $phpmailer->ErrorInfo ) );
+                }
+            }
+
+            // Clean up ZIP (but keep uploaded files — they belong to the project)
+            if ( $zip_path && file_exists( $zip_path ) ) {
                 @unlink( $zip_path );
             }
-            $zip_path = null; // prevent double-delete
+            $zip_path = null;
 
             return $sent;
 
         } catch ( Exception $e ) {
-            error_log( sprintf( '[BV 2.7.23] Exception in email_project_package_to_consultant for project %d: %s', $project_id, $e->getMessage() ) );
-            // Clean up on error too
+            error_log( sprintf( '[BV 2.7.24] Exception in email_package for project %d: %s', $project_id, $e->getMessage() ) );
             if ( $zip_path && file_exists( $zip_path ) ) {
                 @unlink( $zip_path );
             }

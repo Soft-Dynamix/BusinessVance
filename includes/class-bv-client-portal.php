@@ -1436,7 +1436,7 @@ class BV_Client_Portal {
                                     </div>
                                 <?php endforeach; ?>
                                 </div>
-                                <input type="hidden" class="bv-q-multifile-data" data-qid="<?php echo $qid; ?>" value="<?php echo esc_attr( $val ); ?>" />
+                                <input type="hidden" class="bv-q-multifile-data" name="q_<?php echo $qid; ?>" data-qid="<?php echo $qid; ?>" value="<?php echo esc_attr( $val ); ?>" />
                             </div>
                         <?php elseif ( $q->type === 'static_text' ) : ?>
                             <?php
@@ -2004,11 +2004,16 @@ class BV_Client_Portal {
                 "SELECT id FROM {$responses_table} WHERE project_id = %d AND question_id = %d",
                 $project_id, $q_id
             ) );
+            // Sanitize value: wp_unslash for JSON (preserves structure for multifile, repeatable, address, checkbox arrays),
+            // sanitize_text_field for plain text values (prevents XSS).
+            $is_json = ( isset( $_POST['responses_is_json'][ $question_id ] ) && $_POST['responses_is_json'][ $question_id ] )
+                       || ( ! is_array( $value ) && is_string( $value ) && strlen( $value ) > 1 && ( $value[0] === '{' || $value[0] === '[' ) );
+            $clean_value = $is_json ? wp_unslash( $value ) : sanitize_text_field( $value );
             $data = array(
                 'project_id'     => $project_id,
                 'service_id'     => $service_id,
                 'question_id'    => $q_id,
-                'response_value' => sanitize_text_field( $value ),
+                'response_value' => $clean_value,
             );
             $format = array( '%d', '%d', '%d', '%s' );
             if ( $existing ) {

@@ -442,7 +442,16 @@
         if (multifilePromises.length > 0) {
             Promise.all(multifilePromises).then(function(results) {
                 for (var i = 0; i < results.length; i++) {
-                    responses[results[i].qid] = results[i].data;
+                    var qid = results[i].qid;
+                    // Merge with previously uploaded files from hidden field
+                    var existing = responses[qid];
+                    var existingFiles = [];
+                    if (typeof existing === 'string') {
+                        try { existingFiles = JSON.parse(existing); } catch(e) {}
+                    } else if (Array.isArray(existing)) {
+                        existingFiles = existing;
+                    }
+                    responses[qid] = existingFiles.concat(results[i].data);
                 }
                 bvSubmitResponses(projectId, responses, $btn, origText);
             }).catch(function(err) {
