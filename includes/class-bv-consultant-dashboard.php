@@ -1538,7 +1538,7 @@ foreach ( $service_questions as $q ) :
             // 1. Generate questionnaire HTML report
             // =============================================
             $questionnaire_html = $this->build_questionnaire_report_html( $project_id, true );
-            error_log( sprintf( '[BV 2.7.24] Questionnaire HTML: %d bytes', strlen( $questionnaire_html ) );
+            error_log( sprintf( '[BV 2.7.24] Questionnaire HTML: %d bytes', strlen( $questionnaire_html ) ) );
 
             // =============================================
             // 2. Collect multifile uploads from questionnaire
