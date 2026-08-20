@@ -20,10 +20,18 @@ class BV_Consultant_Dashboard {
     public function __construct() {
         add_action( 'admin_menu', array( $this, 'add_menu_page' ) );
         add_action( 'admin_menu', array( $this, 'restrict_admin_menu' ), 9999 );
-        add_action( 'admin_init', array( $this, 'ensure_admin_role_has_cap' ) );
         add_action( 'admin_init', array( $this, 'lock_admin_access' ) );
         add_action( 'template_redirect', array( $this, 'lock_frontend_access' ) );
+        // WooCommerce login redirect: the login form POSTs to /my-account/ (NOT wp-login.php),
+        // so the standard login_redirect filter never fires. WooCommerce's own
+        // WC_Form_Handler::process_login() applies this filter before wp_safe_redirect+exit.
+        add_filter( 'woocommerce_login_redirect', array( $this, 'wc_login_redirect' ), 99999, 2 );
+        // Fallback: wp_login action (fires inside wp_signon during WooCommerce's process_login).
+        // This runs before WooCommerce's own wp_safe_redirect, so exit here takes priority.
         add_action( 'wp_login', array( $this, 'redirect_on_login' ), 10, 2 );
+        // Dynamic capability mapping: admins always get bv_access_consultant_dashboard.
+        // This runs DURING capability checks (not before), so timing is never an issue.
+        add_filter( 'user_has_cap', array( $this, 'grant_admin_dashboard_cap' ), 10, 4 );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
         add_action( 'wp_ajax_bv_cd_get_projects', array( $this, 'ajax_get_projects' ) );
         add_action( 'wp_ajax_bv_cd_get_project_detail', array( $this, 'ajax_get_project_detail' ) );
@@ -70,7 +78,7 @@ class BV_Consultant_Dashboard {
         if ( current_user_can( 'manage_options' ) || ! current_user_can( self::CAP ) ) return;
         $page = isset( $_GET['page'] ) ? sanitize_text_field( $_GET['page'] ) : '';
         if ( $page === 'bv-consultant-dashboard' ) return;
-        $dest = self_admin_url( 'admin.php?page=bv-consultant-dashboard' );
+        $dest = admin_url( 'admin.php?page=bv-consultant-dashboard', 'admin' );
         wp_redirect( $dest );
         exit;
     }
@@ -80,44 +88,61 @@ class BV_Consultant_Dashboard {
         $user = wp_get_current_user();
         if ( $user->has_cap( 'manage_options' ) ) return;
         if ( ! $user->has_cap( self::CAP ) ) return;
-        // Prevent redirect loop: if we just redirected, let the page render
-        $loop_key = 'bv_cd_loop_' . $user->ID;
-        if ( get_transient( $loop_key ) ) {
-            delete_transient( $loop_key );
-            return;
-        }
-        set_transient( $loop_key, 1, 10 );
-        $dest = self_admin_url( 'admin.php?page=bv-consultant-dashboard' );
+        // Guard: if already headed to the dashboard (e.g. from a previous redirect),
+        // is_admin() above should catch it. This URI check is a safety net.
+        $req_uri = $_SERVER['REQUEST_URI'] ?? '';
+        if ( strpos( $req_uri, 'bv-consultant-dashboard' ) !== false ) return;
+        $dest = admin_url( 'admin.php?page=bv-consultant-dashboard', 'admin' );
         wp_redirect( $dest );
         exit;
     }
 
     /**
-     * Ensure the administrator role always has the consultant dashboard capability
-     * so the BV Consultant menu is visible to all WordPress admins.
+     * WooCommerce login redirect filter.
+     * The My Account login form POSTs to /my-account/ (NOT wp-login.php).
+     * WooCommerce's WC_Form_Handler::process_login() applies this filter
+     * before calling wp_safe_redirect(). We return the admin dashboard URL
+     * for consultant-only users.
+     *
+     * @param string $redirect  Default redirect URL (My Account page).
+     * @param WP_User $user     The authenticated user.
+     * @return string
      */
-    public function ensure_admin_role_has_cap() {
-        $role = get_role( 'administrator' );
-        if ( $role && ! $role->has_cap( self::CAP ) ) {
-            $role->add_cap( self::CAP );
-        }
+    public function wc_login_redirect( $redirect, $user ) {
+        if ( $user->has_cap( 'manage_options' ) ) return $redirect;
+        if ( ! $user->has_cap( self::CAP ) ) return $redirect;
+        return admin_url( 'admin.php?page=bv-consultant-dashboard', 'admin' );
     }
 
     /**
-     * Redirect consultant-only users to the dashboard immediately on login.
-     * Also sets a transient so lock_frontend_access() can catch AJAX logins.
+     * Redirect on wp_login action (fires inside wp_signon).
+     * This is a belt-and-suspenders fallback — runs before WooCommerce's
+     * own wp_safe_redirect in process_login().
      */
     public function redirect_on_login( $user_login, $user ) {
         if ( $user->has_cap( 'manage_options' ) ) return;
         if ( ! $user->has_cap( self::CAP ) ) return;
-        // Mark this user so lock_frontend_access() catches them even after AJAX login
-        set_transient( 'bv_cd_redirect_' . $user->ID, 1, 30 );
-        // Only PHP-redirect if not an AJAX request (WooCommerce may use AJAX login)
-        if ( ! defined( 'DOING_AJAX' ) || ! DOING_AJAX ) {
-            $dest = self_admin_url( 'admin.php?page=bv-consultant-dashboard' );
-            wp_redirect( $dest );
-            exit;
+        $dest = admin_url( 'admin.php?page=bv-consultant-dashboard', 'admin' );
+        wp_redirect( $dest );
+        exit;
+    }
+
+    /**
+     * Dynamically grant bv_access_consultant_dashboard to any user who
+     * has manage_options. This fires DURING current_user_can() checks,
+     * so it works regardless of when roles/caps are loaded.
+     *
+     * @param array   $allcaps All capabilities the user has.
+     * @param array   $caps    Required capabilities being checked.
+     * @param array   $args    Additional arguments (0 = capability name, 1 = user ID).
+     * @param WP_User $user    The user object.
+     * @return array
+     */
+    public function grant_admin_dashboard_cap( $allcaps, $caps, $args, $user ) {
+        if ( in_array( self::CAP, $caps, true ) && ! empty( $user->allcaps['manage_options'] ) ) {
+            $allcaps[ self::CAP ] = true;
         }
+        return $allcaps;
     }
 
     public function enqueue_assets( $hook ) {
