@@ -15,8 +15,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class BV_Consultant_Dashboard {
 
+    const CAP = 'bv_access_consultant_dashboard';
+
     public function __construct() {
         add_action( 'admin_menu', array( $this, 'add_menu_page' ) );
+        add_action( 'admin_menu', array( $this, 'restrict_admin_menu' ), 9999 );
+        add_action( 'admin_init', array( $this, 'lock_admin_access' ) );
+        add_action( 'template_redirect', array( $this, 'lock_frontend_access' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
         add_action( 'wp_ajax_bv_cd_get_projects', array( $this, 'ajax_get_projects' ) );
         add_action( 'wp_ajax_bv_cd_get_project_detail', array( $this, 'ajax_get_project_detail' ) );
@@ -42,12 +47,36 @@ class BV_Consultant_Dashboard {
         add_menu_page(
             'Consultant Dashboard',
             'BV Consultant',
-            'manage_options',
+            self::CAP,
             'bv-consultant-dashboard',
             array( $this, 'render_page' ),
             'dashicons-clipboard',
             3
         );
+    }
+
+    public function restrict_admin_menu() {
+        if ( current_user_can( 'manage_options' ) || ! current_user_can( self::CAP ) ) return;
+        global $menu, $submenu;
+        $allowed = array( 'bv-consultant-dashboard' );
+        if ( is_array( $menu ) ) foreach ( $menu as $i => $item ) { if ( ! in_array( $item[2], $allowed, true ) ) unset( $menu[$i] ); }
+        if ( is_array( $submenu ) ) foreach ( $submenu as $slug => $items ) { if ( ! in_array( $slug, $allowed, true ) ) unset( $submenu[$slug] ); }
+    }
+
+    public function lock_admin_access() {
+        if ( ! is_admin() || ! is_user_logged_in() ) return;
+        if ( current_user_can( 'manage_options' ) || ! current_user_can( self::CAP ) ) return;
+        $page = isset( $_GET['page'] ) ? sanitize_text_field( $_GET['page'] ) : '';
+        if ( $page === 'bv-consultant-dashboard' ) return;
+        wp_safe_redirect( admin_url( 'admin.php?page=bv-consultant-dashboard' ) );
+        exit;
+    }
+
+    public function lock_frontend_access() {
+        if ( is_admin() || ! is_user_logged_in() ) return;
+        if ( current_user_can( 'manage_options' ) || ! current_user_can( self::CAP ) ) return;
+        wp_safe_redirect( admin_url( 'admin.php?page=bv-consultant-dashboard' ) );
+        exit;
     }
 
     public function enqueue_assets( $hook ) {
@@ -64,7 +93,7 @@ class BV_Consultant_Dashboard {
     }
 
     public function render_page() {
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! current_user_can( self::CAP ) ) {
             wp_die( 'Access denied' );
         }
         global $wpdb;
@@ -489,7 +518,7 @@ class BV_Consultant_Dashboard {
 
     public function ajax_get_projects() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! current_user_can( self::CAP ) ) {
             wp_send_json_error( 'Unauthorized' );
         }
 
@@ -525,7 +554,7 @@ class BV_Consultant_Dashboard {
 
     public function ajax_get_project_detail() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! current_user_can( self::CAP ) ) {
             wp_send_json_error( 'Unauthorized' );
         }
 
@@ -572,7 +601,7 @@ class BV_Consultant_Dashboard {
 
     public function ajax_update_project_status() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! current_user_can( self::CAP ) ) {
             wp_send_json_error( 'Unauthorized' );
         }
         $pid = absint( $_POST['project_id'] );
@@ -593,7 +622,7 @@ class BV_Consultant_Dashboard {
 
     public function ajax_update_progress() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! current_user_can( self::CAP ) ) {
             wp_send_json_error( 'Unauthorized' );
         }
         $pid = absint( $_POST['project_id'] );
@@ -613,7 +642,7 @@ class BV_Consultant_Dashboard {
      */
     public function ajax_reset_project() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! current_user_can( self::CAP ) ) {
             wp_send_json_error( 'Unauthorized' );
         }
 
@@ -708,7 +737,7 @@ class BV_Consultant_Dashboard {
 
     public function ajax_upload_report() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
-        if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Access denied' );
+        if ( ! current_user_can( self::CAP ) ) wp_send_json_error( 'Access denied' );
 
         $pid = absint( $_POST['project_id'] );
         $title = sanitize_text_field( $_POST['title'] );
@@ -740,7 +769,7 @@ class BV_Consultant_Dashboard {
 
     public function ajax_deliver_report() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! current_user_can( self::CAP ) ) {
             wp_send_json_error( 'Unauthorized' );
         }
         global $wpdb;
@@ -760,7 +789,7 @@ class BV_Consultant_Dashboard {
 
     public function ajax_send_message() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! current_user_can( self::CAP ) ) {
             wp_send_json_error( 'Unauthorized' );
         }
         $pid = absint( $_POST['project_id'] );
@@ -838,7 +867,7 @@ class BV_Consultant_Dashboard {
 
     public function ajax_add_note() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! current_user_can( self::CAP ) ) {
             wp_send_json_error( 'Unauthorized' );
         }
         $pid = absint( $_POST['project_id'] );
@@ -856,7 +885,7 @@ class BV_Consultant_Dashboard {
 
     public function ajax_update_internal_notes() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! current_user_can( self::CAP ) ) {
             wp_send_json_error( 'Unauthorized' );
         }
         $pid = absint( $_POST['project_id'] );
@@ -868,7 +897,7 @@ class BV_Consultant_Dashboard {
 
     public function ajax_get_messages() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! current_user_can( self::CAP ) ) {
             wp_send_json_error( 'Unauthorized' );
         }
         $pid = absint( $_GET['project_id'] ?? $_POST['project_id'] ?? 0 );
@@ -880,7 +909,7 @@ class BV_Consultant_Dashboard {
 
     public function ajax_download_document() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
-        if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Access denied' );
+        if ( ! current_user_can( self::CAP ) ) wp_die( 'Access denied' );
         $doc_id = absint( $_GET['document_id'] ?? 0 );
         global $wpdb;
         $doc = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_project_documents WHERE id = %d", $doc_id ) );
@@ -897,7 +926,7 @@ class BV_Consultant_Dashboard {
 
     public function ajax_download_report() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
-        if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Access denied' );
+        if ( ! current_user_can( self::CAP ) ) wp_die( 'Access denied' );
         $report_id = absint( $_GET['report_id'] ?? $_POST['report_id'] ?? 0 );
         if ( ! $report_id ) wp_die( 'Invalid report' );
         
@@ -919,7 +948,7 @@ class BV_Consultant_Dashboard {
 
     public function ajax_create_project() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
-        if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Access denied' );
+        if ( ! current_user_can( self::CAP ) ) wp_send_json_error( 'Access denied' );
 
         global $wpdb;
         $name = sanitize_text_field( $_POST['client_name'] );
@@ -1407,7 +1436,7 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
      */
     public function ajax_download_questionnaire_html() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
-        if ( ! current_user_can( 'manage_options' ) ) wp_die( esc_html__( 'Access denied', 'businessvance-services-manager' ) );
+        if ( ! current_user_can( self::CAP ) ) wp_die( esc_html__( 'Access denied', 'businessvance-services-manager' ) );
 
         $project_id = absint( $_GET['project_id'] ?? $_POST['project_id'] ?? 0 );
         if ( ! $project_id ) wp_die( esc_html__( 'Invalid project', 'businessvance-services-manager' ) );
@@ -1428,7 +1457,7 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
      */
     public function ajax_download_questionnaire() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
-        if ( ! current_user_can( 'manage_options' ) ) wp_die( esc_html__( 'Access denied', 'businessvance-services-manager' ) );
+        if ( ! current_user_can( self::CAP ) ) wp_die( esc_html__( 'Access denied', 'businessvance-services-manager' ) );
 
         $project_id = absint( $_GET['project_id'] ?? $_POST['project_id'] ?? 0 );
         if ( ! $project_id ) wp_die( esc_html__( 'Invalid project', 'businessvance-services-manager' ) );
@@ -1503,7 +1532,7 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
      */
     public function ajax_download_questionnaire_file() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
-        if ( ! current_user_can( 'manage_options' ) ) wp_die( esc_html__( 'Access denied', 'businessvance-services-manager' ) );
+        if ( ! current_user_can( self::CAP ) ) wp_die( esc_html__( 'Access denied', 'businessvance-services-manager' ) );
 
         $project_id = absint( $_GET['project_id'] ?? $_POST['project_id'] ?? 0 );
         $filename   = sanitize_file_name( $_GET['file'] ?? $_POST['file'] ?? '' );

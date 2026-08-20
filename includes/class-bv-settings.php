@@ -130,6 +130,7 @@ class BV_Settings {
     public function __construct() {
         add_action( 'admin_menu', array( $this, 'add_menu_pages' ) );
         add_action( 'admin_init', array( $this, 'register_settings' ) );
+        add_action( 'admin_init', array( $this, 'save_consultant_users' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
         add_action( 'wp_ajax_bv_export_data', array( $this, 'ajax_export_data' ) );
         add_action( 'wp_ajax_bv_import_data', array( $this, 'ajax_import_data' ) );
@@ -154,10 +155,34 @@ class BV_Settings {
      * Register settings and fields
      */
     public function register_settings() {
-        // Main option group
         register_setting( 'bv_settings_group', self::OPTION_KEY, array(
             'sanitize_callback' => array( $this, 'sanitize_settings' ),
         ) );
+    }
+
+    public function save_consultant_users() {
+        if ( ! isset( $_POST['option_page'] ) || $_POST['option_page'] !== 'bv_settings_group' ) return;
+        if ( ! current_user_can( 'manage_options' ) ) return;
+        $cap = 'bv_access_consultant_dashboard';
+        $new_ids = array();
+        if ( isset( $_POST['bv_consultant_users'] ) && is_array( $_POST['bv_consultant_users'] ) ) {
+            foreach ( $_POST['bv_consultant_users'] as $uid ) {
+                $uid = absint( $uid );
+                if ( $uid > 0 ) {
+                    $user = get_user_by( 'id', $uid );
+                    if ( $user && ! $user->has_cap( 'manage_options' ) ) $new_ids[] = $uid;
+                }
+            }
+        }
+        $prev_ids = get_option( 'bv_consultant_users', array() );
+        if ( ! is_array( $prev_ids ) ) $prev_ids = array();
+        foreach ( $new_ids as $uid ) {
+            if ( ! in_array( $uid, $prev_ids, true ) ) { $u = get_user_by( 'id', $uid ); if ( $u ) $u->add_cap( $cap ); }
+        }
+        foreach ( $prev_ids as $uid ) {
+            if ( ! in_array( $uid, $new_ids, true ) ) { $u = get_user_by( 'id', $uid ); if ( $u ) $u->remove_cap( $cap ); }
+        }
+        update_option( 'bv_consultant_users', $new_ids, false );
     }
 
     /**
@@ -1575,6 +1600,52 @@ class BV_Settings {
                 </tr>
             </table>
         </div>
+
+        <div class="bv-settings-section">
+            <h2><?php esc_html_e( 'Consultant Access', 'businessvance-services-manager' ); ?></h2>
+            <p><?php esc_html_e( 'Grant specific WordPress users access to the Consultant Dashboard without giving them full admin rights.', 'businessvance-services-manager' ); ?></p>
+
+            <div style="margin-bottom:16px;">
+                <input type="text" id="bv_cd_user_search" placeholder="Search users by name or email..." style="width:100%;max-width:420px;padding:8px 12px;border:1px solid #8c8f94;border-radius:4px;font-size:14px;" />
+            </div>
+
+            <div id="bv_cd_user_list" style="border:1px solid #c3c4c7;border-radius:4px;max-height:300px;overflow-y:auto;background:#fff;">
+                <?php
+                $all_users = get_users( array( 'orderby' => 'display_name', 'order' => 'ASC' ) );
+                $selected  = get_option( 'bv_consultant_users', array() );
+                if ( ! is_array( $selected ) ) $selected = array();
+                $has_non_admin = false;
+                foreach ( $all_users as $u ) :
+                    $is_admin = $u->has_cap( 'manage_options' );
+                    $is_sel = in_array( (string) $u->ID, $selected, true );
+                    if ( ! $is_admin ) $has_non_admin = true;
+                ?>
+                    <label class="bv-cd-user-item" data-search="<?php echo esc_attr( strtolower( $u->display_name . ' ' . $u->user_email . ' ' . $u->user_login ) ); ?>" style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #f0f0f1;cursor:<?php echo $is_admin ? 'default' : 'pointer'; ?>;<?php echo $is_admin ? 'opacity:.5;background:#f9f9f9;' : ''; ?>transition:background .15s;">
+                        <input type="checkbox" name="bv_consultant_users[]" value="<?php echo esc_attr( $u->ID ); ?>" <?php checked( $is_sel ); ?> <?php echo $is_admin ? 'disabled' : ''; ?> style="width:18px;height:18px;flex-shrink:0;" />
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-weight:600;font-size:14px;color:#1d2327;"><?php echo esc_html( $u->display_name ); ?><?php if ( $is_admin ) echo ' <span style="font-weight:400;color:#646970;font-size:12px;">(Administrator)</span>'; ?></div>
+                            <div style="font-size:12px;color:#646970;"><?php echo esc_html( $u->user_email ); ?></div>
+                        </div>
+                    </label>
+                <?php endforeach; ?>
+                <?php if ( ! $has_non_admin ) : ?>
+                    <div style="padding:24px 14px;text-align:center;color:#646970;font-size:13px;">No non-administrator users found.</div>
+                <?php endif; ?>
+            </div>
+            <p class="description" style="margin-top:8px;">Administrators are shown greyed out — they already have full access.</p>
+            <p class="description" style="color:#d63638;"><?php esc_html_e( 'Selected non-admin users will be restricted to ONLY the Consultant Dashboard.', 'businessvance-services-manager' ); ?></p>
+        </div>
+
+        <script>
+        jQuery(function($){
+            $('#bv_cd_user_search').on('input', function(){
+                var q = $(this).val().toLowerCase().trim();
+                $('#bv_cd_user_list .bv-cd-user-item').each(function(){
+                    $(this).toggle( $(this).data('search').indexOf(q) !== -1 );
+                });
+            });
+        });
+        </script>
 
         <div class="bv-settings-section bv-settings-info-box">
             <h3><?php esc_html_e( 'Consultant Dashboard Shortcode', 'businessvance-services-manager' ); ?></h3>
