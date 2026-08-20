@@ -70,7 +70,8 @@ class BV_Consultant_Dashboard {
         if ( current_user_can( 'manage_options' ) || ! current_user_can( self::CAP ) ) return;
         $page = isset( $_GET['page'] ) ? sanitize_text_field( $_GET['page'] ) : '';
         if ( $page === 'bv-consultant-dashboard' ) return;
-        wp_safe_redirect( admin_url( 'admin.php?page=bv-consultant-dashboard' ) );
+        $dest = self_admin_url( 'admin.php?page=bv-consultant-dashboard' );
+        wp_redirect( $dest );
         exit;
     }
 
@@ -79,13 +80,15 @@ class BV_Consultant_Dashboard {
         $user = wp_get_current_user();
         if ( $user->has_cap( 'manage_options' ) ) return;
         if ( ! $user->has_cap( self::CAP ) ) return;
-        // Also check transient set by redirect_on_login() for WooCommerce AJAX logins
-        $redirect_flag = get_transient( 'bv_cd_redirect_' . $user->ID );
-        if ( $redirect_flag ) {
-            delete_transient( 'bv_cd_redirect_' . $user->ID );
+        // Prevent redirect loop: if we just redirected, let the page render
+        $loop_key = 'bv_cd_loop_' . $user->ID;
+        if ( get_transient( $loop_key ) ) {
+            delete_transient( $loop_key );
+            return;
         }
-        // Always redirect consultant-only users on the frontend to the dashboard
-        wp_safe_redirect( admin_url( 'admin.php?page=bv-consultant-dashboard' ) );
+        set_transient( $loop_key, 1, 10 );
+        $dest = self_admin_url( 'admin.php?page=bv-consultant-dashboard' );
+        wp_redirect( $dest );
         exit;
     }
 
@@ -111,7 +114,8 @@ class BV_Consultant_Dashboard {
         set_transient( 'bv_cd_redirect_' . $user->ID, 1, 30 );
         // Only PHP-redirect if not an AJAX request (WooCommerce may use AJAX login)
         if ( ! defined( 'DOING_AJAX' ) || ! DOING_AJAX ) {
-            wp_safe_redirect( admin_url( 'admin.php?page=bv-consultant-dashboard' ) );
+            $dest = self_admin_url( 'admin.php?page=bv-consultant-dashboard' );
+            wp_redirect( $dest );
             exit;
         }
     }
