@@ -20,8 +20,10 @@ class BV_Consultant_Dashboard {
     public function __construct() {
         add_action( 'admin_menu', array( $this, 'add_menu_page' ) );
         add_action( 'admin_menu', array( $this, 'restrict_admin_menu' ), 9999 );
+        add_action( 'admin_init', array( $this, 'ensure_admin_role_has_cap' ) );
         add_action( 'admin_init', array( $this, 'lock_admin_access' ) );
         add_action( 'template_redirect', array( $this, 'lock_frontend_access' ) );
+        add_action( 'wp_login', array( $this, 'redirect_on_login' ), 10, 2 );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
         add_action( 'wp_ajax_bv_cd_get_projects', array( $this, 'ajax_get_projects' ) );
         add_action( 'wp_ajax_bv_cd_get_project_detail', array( $this, 'ajax_get_project_detail' ) );
@@ -74,9 +76,44 @@ class BV_Consultant_Dashboard {
 
     public function lock_frontend_access() {
         if ( is_admin() || ! is_user_logged_in() ) return;
-        if ( current_user_can( 'manage_options' ) || ! current_user_can( self::CAP ) ) return;
+        $user = wp_get_current_user();
+        if ( $user->has_cap( 'manage_options' ) ) return;
+        if ( ! $user->has_cap( self::CAP ) ) return;
+        // Also check transient set by redirect_on_login() for WooCommerce AJAX logins
+        $redirect_flag = get_transient( 'bv_cd_redirect_' . $user->ID );
+        if ( $redirect_flag ) {
+            delete_transient( 'bv_cd_redirect_' . $user->ID );
+        }
+        // Always redirect consultant-only users on the frontend to the dashboard
         wp_safe_redirect( admin_url( 'admin.php?page=bv-consultant-dashboard' ) );
         exit;
+    }
+
+    /**
+     * Ensure the administrator role always has the consultant dashboard capability
+     * so the BV Consultant menu is visible to all WordPress admins.
+     */
+    public function ensure_admin_role_has_cap() {
+        $role = get_role( 'administrator' );
+        if ( $role && ! $role->has_cap( self::CAP ) ) {
+            $role->add_cap( self::CAP );
+        }
+    }
+
+    /**
+     * Redirect consultant-only users to the dashboard immediately on login.
+     * Also sets a transient so lock_frontend_access() can catch AJAX logins.
+     */
+    public function redirect_on_login( $user_login, $user ) {
+        if ( $user->has_cap( 'manage_options' ) ) return;
+        if ( ! $user->has_cap( self::CAP ) ) return;
+        // Mark this user so lock_frontend_access() catches them even after AJAX login
+        set_transient( 'bv_cd_redirect_' . $user->ID, 1, 30 );
+        // Only PHP-redirect if not an AJAX request (WooCommerce may use AJAX login)
+        if ( ! defined( 'DOING_AJAX' ) || ! DOING_AJAX ) {
+            wp_safe_redirect( admin_url( 'admin.php?page=bv-consultant-dashboard' ) );
+            exit;
+        }
     }
 
     public function enqueue_assets( $hook ) {
@@ -1583,7 +1620,7 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
      *  1. A ZIP containing questionnaire HTML, agreement HTML, and all uploaded files
      *  2. Individual file attachments directly on the email (fallback for ZIP issues)
      *
-     * @since 2.7.23  Rewritten 2.7.24 with robust file resolution, individual attachments, HTML email, and comprehensive logging.
+     * @since 2.7.23  Rewritten 2.7.35 with robust file resolution, individual attachments, HTML email, and comprehensive logging.
      * @param int $project_id The project ID.
      * @return bool True if the email was sent successfully, false otherwise.
      */
@@ -1593,7 +1630,7 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
         $settings = BV_Settings::get_settings();
         $consultant_email = $settings['consultant_email'] ?? get_option( 'admin_email' );
         if ( empty( $consultant_email ) ) {
-            error_log( sprintf( '[BV 2.7.24] email_package skipped project %d: no consultant email', $project_id ) );
+            error_log( sprintf( '[BV 2.7.35] email_package skipped project %d: no consultant email', $project_id ) );
             return false;
         }
 
@@ -1601,11 +1638,11 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
             "SELECT * FROM {$wpdb->prefix}bv_projects WHERE id = %d", $project_id
         ) );
         if ( ! $project ) {
-            error_log( sprintf( '[BV 2.7.24] email_package skipped project %d: not found', $project_id ) );
+            error_log( sprintf( '[BV 2.7.35] email_package skipped project %d: not found', $project_id ) );
             return false;
         }
 
-        error_log( sprintf( '[BV 2.7.24] === email_package START project %d ===', $project_id ) );
+        error_log( sprintf( '[BV 2.7.35] === email_package START project %d ===', $project_id ) );
 
         $company_name = $settings['company_name'] ?? 'BusinessVance';
         $dashboard_url = admin_url( 'admin.php?page=bv-consultant-dashboard&project_id=' . $project_id );
@@ -1616,7 +1653,7 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
 
         try {
             if ( ! class_exists( 'ZipArchive' ) ) {
-                error_log( '[BV 2.7.24] ZipArchive not available — will attach files individually only.' );
+                error_log( '[BV 2.7.35] ZipArchive not available — will attach files individually only.' );
                 $zip_available = false;
             } else {
                 $zip_available = true;
@@ -1626,7 +1663,7 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
             // 1. Generate questionnaire HTML report
             // =============================================
             $questionnaire_html = $this->build_questionnaire_report_html( $project_id, true );
-            error_log( sprintf( '[BV 2.7.24] Questionnaire HTML: %d bytes', strlen( $questionnaire_html ) ) );
+            error_log( sprintf( '[BV 2.7.35] Questionnaire HTML: %d bytes', strlen( $questionnaire_html ) ) );
 
             // =============================================
             // 2. Collect multifile uploads from questionnaire
@@ -1636,22 +1673,32 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
                 "SELECT response_value FROM {$wpdb->prefix}bv_questionnaire_responses WHERE project_id = %d",
                 $project_id
             ) );
-            error_log( sprintf( '[BV 2.7.24] Found %d response rows for project %d', count( $responses ), $project_id ) );
+            error_log( sprintf( '[BV 2.7.35] Found %d response rows for project %d', count( $responses ), $project_id ) );
 
             foreach ( $responses as $r ) {
                 $raw = $r->response_value;
-                error_log( sprintf( '[BV 2.7.24] Response raw (first 120 chars): %s', substr( $raw, 0, 120 ) ) );
+                error_log( sprintf( '[BV 2.7.35] Response raw (first 120 chars): %s', substr( $raw, 0, 120 ) ) );
 
                 $json = json_decode( $raw, true );
-                if ( ! is_array( $json ) || ! isset( $json[0] ) || ! isset( $json[0]['url'] ) ) {
-                    continue; // Not a multifile response
+                if ( ! is_array( $json ) ) {
+                    continue;
                 }
 
-                error_log( sprintf( '[BV 2.7.24] Multifile response detected with %d file(s)', count( $json ) ) );
+                // Check if any entry in the array looks like a multifile upload (has 'url' key)
+                $is_multifile = false;
+                foreach ( $json as $entry ) {
+                    if ( is_array( $entry ) && isset( $entry['url'] ) && ! empty( $entry['file'] ) ) {
+                        $is_multifile = true;
+                        break;
+                    }
+                }
+                if ( ! $is_multifile ) {
+                    continue;
+                }
 
                 foreach ( $json as $f ) {
-                    if ( empty( $f['file'] ) ) {
-                        error_log( sprintf( '[BV 2.7.24]   Skipping entry with no file key: %s', json_encode( $f ) ) );
+                    // Skip entries without file key (failed uploads have 'error' instead)
+                    if ( ! is_array( $f ) || empty( $f['file'] ) ) {
                         continue;
                     }
 
@@ -1674,14 +1721,14 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
                     if ( $found_path ) {
                         $safe_name = basename( $found_path );
                         $multifile_paths[ $safe_name ] = $found_path;
-                        error_log( sprintf( '[BV 2.7.24]   Found file: %s (%d bytes)', $safe_name, filesize( $found_path ) ) );
+                        error_log( sprintf( '[BV 2.7.35]   Found file: %s (%d bytes)', $safe_name, filesize( $found_path ) ) );
                     } else {
-                        error_log( sprintf( '[BV 2.7.24]   FILE NOT FOUND for: %s', $f['file'] ) );
-                        error_log( sprintf( '[BV 2.7.24]   Tried: %s', implode( ' | ', array_filter( $candidates ) ) ) );
+                        error_log( sprintf( '[BV 2.7.35]   FILE NOT FOUND for: %s', $f['file'] ) );
+                        error_log( sprintf( '[BV 2.7.35]   Tried: %s', implode( ' | ', array_filter( $candidates ) ) ) );
                     }
                 }
             }
-            error_log( sprintf( '[BV 2.7.24] Total multifile paths found: %d', count( $multifile_paths ) ) );
+            error_log( sprintf( '[BV 2.7.35] Total multifile paths found: %d', count( $multifile_paths ) ) );
 
             // =============================================
             // 3. Collect required documents from bv_project_documents
@@ -1691,15 +1738,15 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
                 "SELECT filepath, filename, filesize FROM {$wpdb->prefix}bv_project_documents WHERE project_id = %d",
                 $project_id
             ) );
-            error_log( sprintf( '[BV 2.7.24] Found %d required document rows', count( $documents ) ) );
+            error_log( sprintf( '[BV 2.7.35] Found %d required document rows', count( $documents ) ) );
 
             foreach ( $documents as $doc ) {
                 if ( empty( $doc->filepath ) ) {
-                    error_log( '[BV 2.7.24]   Skipping doc with empty filepath' );
+                    error_log( '[BV 2.7.35]   Skipping doc with empty filepath' );
                     continue;
                 }
 
-                error_log( sprintf( '[BV 2.7.24]   Doc filepath from DB: %s', $doc->filepath ) );
+                error_log( sprintf( '[BV 2.7.35]   Doc filepath from DB: %s', $doc->filepath ) );
 
                 // Try multiple path patterns
                 $found_path = null;
@@ -1719,22 +1766,26 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
                 if ( $found_path ) {
                     $safe_name = ! empty( $doc->filename ) ? $doc->filename : basename( $found_path );
                     $doc_paths[ $safe_name ] = $found_path;
-                    error_log( sprintf( '[BV 2.7.24]   Found doc: %s (%d bytes)', $safe_name, filesize( $found_path ) ) );
+                    error_log( sprintf( '[BV 2.7.35]   Found doc: %s (%d bytes)', $safe_name, filesize( $found_path ) ) );
                 } else {
-                    error_log( sprintf( '[BV 2.7.24]   DOC NOT FOUND: %s', $doc->filepath ) );
+                    error_log( sprintf( '[BV 2.7.35]   DOC NOT FOUND: %s', $doc->filepath ) );
                 }
             }
-            error_log( sprintf( '[BV 2.7.24] Total required doc paths found: %d', count( $doc_paths ) ) );
+            error_log( sprintf( '[BV 2.7.35] Total required doc paths found: %d', count( $doc_paths ) ) );
 
             // =============================================
             // 4. Collect agreement
             // =============================================
             $agreement_html = '';
             $agreement = $wpdb->get_row( $wpdb->prepare(
-                "SELECT template_content, full_name, signed_at FROM {$wpdb->prefix}bv_project_agreements WHERE project_id = %d ORDER BY id DESC LIMIT 1",
+                "SELECT template_content, full_name, agreed_at FROM {$wpdb->prefix}bv_project_agreements WHERE project_id = %d ORDER BY id DESC LIMIT 1",
                 $project_id
             ) );
-            if ( $agreement && ! empty( $agreement->template_content ) ) {
+            if ( $agreement ) {
+                $agreement_content = ! empty( $agreement->template_content )
+                    ? $agreement->template_content
+                    : '<p><em>No agreement template content was configured for this service.</em></p>';
+                $signed_time = ! empty( $agreement->agreed_at ) ? $agreement->agreed_at : '';
                 $agreement_html = '<!DOCTYPE html>'
                     . '<html><head><meta charset="UTF-8"><title>Service Agreement</title>'
                     . '<style>body{font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;max-width:800px;margin:40px auto;padding:20px;color:#1a1a2e;line-height:1.7;}h1{color:#002B5C;border-bottom:3px solid #002B5C;padding-bottom:10px;}.meta{font-size:13px;color:#666;margin-bottom:20px;}</style>'
@@ -1744,13 +1795,13 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
                     . 'Project: ' . esc_html( $project->project_number ) . '<br>'
                     . 'Client: ' . esc_html( $project->client_name ) . '<br>'
                     . 'Signed by: ' . esc_html( $agreement->full_name ?? '' ) . '<br>'
-                    . 'Signed at: ' . esc_html( $agreement->signed_at ?? '' )
+                    . 'Signed at: ' . esc_html( $signed_time )
                     . '</div>'
-                    . wp_kses_post( $agreement->template_content )
+                    . wp_kses_post( $agreement_content )
                     . '</body></html>';
-                error_log( sprintf( '[BV 2.7.24] Agreement HTML: %d bytes', strlen( $agreement_html ) ) );
+                error_log( sprintf( '[BV 2.7.35] Agreement HTML: %d bytes', strlen( $agreement_html ) ) );
             } else {
-                error_log( sprintf( '[BV 2.7.24] No agreement found for project %d', $project_id ) );
+                error_log( sprintf( '[BV 2.7.35] No agreement found for project %d', $project_id ) );
             }
 
             // =============================================
@@ -1762,7 +1813,7 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
                     $attachments[] = $path;
                 }
             }
-            error_log( sprintf( '[BV 2.7.24] Individual attachments prepared: %d', count( $attachments ) ) );
+            error_log( sprintf( '[BV 2.7.35] Individual attachments prepared: %d', count( $attachments ) ) );
 
             // =============================================
             // 6. Build ZIP
@@ -1783,7 +1834,7 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
                 $zip = new ZipArchive();
                 $zip_opened = $zip->open( $zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE );
                 if ( $zip_opened !== true ) {
-                    error_log( sprintf( '[BV 2.7.24] ZIP create failed: error code %d, path: %s', $zip_opened, $zip_path ) );
+                    error_log( sprintf( '[BV 2.7.35] ZIP create failed: error code %d, path: %s', $zip_opened, $zip_path ) );
                     $zip_path = null;
                 } else {
                     $zip->addFromString( 'questionnaire-report.html', $questionnaire_html );
@@ -1808,13 +1859,13 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
 
                     if ( file_exists( $zip_path ) && filesize( $zip_path ) > 0 ) {
                         $attachments[] = $zip_path; // Add ZIP as attachment too
-                        error_log( sprintf( '[BV 2.7.24] ZIP created: %s (%d bytes) — contains: 1 HTML report, %s agreement, %d questionnaire files, %d required docs',
+                        error_log( sprintf( '[BV 2.7.35] ZIP created: %s (%d bytes) — contains: 1 HTML report, %s agreement, %d questionnaire files, %d required docs',
                             $zip_path, filesize( $zip_path ),
                             empty( $agreement_html ) ? 'no' : '1',
                             $mf_count, $doc_count
                         ) );
                     } else {
-                        error_log( sprintf( '[BV 2.7.24] ZIP file empty or not created at: %s', $zip_path ) );
+                        error_log( sprintf( '[BV 2.7.35] ZIP file empty or not created at: %s', $zip_path ) );
                         $zip_path = null;
                     }
                 }
@@ -1895,16 +1946,16 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
                 'From: ' . $company_name . ' <' . $from_email . '>',
             );
 
-            error_log( sprintf( '[BV 2.7.24] Sending email to %s with %d attachment(s)', $consultant_email, count( $attachments ) ) );
-            error_log( sprintf( '[BV 2.7.24] Attachment paths: %s', implode( ', ', $attachments ) ) );
+            error_log( sprintf( '[BV 2.7.35] Sending email to %s with %d attachment(s)', $consultant_email, count( $attachments ) ) );
+            error_log( sprintf( '[BV 2.7.35] Attachment paths: %s', implode( ', ', $attachments ) ) );
 
             $sent = wp_mail( $consultant_email, $subject, $body_html, $headers, $attachments );
 
-            error_log( sprintf( '[BV 2.7.24] wp_mail result for project %d: %s', $project_id, $sent ? 'SUCCESS' : 'FAILED' ) );
+            error_log( sprintf( '[BV 2.7.35] wp_mail result for project %d: %s', $project_id, $sent ? 'SUCCESS' : 'FAILED' ) );
             if ( ! $sent ) {
                 global $phpmailer;
                 if ( $phpmailer && ! empty( $phpmailer->ErrorInfo ) ) {
-                    error_log( sprintf( '[BV 2.7.24] PHPMailer error: %s', $phpmailer->ErrorInfo ) );
+                    error_log( sprintf( '[BV 2.7.35] PHPMailer error: %s', $phpmailer->ErrorInfo ) );
                 }
             }
 
@@ -1917,7 +1968,7 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
             return $sent;
 
         } catch ( Exception $e ) {
-            error_log( sprintf( '[BV 2.7.24] Exception in email_package for project %d: %s', $project_id, $e->getMessage() ) );
+            error_log( sprintf( '[BV 2.7.35] Exception in email_package for project %d: %s', $project_id, $e->getMessage() ) );
             if ( $zip_path && file_exists( $zip_path ) ) {
                 @unlink( $zip_path );
             }
