@@ -680,8 +680,13 @@ class BV_Consultant_Dashboard {
         }
 
         global $wpdb;
-        $wpdb->update( $wpdb->prefix . 'bv_projects', array( 'status' => $status ), array( 'id' => $pid ), array( '%s' ), array( '%d' ) );
+        $wpdb->suppress_errors( true );
+        $updated = $wpdb->update( $wpdb->prefix . 'bv_projects', array( 'status' => $status ), array( 'id' => $pid ), array( '%s' ), array( '%d' ) );
         $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array( 'project_id' => $pid, 'entity_type' => 'project', 'entity_id' => $pid, 'action' => 'status_changed', 'description' => "Status changed to {$status}", 'metadata' => '', 'user_id' => get_current_user_id() ), array( '%d','%s','%d','%s','%s','%s','%d' ) );
+        $wpdb->suppress_errors( false );
+        if ( $updated === false ) {
+            wp_send_json_error( 'Database error updating status' );
+        }
         wp_send_json_success();
     }
 
@@ -825,6 +830,8 @@ class BV_Consultant_Dashboard {
         $upload_dir = wp_upload_dir();
         $bv_docs_dir = $upload_dir['basedir'] . '/bv-documents/';
 
+        $wpdb->suppress_errors( true );
+
         // 1. Delete questionnaire multifile attachments
         $q_responses = $wpdb->get_results( $wpdb->prepare( "SELECT response_value FROM {$p}bv_questionnaire_responses WHERE project_id = %d", $pid ) );
         $mf_count = 0;
@@ -871,9 +878,15 @@ class BV_Consultant_Dashboard {
         $wpdb->delete( $p . 'bv_activity_log',             array( 'project_id' => $pid ), array( '%d' ) );
 
         // 5. Delete the project itself
-        $wpdb->delete( $p . 'bv_projects', array( 'id' => $pid ), array( '%d' ) );
+        $deleted = $wpdb->delete( $p . 'bv_projects', array( 'id' => $pid ), array( '%d' ) );
 
-        wp_send_json_success( 'Project deleted successfully. Redirecting…' );
+        $wpdb->suppress_errors( false );
+
+        if ( ! $deleted ) {
+            wp_send_json_error( 'Failed to delete project from database' );
+        }
+
+        wp_send_json_success( 'Project deleted successfully.' );
     }
 
     public function ajax_upload_report() {
