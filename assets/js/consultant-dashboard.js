@@ -149,6 +149,19 @@
             }).fail(function() { alert('Request failed. Please try again.'); $btn.prop('disabled', false).text('↻ Reset Project'); });
         });
 
+        // Delete project
+        $(document).on('click', '#bv-cd-delete-project', function() {
+            var $btn = $(this);
+            var pid = $btn.data('project-id');
+            var pnum = $btn.data('project-number') || pid;
+            if (!confirm('DELETE project ' + pnum + '?\n\nThis will PERMANENTLY remove:\n• The project record\n• All questionnaire responses & uploaded files\n• Signed agreement(s)\n• Required documents\n• Delivered reports\n• All messages & notes\n• Activity log\n\nThis CANNOT be undone.')) return;
+            if (!confirm('Are you ABSOLUTELY sure? Type \"delete\" mentally and click OK to confirm permanent deletion.')) return;
+            $btn.prop('disabled', true).text('Deleting…');
+            $.post(bv_cd.ajax_url, { action: 'bv_cd_delete_project', nonce: bv_cd.nonce, project_id: pid }, function(r) {
+                if (r.success) { location.href = '?page=bv-consultant-dashboard'; } else { alert(r.data || 'Error deleting project'); $btn.prop('disabled', false).text('\uD83D\uDDD1 Delete Project'); }
+            }).fail(function() { alert('Request failed. Please try again.'); $btn.prop('disabled', false).text('\uD83D\uDDD1 Delete Project'); });
+        });
+
         // Create project
         $('#bv-cd-create-project').on('click', function() {
             var data = { action: 'bv_cd_create_project', nonce: bv_cd.nonce };

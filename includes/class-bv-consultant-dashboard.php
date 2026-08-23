@@ -51,8 +51,8 @@ class BV_Consultant_Dashboard {
         add_action( 'wp_ajax_bv_cd_download_qfile', array( $this, 'ajax_download_questionnaire_file' ) );
         add_action( 'bv_project_completion_email', array( $this, 'email_project_package_to_consultant' ) );
         add_action( 'wp_ajax_bv_cd_reset_project', array( $this, 'ajax_reset_project' ) );
+        add_action( 'wp_ajax_bv_cd_delete_project', array( $this, 'ajax_delete_project' ) );
     }
-
     public function add_menu_page() {
         add_menu_page(
             'Consultant Dashboard',
@@ -355,6 +355,7 @@ class BV_Consultant_Dashboard {
                 <a href="<?php echo admin_url('post.php?post=' . $project->wc_order_id . '&action=edit'); ?>" class="button">View Order #<?php echo $project->wc_order_id; ?></a>
                 <?php endif; ?>
                 <button type="button" id="bv-cd-reset-project" class="button" style="color:#dc2626;border-color:#dc2626;margin-left:8px;" data-project-id="<?php echo $project_id; ?>" data-project-number="<?php echo esc_attr( $project->project_number ); ?>">&#x21bb; Reset Project</button>
+                <button type="button" id="bv-cd-delete-project" class="button" style="color:#fff;background:#dc2626;border-color:#dc2626;margin-left:8px;" data-project-id="<?php echo $project_id; ?>" data-project-number="<?php echo esc_attr( $project->project_number ); ?>">&#128465; Delete Project</button>
             </div>
         </div>
 
@@ -797,6 +798,81 @@ class BV_Consultant_Dashboard {
         ), array( '%d', '%s', '%d', '%s', '%s', '%d' ) );
 
         wp_send_json_success( $desc );
+    }
+
+    /**
+     * Permanently delete a project and all associated data.
+     */
+    public function ajax_delete_project() {
+        check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
+        if ( ! current_user_can( self::CAP ) ) {
+            wp_send_json_error( 'Unauthorized' );
+        }
+
+        $pid = absint( $_POST['project_id'] );
+        if ( ! $pid ) {
+            wp_send_json_error( 'Invalid project ID' );
+        }
+
+        global $wpdb;
+        $project = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_projects WHERE id = %d", $pid ) );
+        if ( ! $project ) {
+            wp_send_json_error( 'Project not found' );
+        }
+
+        $p = $wpdb->prefix;
+        $upload_dir = wp_upload_dir();
+        $bv_docs_dir = $upload_dir['basedir'] . '/bv-documents/';
+
+        // 1. Delete questionnaire multifile attachments
+        $q_responses = $wpdb->get_results( $wpdb->prepare( "SELECT response_value FROM {$p}bv_questionnaire_responses WHERE project_id = %d", $pid ) );
+        $mf_count = 0;
+        foreach ( $q_responses as $qr ) {
+            $json = json_decode( $qr->response_value, true );
+            if ( is_array( $json ) && isset( $json[0] ) && isset( $json[0]['file'] ) ) {
+                foreach ( $json as $f ) {
+                    if ( ! empty( $f['file'] ) && file_exists( $bv_docs_dir . $f['file'] ) ) {
+                        @unlink( $bv_docs_dir . $f['file'] );
+                        $mf_count++;
+                    }
+                }
+            }
+        }
+
+        // 2. Delete uploaded document files
+        $docs = $wpdb->get_results( $wpdb->prepare( "SELECT filepath FROM {$p}bv_project_documents WHERE project_id = %d", $pid ) );
+        $doc_count = 0;
+        foreach ( $docs as $doc ) {
+            if ( ! empty( $doc->filepath ) && file_exists( $doc->filepath ) ) {
+                @unlink( $doc->filepath );
+            }
+            $doc_count++;
+        }
+
+        // 3. Delete report files
+        $reports = $wpdb->get_results( $wpdb->prepare( "SELECT filepath FROM {$p}bv_project_reports WHERE project_id = %d", $pid ) );
+        $rpt_count = 0;
+        foreach ( $reports as $rpt ) {
+            if ( ! empty( $rpt->filepath ) && file_exists( $rpt->filepath ) ) {
+                @unlink( $rpt->filepath );
+            }
+            $rpt_count++;
+        }
+
+        // 4. Delete all related database rows
+        $wpdb->delete( $p . 'bv_questionnaire_responses',  array( 'project_id' => $pid ), array( '%d' ) );
+        $wpdb->delete( $p . 'bv_project_agreements',       array( 'project_id' => $pid ), array( '%d' ) );
+        $wpdb->delete( $p . 'bv_project_documents',        array( 'project_id' => $pid ), array( '%d' ) );
+        $wpdb->delete( $p . 'bv_project_reports',          array( 'project_id' => $pid ), array( '%d' ) );
+        $wpdb->delete( $p . 'bv_project_messages',         array( 'project_id' => $pid ), array( '%d' ) );
+        $wpdb->delete( $p . 'bv_project_notes',            array( 'project_id' => $pid ), array( '%d' ) );
+        $wpdb->delete( $p . 'bv_project_services',         array( 'project_id' => $pid ), array( '%d' ) );
+        $wpdb->delete( $p . 'bv_activity_log',             array( 'project_id' => $pid ), array( '%d' ) );
+
+        // 5. Delete the project itself
+        $wpdb->delete( $p . 'bv_projects', array( 'id' => $pid ), array( '%d' ) );
+
+        wp_send_json_success( 'Project deleted successfully. Redirecting…' );
     }
 
     public function ajax_upload_report() {
