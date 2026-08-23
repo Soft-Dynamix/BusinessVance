@@ -685,9 +685,12 @@ class BV_Consultant_Dashboard {
         $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array( 'project_id' => $pid, 'entity_type' => 'project', 'entity_id' => $pid, 'action' => 'status_changed', 'description' => "Status changed to {$status}", 'metadata' => '', 'user_id' => get_current_user_id() ), array( '%d','%s','%d','%s','%s','%s','%d' ) );
         $wpdb->suppress_errors( false );
         if ( $updated === false ) {
-            wp_send_json_error( 'Database error updating status' );
+            wp_send_json_error( 'Database error: ' . $wpdb->last_error );
         }
-        wp_send_json_success();
+        if ( $updated === 0 ) {
+            wp_send_json_error( 'No rows updated. PID=' . $pid . ' Status=' . $status );
+        }
+        wp_send_json_success( 'Status updated to ' . $status );
     }
 
     public function ajax_update_progress() {
@@ -882,11 +885,14 @@ class BV_Consultant_Dashboard {
 
         $wpdb->suppress_errors( false );
 
-        if ( ! $deleted ) {
-            wp_send_json_error( 'Failed to delete project from database' );
+        if ( $deleted === false ) {
+            wp_send_json_error( 'Database error deleting project: ' . $wpdb->last_error );
+        }
+        if ( $deleted === 0 ) {
+            wp_send_json_error( 'Project was not found in database (PID=' . $pid . ')' );
         }
 
-        wp_send_json_success( 'Project deleted successfully.' );
+        wp_send_json_success( 'Project deleted.' );
     }
 
     public function ajax_upload_report() {
