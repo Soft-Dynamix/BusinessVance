@@ -54,30 +54,30 @@
         $('.bv-cd-status-update').on('change', function() {
             var pid = $(this).data('project-id');
             var status = $(this).val();
-            $.post(bv_cd.ajax_url, { action: 'bv_cd_update_project_status', nonce: bv_cd.nonce, project_id: pid, status: status }, function(r) {
-                if (r.success) { location.reload(); } else { alert(r.data || 'Error'); }
-            }).fail(function() { alert('Request failed. Please try again.'); });
+            $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: { action: 'bv_cd_update_project_status', nonce: bv_cd.nonce, project_id: pid, status: status }, success: function(r) {
+                if (r.success) { location.href = location.pathname + location.search + '&_t=' + Date.now(); } else { alert(r.data || 'Error updating status'); }
+            }, error: function() { alert('Request failed. Please try again.'); } });
         });
 
         // Progress update
         $('.bv-cd-progress-input').on('change', function() {
             var pid = $(this).data('project-id');
             var val = $(this).val();
-            $.post(bv_cd.ajax_url, { action: 'bv_cd_update_progress', nonce: bv_cd.nonce, project_id: pid, progress: val }, function(r) {
+            $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: { action: 'bv_cd_update_progress', nonce: bv_cd.nonce, project_id: pid, progress: val }, success: function(r) {
                 if (r.success) {
                     $('#bv-cd-project-' + pid + ' .bv-cd-progress-display').text(val + '%');
                     $('#bv-cd-project-' + pid + ' .bv-cd-progress-fill').css('width', val + '%');
                 } else { alert(r.data || 'Error'); }
-            }).fail(function() { alert('Request failed. Please try again.'); });
+            }, error: function() { alert('Request failed. Please try again.'); } });
         });
 
         // Internal notes save
         $('#bv-cd-save-notes').on('click', function() {
             var pid = $(this).data('project-id');
             var notes = $('#bv-cd-internal-notes').val();
-            $.post(bv_cd.ajax_url, { action: 'bv_cd_update_internal_notes', nonce: bv_cd.nonce, project_id: pid, notes: notes }, function(r) {
+            $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: { action: 'bv_cd_update_internal_notes', nonce: bv_cd.nonce, project_id: pid, notes: notes }, success: function(r) {
                 if (r.success) { alert('Notes saved'); } else { alert(r.data || 'Error'); }
-            }).fail(function() { alert('Request failed. Please try again.'); });
+            }, error: function() { alert('Request failed. Please try again.'); } });
         });
 
         // Add note
@@ -85,14 +85,14 @@
             var pid = $(this).data('project-id');
             var content = $('#bv-cd-note-content').val();
             if (!content) return alert('Note cannot be empty');
-            $.post(bv_cd.ajax_url, { action: 'bv_cd_add_note', nonce: bv_cd.nonce, project_id: pid, content: content }, function(r) {
+            $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: { action: 'bv_cd_add_note', nonce: bv_cd.nonce, project_id: pid, content: content }, success: function(r) {
                 if (r.success) {
                     var user = bv_cd.current_user;
                     var time = bv_cd.current_time;
                     $('#bv-cd-notes-list').prepend('<div class="bv-cd-note"><strong>' + bvEscapeHtml(user) + '</strong><span class="bv-cd-note-time">' + bvEscapeHtml(time) + '</span><p>' + $('<div>').text(content).html() + '</p></div>');
                     $('#bv-cd-note-content').val('');
                 } else { alert(r.data || 'Error'); }
-            }).fail(function() { alert('Request failed. Please try again.'); });
+            }, error: function() { alert('Request failed. Please try again.'); } });
         });
 
         // Send message
@@ -100,7 +100,7 @@
             var pid = $(this).data('project-id');
             var msg = $('#bv-cd-msg-text').val();
             if (!msg) return alert('Message cannot be empty');
-            $.post(bv_cd.ajax_url, { action: 'bv_cd_send_message', nonce: bv_cd.nonce, project_id: pid, message: msg }, function(r) {
+            $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: { action: 'bv_cd_send_message', nonce: bv_cd.nonce, project_id: pid, message: msg }, success: function(r) {
                 if (r.success) {
                     var user = bv_cd.current_user;
                     var time = bv_cd.current_time;
@@ -108,7 +108,7 @@
                     $('#bv-cd-msg-text').val('');
                     $('#bv-cd-msg-thread').scrollTop($('#bv-cd-msg-thread')[0].scrollHeight);
                 }
-            }).fail(function() { alert('Request failed. Please try again.'); });
+            }, error: function() { alert('Request failed. Please try again.'); } });
         });
 
         // Report upload
@@ -123,18 +123,18 @@
             fd.append('nonce', bv_cd.nonce);
             fd.append('project_id', pid);
             fd.append('title', title);
-            $.ajax({ url: bv_cd.ajax_url, type: 'POST', data: fd, processData: false, contentType: false, success: function(r) {
+            $.ajax({ url: bv_cd.ajax_url, type: 'POST', data: fd, processData: false, contentType: false, dataType: 'json', success: function(r) {
                 if (r.success) { alert('Report uploaded'); location.reload(); } else { alert(r.data || 'Error uploading'); }
-            }, error: function() { alert('Request failed. Please try again.'); }});
+            }, error: function() { alert('Request failed. Please try again.'); } });
         });
 
         // Deliver report
         $('.bv-cd-deliver-report').on('click', function() {
             var rid = $(this).data('report-id');
             if (!confirm('Mark this report as delivered? The client will be able to download it.')) return;
-            $.post(bv_cd.ajax_url, { action: 'bv_cd_deliver_report', nonce: bv_cd.nonce, report_id: rid }, function(r) {
+            $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: { action: 'bv_cd_deliver_report', nonce: bv_cd.nonce, report_id: rid }, success: function(r) {
                 if (r.success) { location.reload(); } else { alert(r.data || 'Error'); }
-            }).fail(function() { alert('Request failed. Please try again.'); });
+            }, error: function() { alert('Request failed. Please try again.'); } });
         });
 
         // Reset project
@@ -143,23 +143,23 @@
             var pid = $btn.data('project-id');
             var pnum = $btn.data('project-number') || pid;
             if (!confirm('Reset project ' + pnum + '?\n\nThis will permanently delete:\n• All questionnaire responses & uploaded files\n• Signed agreement(s)\n• Required documents\n• Delivered reports\n\nThe client will need to redo everything from the start.\n\nThis cannot be undone.')) return;
-            $btn.prop('disabled', true).text('Resetting…');
-            $.post(bv_cd.ajax_url, { action: 'bv_cd_reset_project', nonce: bv_cd.nonce, project_id: pid }, function(r) {
-                if (r.success) { location.reload(); } else { alert(r.data || 'Error resetting project'); $btn.prop('disabled', false).text('↻ Reset Project'); }
-            }).fail(function() { alert('Request failed. Please try again.'); $btn.prop('disabled', false).text('↻ Reset Project'); });
+            $btn.prop('disabled', true).text('Resetting\u2026');
+            $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: { action: 'bv_cd_reset_project', nonce: bv_cd.nonce, project_id: pid }, success: function(r) {
+                if (r.success) { location.reload(); } else { alert(r.data || 'Error resetting project'); $btn.prop('disabled', false).text('\u21bb Reset Project'); }
+            }, error: function() { alert('Request failed. Please try again.'); $btn.prop('disabled', false).text('\u21bb Reset Project'); } });
         });
 
-        // Delete project
-        $(document).on('click', '#bv-cd-delete-project', function() {
+        // Remove project
+        $(document).on('click', '#bv-cd-remove-project', function() {
             var $btn = $(this);
             var pid = $btn.data('project-id');
             var pnum = $btn.data('project-number') || pid;
             if (!confirm('DELETE project ' + pnum + '?\n\nThis will PERMANENTLY remove:\n• The project record\n• All questionnaire responses & uploaded files\n• Signed agreement(s)\n• Required documents\n• Delivered reports\n• All messages & notes\n• Activity log\n\nThis CANNOT be undone.')) return;
-            if (!confirm('Are you ABSOLUTELY sure? Type \"delete\" mentally and click OK to confirm permanent deletion.')) return;
-            $btn.prop('disabled', true).text('Deleting…');
-            $.post(bv_cd.ajax_url, { action: 'bv_cd_delete_project', nonce: bv_cd.nonce, project_id: pid }, function(r) {
-                if (r.success) { location.href = '?page=bv-consultant-dashboard'; } else { alert(r.data || 'Error deleting project'); $btn.prop('disabled', false).text('\uD83D\uDDD1 Delete Project'); }
-            }).fail(function() { alert('Request failed. Please try again.'); $btn.prop('disabled', false).text('\uD83D\uDDD1 Delete Project'); });
+            if (!confirm('Are you ABSOLUTELY sure? Type "delete" mentally and click OK to confirm permanent removal.')) return;
+            $btn.prop('disabled', true).text('Removing\u2026');
+            $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: { action: 'bv_cd_remove_project', nonce: bv_cd.nonce, project_id: pid }, success: function(r) {
+                if (r.success) { location.href = '?page=bv-consultant-dashboard'; } else { alert(r.data || 'Error removing project'); $btn.prop('disabled', false).text('\uD83D\DDD1 Remove Project'); }
+            }, error: function(xhr, status, err) { alert('Request failed: ' + (err || status)); $btn.prop('disabled', false).text('\uD83D\DDD1 Remove Project'); } });
         });
 
         // Create project
@@ -171,10 +171,10 @@
             data.client_company = $('#bv-cd-new-company').val();
             data.notes = $('#bv-cd-new-notes').val();
             if (!data.client_name || !data.client_email) return alert('Name and email required');
-            $.post(bv_cd.ajax_url, data, function(r) {
+            $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: data, success: function(r) {
                 if (r.success) { location.href = '?page=bv-consultant-dashboard&project_id=' + encodeURIComponent(r.data.project_id); }
                 else { alert(r.data || 'Error'); }
-            }).fail(function() { alert('Request failed. Please try again.'); });
+            }, error: function() { alert('Request failed. Please try again.'); } });
         });
     });
 

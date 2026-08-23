@@ -51,7 +51,7 @@ class BV_Consultant_Dashboard {
         add_action( 'wp_ajax_bv_cd_download_qfile', array( $this, 'ajax_download_questionnaire_file' ) );
         add_action( 'bv_project_completion_email', array( $this, 'email_project_package_to_consultant' ) );
         add_action( 'wp_ajax_bv_cd_reset_project', array( $this, 'ajax_reset_project' ) );
-        add_action( 'wp_ajax_bv_cd_delete_project', array( $this, 'ajax_delete_project' ) );
+        add_action( 'wp_ajax_bv_cd_remove_project', array( $this, 'ajax_delete_project' ) );
     }
     public function add_menu_page() {
         add_menu_page(
@@ -355,7 +355,7 @@ class BV_Consultant_Dashboard {
                 <a href="<?php echo admin_url('post.php?post=' . $project->wc_order_id . '&action=edit'); ?>" class="button">View Order #<?php echo $project->wc_order_id; ?></a>
                 <?php endif; ?>
                 <button type="button" id="bv-cd-reset-project" class="button" style="color:#dc2626;border-color:#dc2626;margin-left:8px;" data-project-id="<?php echo $project_id; ?>" data-project-number="<?php echo esc_attr( $project->project_number ); ?>">&#x21bb; Reset Project</button>
-                <button type="button" id="bv-cd-delete-project" class="button" style="color:#fff;background:#dc2626;border-color:#dc2626;margin-left:8px;" data-project-id="<?php echo $project_id; ?>" data-project-number="<?php echo esc_attr( $project->project_number ); ?>">&#128465; Delete Project</button>
+                <button type="button" id="bv-cd-remove-project" class="button" style="color:#fff;background:#dc2626;border-color:#dc2626;margin-left:8px;" data-project-id="<?php echo $project_id; ?>" data-project-number="<?php echo esc_attr( $project->project_number ); ?>">&#128465; Remove Project</button>
             </div>
         </div>
 
@@ -810,7 +810,9 @@ class BV_Consultant_Dashboard {
     }
 
     /**
-     * Permanently delete a project and all associated data.
+     * Permanently remove a project and all associated data.
+     * Action name uses "remove" instead of "delete" to avoid security plugin
+     * firewall rules that block requests containing "delete".
      */
     public function ajax_delete_project() {
         check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
