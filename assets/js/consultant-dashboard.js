@@ -39,6 +39,11 @@
         window.open(url, '_blank', 'width=1000,height=800,scrollbars=yes');
     };
 
+    // Multi-status filter: auto-submit on checkbox toggle
+    $(document).on('change', '#bv-cd-status-filters input[type="checkbox"]', function() {
+        $(this).closest('form').submit();
+    });
+
     $(function() {
         // Tab switching in project detail
         $('.bv-cd-tab').on('click', function(e) {

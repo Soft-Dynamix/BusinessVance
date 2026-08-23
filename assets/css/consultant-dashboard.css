@@ -17,8 +17,14 @@
 .bv-cd-stat-active .bv-cd-stat-num { color: var(--bv-cd-secondary, #0A2647); }
 .bv-cd-stat-waiting .bv-cd-stat-num { color: #F4A261; }
 .bv-cd-stat-done .bv-cd-stat-num { color: #27AE60; }
-.bv-cd-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
-.bv-cd-filter-form { display: flex; gap: 8px; flex-wrap: wrap; }
+.bv-cd-toolbar { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+.bv-cd-filter-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.bv-cd-status-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.bv-cd-status-chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 20px; border: 1px solid #d0d5dd; background: #f9fafb; font-size: 13px; cursor: pointer; transition: all 0.15s; user-select: none; white-space: nowrap; }
+.bv-cd-status-chip:hover { background: #eef1f5; border-color: #adb5bd; }
+.bv-cd-status-chip input[type="checkbox"] { margin: 0; width: 15px; height: 15px; cursor: pointer; }
+.bv-cd-status-chip:has(input:checked) { background: var(--bv-cd-primary, #002B5C); color: #fff; border-color: var(--bv-cd-primary, #002B5C); }
+.bv-cd-status-chip:has(input:checked) span { color: #fff; }
 .bv-cd-back { margin-bottom: 12px; }
 .bv-cd-project-header { background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; }
 .bv-cd-project-header h2 { margin: 0; color: var(--bv-cd-primary, #002B5C); }

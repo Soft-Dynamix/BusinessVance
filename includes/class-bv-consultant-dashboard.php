@@ -203,30 +203,62 @@ class BV_Consultant_Dashboard {
 
     private function render_projects_list() {
         global $wpdb;
-        $filter_status = isset( $_GET['filter_status'] ) ? sanitize_text_field( $_GET['filter_status'] ) : '';
+
+        // Multi-status filter: checkbox array via GET
+        $all_statuses = array(
+            'awaiting-agreement'     => 'Awaiting Agreement',
+            'awaiting-questionnaire' => 'Awaiting Questionnaire',
+            'awaiting-documents'     => 'Awaiting Documents',
+            'in-progress'            => 'In Progress',
+            'quality-check'          => 'Quality Check',
+            'completed'              => 'Completed',
+            'delivered'              => 'Delivered',
+            'archived'               => 'Archived',
+        );
+        // Default: all checked EXCEPT completed and archived
+        $default_off = array( 'completed', 'archived' );
+        $default_on  = array_keys( array_diff_key( $all_statuses, array_flip( $default_off ) ) );
+
+        // Parse submitted statuses from GET
+        $raw = isset( $_GET['filter_status'] ) ? (array) $_GET['filter_status'] : array();
+        $raw = array_filter( array_map( 'sanitize_text_field', $raw ) );
+        $active_statuses = array_filter( $raw, function($v) use ($all_statuses) { return isset( $all_statuses[ $v ] ); } );
+
+        // No filter_status in GET = first visit, use defaults
+        if ( ! isset( $_GET['filter_status'] ) ) {
+            $active_statuses = $default_on;
+        }
+        // If user unchecked everything, show all projects (no status filter)
+        if ( isset( $_GET['filter_status'] ) && empty( $active_statuses ) ) {
+            $active_statuses = array();
+        }
+
         $search = isset( $_GET['s'] ) ? sanitize_text_field( $_GET['s'] ) : '';
         $base_url = admin_url( 'admin.php?page=bv-consultant-dashboard' );
 
         $where = "1=1";
-        if ( $filter_status ) $where .= $wpdb->prepare( " AND p.status = %s", $filter_status );
+        if ( ! empty( $active_statuses ) ) {
+            $placeholders = implode( ',', array_fill( 0, count( $active_statuses ), '%s' ) );
+            $where .= $wpdb->prepare( " AND p.status IN ($placeholders)", $active_statuses );
+        }
         if ( $search ) $where .= $wpdb->prepare( " AND (p.project_number LIKE %s OR p.client_name LIKE %s OR p.client_email LIKE %s OR p.client_company LIKE %s)", "%{$search}%", "%{$search}%", "%{$search}%", "%{$search}%" );
 
         $projects = $wpdb->get_results( "SELECT p.* FROM {$wpdb->prefix}bv_projects p WHERE {$where} ORDER BY p.created_at DESC" );
+
+        // Which checkboxes should be checked?
+        $checked_statuses = isset( $_GET['filter_status'] ) ? $active_statuses : $default_on;
         ?>
         <div class="bv-cd-toolbar">
             <form method="get" class="bv-cd-filter-form">
                 <input type="hidden" name="page" value="bv-consultant-dashboard" />
-                <select name="filter_status" onchange="this.form.submit()">
-                    <option value="">All Statuses</option>
-                    <option value="awaiting-agreement" <?php selected($filter_status, 'awaiting-agreement'); ?>>Awaiting Agreement</option>
-                    <option value="awaiting-questionnaire" <?php selected($filter_status, 'awaiting-questionnaire'); ?>>Awaiting Questionnaire</option>
-                    <option value="awaiting-documents" <?php selected($filter_status, 'awaiting-documents'); ?>>Awaiting Documents</option>
-                    <option value="in-progress" <?php selected($filter_status, 'in-progress'); ?>>In Progress</option>
-                    <option value="quality-check" <?php selected($filter_status, 'quality-check'); ?>>Quality Check</option>
-                    <option value="completed" <?php selected($filter_status, 'completed'); ?>>Completed</option>
-                    <option value="delivered" <?php selected($filter_status, 'delivered'); ?>>Delivered</option>
-                    <option value="archived" <?php selected($filter_status, 'archived'); ?>>Archived</option>
-                </select>
+                <div class="bv-cd-status-filters" id="bv-cd-status-filters">
+                    <?php foreach ( $all_statuses as $slug => $label ) : ?>
+                    <label class="bv-cd-status-chip bv-cd-chip-<?php echo esc_attr( $slug ); ?>">
+                        <input type="checkbox" name="filter_status[]" value="<?php echo esc_attr( $slug ); ?>" <?php checked( in_array( $slug, $checked_statuses, true ) ); ?> />
+                        <span><?php echo esc_html( $label ); ?></span>
+                    </label>
+                    <?php endforeach; ?>
+                </div>
                 <input type="text" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="Search projects..." />
                 <button type="submit" class="button">Filter</button>
             </form>
