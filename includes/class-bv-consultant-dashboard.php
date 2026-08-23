@@ -73,15 +73,7 @@ class BV_Consultant_Dashboard {
         if ( is_array( $submenu ) ) foreach ( $submenu as $slug => $items ) { if ( ! in_array( $slug, $allowed, true ) ) unset( $submenu[$slug] ); }
     }
 
-    public function lock_admin_access() {
-        if ( ! is_admin() || ! is_user_logged_in() ) return;
-        if ( current_user_can( 'manage_options' ) || ! current_user_can( self::CAP ) ) return;
-        $page = isset( $_GET['page'] ) ? sanitize_text_field( $_GET['page'] ) : '';
-        if ( $page === 'bv-consultant-dashboard' ) return;
-        $dest = admin_url( 'admin.php?page=bv-consultant-dashboard', 'admin' );
-        wp_redirect( $dest );
-        exit;
-    }
+
 
     public function lock_admin_access() {
         if ( ! is_admin() || ! is_user_logged_in() ) return;
