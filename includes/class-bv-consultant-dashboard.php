@@ -21,17 +21,17 @@ class BV_Consultant_Dashboard {
         add_action( 'admin_menu', array( $this, 'add_menu_page' ) );
         add_action( 'admin_menu', array( $this, 'restrict_admin_menu' ), 9999 );
         add_action( 'admin_init', array( $this, 'lock_admin_access' ) );
-        add_action( 'template_redirect', array( $this, 'lock_frontend_access' ) );
+        // Dynamic capability mapping — fires DURING current_user_can() checks.
+        // 1. Admins always get bv_access_consultant_dashboard (menu visibility).
+        // 2. Consultant users get edit_posts in admin context — this prevents
+        //    WooCommerce's "Prevent admin access" feature from redirecting
+        //    them to My Account (which would create a redirect loop).
+        add_filter( 'user_has_cap', array( $this, 'grant_caps' ), 10, 4 );
         // WooCommerce login redirect: the login form POSTs to /my-account/ (NOT wp-login.php),
         // so the standard login_redirect filter never fires. WooCommerce's own
-        // WC_Form_Handler::process_login() applies this filter before wp_safe_redirect+exit.
+        // WC_Form_Handler::process_login() applies this filter before its redirect.
+        // We return the admin dashboard URL — WooCommerce handles the actual redirect.
         add_filter( 'woocommerce_login_redirect', array( $this, 'wc_login_redirect' ), 99999, 2 );
-        // Fallback: wp_login action (fires inside wp_signon during WooCommerce's process_login).
-        // This runs before WooCommerce's own wp_safe_redirect, so exit here takes priority.
-        add_action( 'wp_login', array( $this, 'redirect_on_login' ), 10, 2 );
-        // Dynamic capability mapping: admins always get bv_access_consultant_dashboard.
-        // This runs DURING capability checks (not before), so timing is never an issue.
-        add_filter( 'user_has_cap', array( $this, 'grant_admin_dashboard_cap' ), 10, 4 );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
         add_action( 'wp_ajax_bv_cd_get_projects', array( $this, 'ajax_get_projects' ) );
         add_action( 'wp_ajax_bv_cd_get_project_detail', array( $this, 'ajax_get_project_detail' ) );
@@ -83,15 +83,11 @@ class BV_Consultant_Dashboard {
         exit;
     }
 
-    public function lock_frontend_access() {
-        if ( is_admin() || ! is_user_logged_in() ) return;
-        $user = wp_get_current_user();
-        if ( $user->has_cap( 'manage_options' ) ) return;
-        if ( ! $user->has_cap( self::CAP ) ) return;
-        // Guard: if already headed to the dashboard (e.g. from a previous redirect),
-        // is_admin() above should catch it. This URI check is a safety net.
-        $req_uri = $_SERVER['REQUEST_URI'] ?? '';
-        if ( strpos( $req_uri, 'bv-consultant-dashboard' ) !== false ) return;
+    public function lock_admin_access() {
+        if ( ! is_admin() || ! is_user_logged_in() ) return;
+        if ( current_user_can( 'manage_options' ) || ! current_user_can( self::CAP ) ) return;
+        $page = isset( $_GET['page'] ) ? sanitize_text_field( $_GET['page'] ) : '';
+        if ( $page === 'bv-consultant-dashboard' ) return;
         $dest = admin_url( 'admin.php?page=bv-consultant-dashboard', 'admin' );
         wp_redirect( $dest );
         exit;
@@ -99,12 +95,13 @@ class BV_Consultant_Dashboard {
 
     /**
      * WooCommerce login redirect filter.
-     * The My Account login form POSTs to /my-account/ (NOT wp-login.php).
-     * WooCommerce's WC_Form_Handler::process_login() applies this filter
-     * before calling wp_safe_redirect(). We return the admin dashboard URL
-     * for consultant-only users.
+     * The My Account login form POSTs directly to /my-account/ (NOT wp-login.php),
+     * so the standard login_redirect filter never fires. WooCommerce's own
+     * WC_Form_Handler::process_login() applies this filter before calling
+     * wp_safe_redirect() + exit. We simply return the admin dashboard URL
+     * and let WooCommerce handle the actual redirect — no wp_redirect/exit from us.
      *
-     * @param string $redirect  Default redirect URL (My Account page).
+     * @param string   $redirect Default redirect URL (My Account page).
      * @param WP_User $user     The authenticated user.
      * @return string
      */
@@ -115,32 +112,41 @@ class BV_Consultant_Dashboard {
     }
 
     /**
-     * Redirect on wp_login action (fires inside wp_signon).
-     * This is a belt-and-suspenders fallback — runs before WooCommerce's
-     * own wp_safe_redirect in process_login().
-     */
-    public function redirect_on_login( $user_login, $user ) {
-        if ( $user->has_cap( 'manage_options' ) ) return;
-        if ( ! $user->has_cap( self::CAP ) ) return;
-        $dest = admin_url( 'admin.php?page=bv-consultant-dashboard', 'admin' );
-        wp_redirect( $dest );
-        exit;
-    }
-
-    /**
-     * Dynamically grant bv_access_consultant_dashboard to any user who
-     * has manage_options. This fires DURING current_user_can() checks,
-     * so it works regardless of when roles/caps are loaded.
+     * Dynamic capability mapping — fires DURING every current_user_can() check.
      *
-     * @param array   $allcaps All capabilities the user has.
-     * @param array   $caps    Required capabilities being checked.
-     * @param array   $args    Additional arguments (0 = capability name, 1 = user ID).
+     * Two jobs:
+     * 1. Grant bv_access_consultant_dashboard to admins (menu visibility).
+     * 2. Grant edit_posts to consultant users IN ADMIN CONTEXT — this prevents
+     *    WooCommerce's "Prevent admin access for non-admin users" feature
+     *    (which checks current_user_can('edit_posts') on admin_init) from
+     *    redirecting the consultant to My Account and causing a redirect loop.
+     *
+     * @param array   $allcaps Capabilities the user has.
+     * @param array   $caps    Capabilities being checked.
+     * @param array   $args    [0] = cap name, [1] = user ID.
      * @param WP_User $user    The user object.
      * @return array
      */
-    public function grant_admin_dashboard_cap( $allcaps, $caps, $args, $user ) {
+    public function grant_caps( $allcaps, $caps, $args, $user ) {
+        // 1. Admins always see the BV Consultant menu
         if ( in_array( self::CAP, $caps, true ) && ! empty( $user->allcaps['manage_options'] ) ) {
             $allcaps[ self::CAP ] = true;
+        }
+        // 2. Let consultant users through WooCommerce's admin-access gate
+        //    (WooCommerce checks current_user_can('edit_posts') on admin_init
+        //     and redirects non-admin users to My Account — causing redirect loops).
+        //    We grant the caps only during the check (non-persistent) and only
+        //    for users who have bv_access_consultant_dashboard but NOT manage_options.
+        if ( is_admin() && ! empty( $user->allcaps[ self::CAP ] ) && empty( $user->allcaps['manage_options'] ) ) {
+            // Grant edit_posts (and common WooCommerce checks) only during capability
+            // checks in the admin context. This doesn't persist — it only affects
+            // the return value of current_user_can() calls.
+            $admin_caps = array( 'edit_posts', 'edit_theme_options', 'export', 'import', 'list_users' );
+            foreach ( $admin_caps as $cap ) {
+                if ( in_array( $cap, $caps, true ) ) {
+                    $allcaps[ $cap ] = true;
+                }
+            }
         }
         return $allcaps;
     }
