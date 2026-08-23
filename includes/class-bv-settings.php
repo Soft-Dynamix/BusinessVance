@@ -1614,6 +1614,16 @@ class BV_Settings {
                 $all_users = get_users( array( 'orderby' => 'display_name', 'order' => 'ASC' ) );
                 $selected  = get_option( 'bv_consultant_users', array() );
                 if ( ! is_array( $selected ) ) $selected = array();
+                // Sync: detect users who have the cap in their meta but are not in
+                // the option (can happen if cap was granted outside this UI).
+                // Pre-populate $selected so their checkboxes appear checked.
+                foreach ( $all_users as $_su ) {
+                    if ( $_su->has_cap( 'manage_options' ) ) continue;
+                    if ( in_array( (string) $_su->ID, $selected, true ) ) continue;
+                    if ( ! empty( $_su->caps[ BV_Consultant_Dashboard::CAP ] ) ) {
+                        $selected[] = (string) $_su->ID;
+                    }
+                }
                 $has_non_admin = false;
                 foreach ( $all_users as $u ) :
                     $is_admin = $u->has_cap( 'manage_options' );
