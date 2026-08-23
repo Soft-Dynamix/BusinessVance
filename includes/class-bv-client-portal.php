@@ -1848,8 +1848,9 @@ class BV_Client_Portal {
             'entity_id'   => $wpdb->insert_id,
             'action'      => 'uploaded',
             'description' => esc_html__( 'Client uploaded document: ', 'businessvance-services-manager' ) . sanitize_text_field( $_POST['name'] ?? $file['name'] ),
+            'metadata'    => '',
             'user_id'     => get_current_user_id(),
-        ), array( '%d', '%s', '%d', '%s', '%s', '%d' ) );
+        ), array( '%d', '%s', '%d', '%s', '%s', '%s', '%d' ) );
 
         // Update progress and notify consultant only if 100%
         $services = $wpdb->get_results( $wpdb->prepare(
@@ -2040,8 +2041,8 @@ class BV_Client_Portal {
 
         $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array(
             'project_id' => $project_id, 'entity_type' => 'questionnaire', 'entity_id' => $project_id,
-            'action' => 'submitted', 'description' => esc_html__( 'Client submitted questionnaire responses', 'businessvance-services-manager' ), 'user_id' => get_current_user_id(),
-        ), array( '%d', '%s', '%d', '%s', '%s', '%d' ) );
+            'action' => 'submitted', 'description' => esc_html__( 'Client submitted questionnaire responses', 'businessvance-services-manager' ), 'metadata' => '', 'user_id' => get_current_user_id(),
+        ), array( '%d', '%s', '%d', '%s', '%s', '%s', '%d' ) );
 
         // Update progress and notify consultant only if 100%
         $services = $wpdb->get_results( $wpdb->prepare(
@@ -2151,8 +2152,8 @@ class BV_Client_Portal {
                 /* translators: %s: signer full name */
                 esc_html__( 'Agreement signed by %s', 'businessvance-services-manager' ),
                 $full_name
-            ), 'user_id' => get_current_user_id(),
-        ), array( '%d', '%s', '%d', '%s', '%s', '%d' ) );
+            ), 'metadata' => '', 'user_id' => get_current_user_id(),
+        ), array( '%d', '%s', '%d', '%s', '%s', '%s', '%d' ) );
 
         // Update progress and notify consultant only if 100%
         $new_progress = $this->update_project_progress( $project_id, $services );
@@ -2372,8 +2373,9 @@ class BV_Client_Portal {
             'entity_id'   => $project_id,
             'action'      => 'message_sent',
             'description' => 'Client message notification sent to consultant',
+            'metadata'    => '',
             'user_id'     => get_current_user_id(),
-        ), array( '%d', '%s', '%d', '%s', '%s', '%d' ) );
+        ), array( '%d', '%s', '%d', '%s', '%s', '%s', '%d' ) );
     }
 
     /**

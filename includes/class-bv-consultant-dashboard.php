@@ -681,7 +681,7 @@ class BV_Consultant_Dashboard {
 
         global $wpdb;
         $wpdb->update( $wpdb->prefix . 'bv_projects', array( 'status' => $status ), array( 'id' => $pid ), array( '%s' ), array( '%d' ) );
-        $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array( 'project_id' => $pid, 'entity_type' => 'project', 'entity_id' => $pid, 'action' => 'status_changed', 'description' => "Status changed to {$status}", 'user_id' => get_current_user_id() ), array( '%d','%s','%d','%s','%s','%d' ) );
+        $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array( 'project_id' => $pid, 'entity_type' => 'project', 'entity_id' => $pid, 'action' => 'status_changed', 'description' => "Status changed to {$status}", 'metadata' => '', 'user_id' => get_current_user_id() ), array( '%d','%s','%d','%s','%s','%s','%d' ) );
         wp_send_json_success();
     }
 
@@ -794,8 +794,9 @@ class BV_Consultant_Dashboard {
             'entity_id'   => $pid,
             'action'      => 'reset',
             'description' => $desc,
+            'metadata'    => '',
             'user_id'     => get_current_user_id(),
-        ), array( '%d', '%s', '%d', '%s', '%s', '%d' ) );
+        ), array( '%d', '%s', '%d', '%s', '%s', '%s', '%d' ) );
 
         wp_send_json_success( $desc );
     }
@@ -901,8 +902,8 @@ class BV_Consultant_Dashboard {
 
         $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array(
             'project_id' => $pid, 'entity_type' => 'report', 'entity_id' => $wpdb->insert_id,
-            'action' => 'uploaded', 'description' => "Report uploaded: {$title}", 'user_id' => get_current_user_id(),
-        ), array( '%d','%s','%d','%s','%s','%d' ) );
+            'action' => 'uploaded', 'description' => "Report uploaded: {$title}", 'metadata' => '', 'user_id' => get_current_user_id(),
+        ), array( '%d','%s','%d','%s','%s','%s','%d' ) );
 
         wp_send_json_success( 'Report uploaded' );
     }
@@ -921,8 +922,8 @@ class BV_Consultant_Dashboard {
         $report = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_project_reports WHERE id = %d", $rid ) );
         $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array(
             'project_id' => $report->project_id, 'entity_type' => 'report', 'entity_id' => $rid,
-            'action' => 'delivered', 'description' => "Report delivered: {$report->title}", 'user_id' => get_current_user_id(),
-        ), array( '%d','%s','%d','%s','%s','%d' ) );
+            'action' => 'delivered', 'description' => "Report delivered: {$report->title}", 'metadata' => '', 'user_id' => get_current_user_id(),
+        ), array( '%d','%s','%d','%s','%s','%s','%d' ) );
 
         wp_send_json_success( 'Report delivered' );
     }
@@ -1001,8 +1002,9 @@ class BV_Consultant_Dashboard {
             'entity_id'   => $project_id,
             'action'      => 'message_sent',
             'description' => 'Consultant message notification sent to client (' . $project->client_email . ')',
+            'metadata'    => '',
             'user_id'     => get_current_user_id(),
-        ), array( '%d', '%s', '%d', '%s', '%s', '%d' ) );
+        ), array( '%d', '%s', '%d', '%s', '%s', '%s', '%d' ) );
     }
 
     public function ajax_add_note() {
