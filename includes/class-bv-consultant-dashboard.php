@@ -76,6 +76,9 @@ class BV_Consultant_Dashboard {
 
 
     public function lock_admin_access() {
+        // AJAX requests must never be redirected — they must reach their handler.
+        // wp_doing_ajax() returns true for /wp-admin/admin-ajax.php requests.
+        if ( wp_doing_ajax() ) return;
         if ( ! is_admin() || ! is_user_logged_in() ) return;
         if ( current_user_can( 'manage_options' ) || ! current_user_can( self::CAP ) ) return;
         $page = isset( $_GET['page'] ) ? sanitize_text_field( $_GET['page'] ) : '';
