@@ -386,10 +386,14 @@ class BV_Consultant_Dashboard {
         . '<tr><td style="padding:16px 20px;font-size:14px;color:#374151;line-height:1.6;">' . $next_action . '</td></tr>'
         . '</table>'
 
-        // CTA button
-        . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
-        . '<tr><td align="center" style="padding:0 0 8px;">'
-        . '<a href="' . esc_url( $portal_url ) . '" target="_blank" style="display:inline-block;background-color:' . esc_attr( $primary_color ) . ';color:#ffffff !important;text-decoration:none !important;font-size:15px;font-weight:600;padding:14px 36px;border-radius:8px;mso-padding-alt:0;text-align:center;min-width:200px;">&#128640;  Go to My Project Portal</a>'
+        // CTA button — bulletproof table-based button for all email clients
+        . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">'
+        . '<tr><td align="center" style="padding:0;">'
+        . '<!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="' . esc_url( $portal_url ) . '" style="height:50px;v-text-anchor:middle;width:280px;" arcsize="16%"><w:anchorlock/><center style="color:#ffffff;font-family:Helvetica,Arial,sans-serif;font-size:15px;font-weight:bold;">&#128640;  Go to My Project Portal</center></v:roundrect><![endif]-->'
+        . '<![if !mso]><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-radius:8px;overflow:hidden;"><tr>'
+        . '<td align="center" style="background-color:' . esc_attr( $primary_color ) . ';border-radius:8px;mso-padding-alt:0;">'
+        . '<a href="' . esc_url( $portal_url ) . '" target="_blank" style="display:inline-block;padding:15px 36px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif;text-align:center;min-width:200px;">&#128640;  Go to My Project Portal</a>'
+        . '</td></tr></table><![endif]>'
         . '</td></tr>'
         . '<tr><td align="center" style="padding:0;">'
         . '<p style="margin:0;font-size:12px;color:#9ca3af;">If the button above doesn\'t work, copy and paste this link into your browser:<br><a href="' . esc_url( $portal_url ) . '" style="color:' . esc_attr( $primary_color ) . ';word-break:break-all;">' . esc_html( $portal_url ) . '</a></p>'
@@ -411,6 +415,7 @@ class BV_Consultant_Dashboard {
         $headers = array(
             'Content-Type: text/html; charset=UTF-8',
             'From: ' . $company_name . ' <' . $from_email . '>',
+            'Reply-To: ' . $from_email,
         );
         $sent = wp_mail( $project->client_email, $subject, $body, $headers );
         if ( $sent ) {
