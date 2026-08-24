@@ -221,6 +221,9 @@ class BV_Consultant_Dashboard {
                 $portal_url = site_url();
             }
         }
+        // Append project_id so the client lands directly on their project
+        $portal_url = add_query_arg( 'project_id', $pid, $portal_url );
+
         $primary_color = $settings['primary_color'] ?? '#002B5C';
         $logo_url      = $settings['logo_url'] ?? '';
 
