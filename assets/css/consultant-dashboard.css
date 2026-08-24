@@ -147,4 +147,66 @@
     .bv-cd-overview-grid { grid-template-columns: 1fr; }
     .bv-cd-project-header { flex-direction: column; }
     .bv-cd-widgets-grid { grid-template-columns: 1fr; }
+    .bv-cd-milestones { flex-wrap: wrap; }
 }
+
+/* ============================================
+   v2.7.43 Project Detail Enhancements
+   ============================================ */
+
+/* #3: Header layout with avatar */
+.bv-cd-header-left { display: flex; align-items: flex-start; gap: 16px; }
+.bv-cd-project-header a { color: var(--bv-cd-primary, #002B5C); }
+.bv-cd-project-header a:hover { text-decoration: underline; }
+
+/* #5: Next Action banner */
+.bv-cd-next-action { display: flex; align-items: flex-start; gap: 14px; padding: 16px 20px; border-radius: 8px; margin-bottom: 16px; border-left: 4px solid; }
+.bv-cd-na-warning { background: #fffbeb; border-color: #f59e0b; }
+.bv-cd-na-info { background: #eff6ff; border-color: #3b82f6; }
+.bv-cd-na-active { background: #f0fdf4; border-color: #22c55e; }
+.bv-cd-na-success { background: #f0fdf4; border-color: #22c55e; }
+.bv-cd-na-icon { font-size: 24px; flex-shrink: 0; margin-top: 2px; }
+.bv-cd-next-action strong { font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: #666; }
+
+/* #8: Milestone progress */
+.bv-cd-milestones { display: flex; align-items: center; gap: 0; padding: 8px 0; }
+.bv-cd-milestone { display: flex; flex-direction: column; align-items: center; gap: 6px; flex-shrink: 0; }
+.bv-cd-ms-dot { width: 20px; height: 20px; border-radius: 50%; border: 3px solid #d0d5dd; background: #fff; transition: all 0.2s; }
+.bv-cd-ms-label { font-size: 12px; color: #888; white-space: nowrap; }
+.bv-cd-ms-pending .bv-cd-ms-dot { border-color: #d0d5dd; background: #fff; }
+.bv-cd-ms-pending .bv-cd-ms-label { color: #aaa; }
+.bv-cd-ms-current .bv-cd-ms-dot { border-color: var(--bv-cd-primary, #002B5C); background: #fff; box-shadow: 0 0 0 3px rgba(0,43,92,0.15); animation: bv-pulse 2s infinite; }
+.bv-cd-ms-current .bv-cd-ms-label { color: var(--bv-cd-primary, #002B5C); font-weight: 600; }
+.bv-cd-ms-done .bv-cd-ms-dot { border-color: #22c55e; background: #22c55e; }
+.bv-cd-ms-done .bv-cd-ms-label { color: #22c55e; }
+.bv-cd-ms-connector { width: 40px; height: 3px; background: #d0d5dd; border-radius: 2px; flex-shrink: 0; margin-bottom: 22px; }
+.bv-cd-conn-done { background: #22c55e; }
+
+/* #9: Tab badges */
+.bv-cd-tab { position: relative; }
+.bv-cd-tab-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; border-radius: 9px; background: #e0e0e0; color: #fff; font-size: 10px; font-weight: 700; padding: 0 5px; margin-left: 6px; line-height: 1; vertical-align: middle; }
+.bv-cd-tab-done { background: #22c55e; }
+.bv-cd-tab-urgent { background: #dc2626; animation: bv-pulse 2s infinite; }
+
+/* #2: Activity timeline (detail view) */
+.bv-cd-timeline-detail { max-height: 300px; overflow-y: auto; }
+.bv-cd-tl-item { display: flex; align-items: flex-start; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }
+.bv-cd-tl-item:last-child { border-bottom: none; }
+.bv-cd-tl-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bv-cd-primary, #002B5C); margin-top: 4px; flex-shrink: 0; }
+.bv-cd-tl-body { display: flex; flex-direction: column; gap: 2px; }
+.bv-cd-tl-time { font-size: 11px; color: #999; }
+.bv-cd-tl-desc { font-size: 13px; color: #444; }
+
+/* #6: Quick note card */
+.bv-cd-quick-note-card { margin-bottom: 16px; }
+.bv-cd-quick-note-card textarea { min-height: 60px; }
+
+/* #11: Confirmation modal */
+.bv-cd-confirm-box { max-width: 460px; }
+.bv-cd-confirm-icon { font-size: 40px; text-align: center; margin-bottom: 8px; }
+.bv-cd-confirm-body { font-size: 14px; color: #555; margin-bottom: 16px; max-height: 200px; overflow-y: auto; }
+.bv-cd-confirm-body ul { margin: 4px 0; padding-left: 20px; }
+.bv-cd-confirm-body li { margin: 3px 0; font-size: 13px; }
+.bv-cd-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.bv-cd-confirm-cancel { color: #666; }
+.bv-cd-confirm-ok { font-weight: 600; }

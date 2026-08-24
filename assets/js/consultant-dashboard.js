@@ -3,6 +3,7 @@
  * @since 2.5.0 Added questionnaire CSV download
  * @since 2.7.21 Added HTML report download with service grouping
  * @since 2.7.22 HTML report opens in new window for PDF save; file downloads via AJAX
+ * @since 2.7.43 Added confirmation modals, send reminder, detail quick note
  */
 (function($) {
     'use strict';
@@ -16,9 +17,6 @@
         return div.innerHTML;
     }
 
-    /**
-     * Download questionnaire responses as CSV for a project.
-     */
     window.bv_cd_download_questionnaire = function(projectId) {
         var url = bv_cd.ajax_url
             + '?action=bv_cd_download_questionnaire'
@@ -27,10 +25,6 @@
         window.location.href = url;
     };
 
-    /**
-     * Open questionnaire responses as professional HTML report in a new window.
-     * The report includes a "Save as PDF" button that triggers the browser print dialog.
-     */
     window.bv_cd_download_questionnaire_html = function(projectId) {
         var url = bv_cd.ajax_url
             + '?action=bv_cd_download_questionnaire_html'
@@ -53,7 +47,6 @@
             if (r.success) { location.href = location.pathname + location.search + '&_t=' + Date.now(); } else { alert(r.data || 'Error'); $sel.val($sel.data('prev')); }
         }, error: function() { alert('Request failed.'); $sel.val($sel.data('prev')); } });
     });
-    // Remember previous value for revert on error
     $(document).on('focus', '.bv-cd-quick-status', function() { $(this).data('prev', $(this).val()); });
 
     // Feature 9: Bulk select all
@@ -92,7 +85,7 @@
         $('#bv-cd-note-modal').show();
         $('#bv-cd-quick-note-text').focus();
     });
-    $(document).on('click', '.bv-cd-modal-backdrop', function() { $(this).closest('.bv-cd-modal').hide(); });
+    $(document).on('click', '#bv-cd-note-modal .bv-cd-modal-backdrop', function() { $(this).closest('.bv-cd-modal').hide(); });
     $(document).on('click', '#bv-cd-save-quick-note', function() {
         var content = $('#bv-cd-quick-note-text').val();
         if (!content) return alert('Note cannot be empty');
@@ -100,6 +93,52 @@
         $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: { action: 'bv_cd_quick_note', nonce: bv_cd.nonce, project_id: quickNotePid, content: content }, success: function(r) {
             if (r.success) { $('#bv-cd-note-modal').hide(); } else { alert(r.data || 'Error'); $btn.prop('disabled', false).text('Save Note'); }
         }, error: function() { alert('Request failed.'); $btn.prop('disabled', false).text('Save Note'); } });
+    });
+
+    // v2.7.43 Feature 11: Confirmation modal system (replaces browser confirm for Reset/Remove)
+    function bvCdConfirm(options) {
+        var $modal = $('#bv-cd-confirm-modal');
+        if (!$modal.length) { if (options.onConfirm) options.onConfirm(); return; }
+        $('#bv-cd-confirm-icon').text(options.icon || '\u26A0\uFE0F');
+        $('#bv-cd-confirm-title').text(options.title || 'Confirm Action');
+        $('#bv-cd-confirm-body').html(options.body || '');
+        var $ok = $('#bv-cd-confirm-ok').text(options.okText || 'Confirm').css({background:'',color:'',borderColor:''});
+        if (options.danger) { $ok.css({background:'#dc2626',color:'#fff',borderColor:'#dc2626'}); }
+        $modal.data('callback', options.onConfirm).show();
+    }
+    $(document).on('click', '#bv-cd-confirm-modal .bv-cd-confirm-cancel', function() {
+        $('#bv-cd-confirm-modal').hide().removeData('callback');
+    });
+    $(document).on('click', '#bv-cd-confirm-ok', function() {
+        var cb = $('#bv-cd-confirm-modal').data('callback');
+        $('#bv-cd-confirm-modal').hide().removeData('callback');
+        if (typeof cb === 'function') cb();
+    });
+    $(document).on('keydown', function(e) {
+        if (e.key === 'Escape') $('#bv-cd-confirm-modal').hide().removeData('callback');
+    });
+
+    // v2.7.43 Feature 14: Send reminder email
+    $(document).on('click', '#bv-cd-send-reminder, #bv-cd-send-reminder-docs', function() {
+        var $btn = $(this);
+        var pid = $btn.data('project-id');
+        $btn.prop('disabled', true).text('Sending\u2026');
+        $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: { action: 'bv_cd_send_reminder', nonce: bv_cd.nonce, project_id: pid }, success: function(r) {
+            if (r.success) { $btn.text('Sent \u2713'); setTimeout(function() { $btn.prop('disabled', false).text('\uD83D\uDCE7 Send Reminder'); }, 3000); }
+            else { alert(r.data || 'Error'); $btn.prop('disabled', false).text('\uD83D\uDCE7 Send Reminder'); }
+        }, error: function() { alert('Request failed.'); $btn.prop('disabled', false).text('\uD83D\uDCE7 Send Reminder'); } });
+    });
+
+    // v2.7.43 Feature 6: Quick note from detail overview
+    $(document).on('click', '#bv-cd-save-detail-quick-note', function() {
+        var pid = $(this).data('project-id');
+        var content = $('#bv-cd-detail-quick-note').val();
+        if (!content) return alert('Note cannot be empty');
+        var $btn = $(this).prop('disabled', true).text('Saving...');
+        $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: { action: 'bv_cd_add_note', nonce: bv_cd.nonce, project_id: pid, content: content }, success: function(r) {
+            if (r.success) { $('#bv-cd-detail-quick-note').val(''); $btn.text('Saved \u2713'); setTimeout(function() { $btn.prop('disabled', false).text('Add'); }, 2000); }
+            else { alert(r.data || 'Error'); $btn.prop('disabled', false).text('Add'); }
+        }, error: function() { alert('Request failed.'); $btn.prop('disabled', false).text('Add'); } });
     });
 
     $(function() {
@@ -200,29 +239,48 @@
             }, error: function() { alert('Request failed. Please try again.'); } });
         });
 
-        // Reset project
+        // Reset project (v2.7.43: styled modal #11)
         $(document).on('click', '#bv-cd-reset-project', function() {
             var $btn = $(this);
             var pid = $btn.data('project-id');
             var pnum = $btn.data('project-number') || pid;
-            if (!confirm('Reset project ' + pnum + '?\n\nThis will permanently delete:\n• All questionnaire responses & uploaded files\n• Signed agreement(s)\n• Required documents\n• Delivered reports\n\nThe client will need to redo everything from the start.\n\nThis cannot be undone.')) return;
-            $btn.prop('disabled', true).text('Resetting\u2026');
-            $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: { action: 'bv_cd_reset_project', nonce: bv_cd.nonce, project_id: pid }, success: function(r) {
-                if (r.success) { location.reload(); } else { alert(r.data || 'Error resetting project'); $btn.prop('disabled', false).text('\u21bb Reset Project'); }
-            }, error: function() { alert('Request failed. Please try again.'); $btn.prop('disabled', false).text('\u21bb Reset Project'); } });
+            bvCdConfirm({
+                icon: '\u21BB',
+                title: 'Reset Project ' + pnum + '?',
+                danger: true,
+                okText: 'Reset Project',
+                body: '<p style="margin:8px 0;">This will <strong>permanently delete</strong>:</p>' +
+                      '<ul style="margin:0 0 0 20px;color:#666;"><li>All questionnaire responses &amp; uploaded files</li><li>Signed agreement(s)</li><li>Required documents</li><li>Delivered reports</li></ul>' +
+                      '<p style="color:#dc2626;margin-top:8px;">The client will need to redo everything. This cannot be undone.</p>',
+                onConfirm: function() {
+                    $btn.prop('disabled', true).text('Resetting\u2026');
+                    $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: { action: 'bv_cd_reset_project', nonce: bv_cd.nonce, project_id: pid }, success: function(r) {
+                        if (r.success) { location.reload(); } else { alert(r.data || 'Error resetting project'); $btn.prop('disabled', false).text('\u21bb Reset Project'); }
+                    }, error: function() { alert('Request failed.'); $btn.prop('disabled', false).text('\u21bb Reset Project'); } });
+                }
+            });
         });
 
-        // Remove project
+        // Remove project (v2.7.43: styled modal #11)
         $(document).on('click', '#bv-cd-remove-project', function() {
             var $btn = $(this);
             var pid = $btn.data('project-id');
             var pnum = $btn.data('project-number') || pid;
-            if (!confirm('DELETE project ' + pnum + '?\n\nThis will PERMANENTLY remove:\n• The project record\n• All questionnaire responses & uploaded files\n• Signed agreement(s)\n• Required documents\n• Delivered reports\n• All messages & notes\n• Activity log\n\nThis CANNOT be undone.')) return;
-            if (!confirm('Are you ABSOLUTELY sure? Type "delete" mentally and click OK to confirm permanent removal.')) return;
-            $btn.prop('disabled', true).text('Removing\u2026');
-            $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: { action: 'bv_cd_remove_project', nonce: bv_cd.nonce, project_id: pid }, success: function(r) {
-                if (r.success) { location.href = '?page=bv-consultant-dashboard'; } else { alert(r.data || 'Error removing project'); $btn.prop('disabled', false).text('\uD83D\DDD1 Remove Project'); }
-            }, error: function(xhr, status, err) { alert('Request failed: ' + (err || status)); $btn.prop('disabled', false).text('\uD83D\DDD1 Remove Project'); } });
+            bvCdConfirm({
+                icon: '\uD83D\uDDD1',
+                title: 'DELETE Project ' + pnum + '?',
+                danger: true,
+                okText: 'Permanently Delete',
+                body: '<p style="margin:8px 0;">This will <strong>PERMANENTLY</strong> remove:</p>' +
+                      '<ul style="margin:0 0 0 20px;color:#666;"><li>The project record</li><li>All questionnaire responses &amp; uploaded files</li><li>Signed agreement(s)</li><li>Required documents</li><li>Delivered reports</li><li>All messages &amp; notes</li><li>Activity log</li></ul>' +
+                      '<p style="color:#dc2626;margin-top:8px;font-weight:600;">This CANNOT be undone.</p>',
+                onConfirm: function() {
+                    $btn.prop('disabled', true).text('Removing\u2026');
+                    $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: { action: 'bv_cd_remove_project', nonce: bv_cd.nonce, project_id: pid }, success: function(r) {
+                        if (r.success) { location.href = '?page=bv-consultant-dashboard'; } else { alert(r.data || 'Error removing project'); $btn.prop('disabled', false).text('\uD83D\uDDD1 Remove Project'); }
+                    }, error: function(xhr, status, err) { alert('Request failed: ' + (err || status)); $btn.prop('disabled', false).text('\uD83D\uDDD1 Remove Project'); } });
+                }
+            });
         });
 
         // Create project

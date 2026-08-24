@@ -54,6 +54,7 @@ class BV_Consultant_Dashboard {
         add_action( 'wp_ajax_bv_cd_remove_project', array( $this, 'ajax_delete_project' ) );
         add_action( 'wp_ajax_bv_cd_bulk_update_status', array( $this, 'ajax_bulk_update_status' ) );
         add_action( 'wp_ajax_bv_cd_quick_note', array( $this, 'ajax_quick_note' ) );
+        add_action( 'wp_ajax_bv_cd_send_reminder', array( $this, 'ajax_send_reminder' ) );
     }
     public function add_menu_page() {
         add_menu_page(
@@ -189,6 +190,47 @@ class BV_Consultant_Dashboard {
         $wpdb->insert( $wpdb->prefix . 'bv_project_notes', array( 'project_id' => $pid, 'author_name' => $user->display_name, 'content' => $content ), array( '%d', '%s', '%s' ) );
         $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array( 'project_id' => $pid, 'entity_type' => 'note', 'entity_id' => $wpdb->insert_id, 'action' => 'added', 'description' => 'Quick note added from project list', 'metadata' => '', 'user_id' => get_current_user_id() ), array( '%d','%s','%d','%s','%s','%s','%d' ) );
         wp_send_json_success( 'Note added' );
+    }
+
+    public function ajax_send_reminder() {
+        check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
+        if ( ! current_user_can( self::CAP ) ) wp_send_json_error( 'Unauthorized' );
+        $pid = absint( $_POST['project_id'] );
+        if ( ! $pid ) wp_send_json_error( 'Invalid project' );
+        global $wpdb;
+        $project = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_projects WHERE id = %d", $pid ) );
+        if ( ! $project ) wp_send_json_error( 'Project not found' );
+        $settings = BV_Settings::get_settings();
+        $company_name = $settings['company_name'] ?? 'BusinessVance';
+        $from_email = $settings['consultant_email'] ?? get_option( 'admin_email' );
+        $portal_url = $settings['portal_url'] ?? site_url();
+        $status_messages = array(
+            'awaiting-agreement' => 'Please review and sign the agreement to get your project started.',
+            'awaiting-questionnaire' => 'Please complete the questionnaire so we can begin working on your project.',
+            'awaiting-documents' => 'Please upload the required documents so we can proceed with your project.',
+            'in-progress' => 'Your project is currently in progress. We will keep you updated.',
+            'quality-check' => 'Your project is in the final review stage. We will deliver it soon.',
+        );
+        $action_msg = $status_messages[ $project->status ] ?? 'Please check your project dashboard for updates.';
+        $subject = 'Reminder: Action Required - ' . $project->project_number;
+        $body = "Hi " . $project->client_name . ",\n\n"
+              . "This is a friendly reminder regarding your project " . $project->project_number . ".\n\n"
+              . $action_msg . "\n\n"
+              . "You can access your project portal here: " . $portal_url . "\n\n"
+              . "If you have any questions, feel free to reply to this email.\n\n"
+              . "Best regards,\n" . $company_name;
+        $headers = array( 'Content-Type: text/plain; charset=UTF-8', 'From: ' . $company_name . ' <' . $from_email . '>' );
+        $sent = wp_mail( $project->client_email, $subject, $body, $headers );
+        if ( $sent ) {
+            $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array(
+                'project_id' => $pid, 'entity_type' => 'project', 'entity_id' => $pid,
+                'action' => 'reminder_sent', 'description' => 'Reminder email sent to client',
+                'metadata' => '', 'user_id' => get_current_user_id(),
+            ), array( '%d', '%s', '%d', '%s', '%s', '%s', '%d' ) );
+            wp_send_json_success( 'Reminder sent to ' . $project->client_email );
+        } else {
+            wp_send_json_error( 'Failed to send email. Please check your mail configuration.' );
+        }
     }
 
     public function render_page() {
@@ -570,6 +612,29 @@ class BV_Consultant_Dashboard {
         $messages   = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_project_messages WHERE project_id = %d ORDER BY created_at ASC", $project_id ) );
         $notes      = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_project_notes WHERE project_id = %d ORDER BY created_at DESC", $project_id ) );
 
+        // v2.7.43: Activity timeline
+        $activity_log = $wpdb->get_results( $wpdb->prepare(
+            "SELECT al.*, u.display_name AS user_name FROM {$wpdb->prefix}bv_activity_log al LEFT JOIN {$wpdb->users} u ON al.user_id = u.ID WHERE al.project_id = %d ORDER BY al.created_at DESC LIMIT 20",
+            $project_id
+        ) );
+
+        // v2.7.43: Unread message count
+        $unread_count = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}bv_project_messages WHERE project_id = %d AND sender_type = 'client' AND is_read = 0",
+            $project_id
+        ) );
+
+        // v2.7.43: WC order data for enhanced order link
+        $wc_order_total = '';
+        $wc_order_date = '';
+        if ( $project->wc_order_id && function_exists( 'wc_get_order' ) ) {
+            $wc_order = wc_get_order( $project->wc_order_id );
+            if ( $wc_order ) {
+                $wc_order_total = $wc_order->get_formatted_order_total();
+                $wc_order_date = $wc_order->get_date_created() ? $wc_order->get_date_created()->date( 'd M Y' ) : '';
+            }
+        }
+
         // Questionnaire responses — grouped by service
         $responses_raw = $wpdb->get_results( $wpdb->prepare(
             "SELECT r.response_value, r.service_id, q.label, q.type, q.help_text,
@@ -595,6 +660,53 @@ class BV_Consultant_Dashboard {
         }
         $has_multiple_services = count( $responses_by_service ) > 1;
 
+        // v2.7.43: Client avatar
+        $avatar_colors = array( '#e74c3c','#e67e22','#f1c40f','#2ecc71','#1abc9c','#3498db','#9b59b6','#e84393','#00b894','#6c5ce7' );
+        $name_parts = preg_split( '/[\s]+/', trim( $project->client_name ), 2 );
+        $initials = strtoupper( substr( $name_parts[0] ?? 'U', 0, 1 ) . substr( $name_parts[1] ?? '', 0, 1 ) );
+        $avatar_bg = $avatar_colors[ abs( crc32( $project->client_email ) ) % count( $avatar_colors ) ];
+
+        // v2.7.43: Next action message (#5)
+        $next_action = '';
+        $next_action_type = '';
+        $next_action_icon = '';
+        $cname = esc_html( $project->client_name );
+        switch ( $project->status ) {
+            case 'awaiting-agreement':
+                $next_action = 'Send the agreement to ' . $cname . ' to get started.'; $next_action_icon = '&#9997;&#65039;'; $next_action_type = 'warning'; break;
+            case 'awaiting-questionnaire':
+                $next_action = 'Waiting for ' . $cname . ' to complete the questionnaire.'; $next_action_icon = '&#128203;'; $next_action_type = 'info'; break;
+            case 'awaiting-documents':
+                $next_action = 'Waiting for ' . $cname . ' to upload required documents.'; $next_action_icon = '&#128206;'; $next_action_type = 'info'; break;
+            case 'in-progress':
+                $next_action = 'Work is in progress. Update progress as you complete milestones.'; $next_action_icon = '&#9881;&#65039;'; $next_action_type = 'active'; break;
+            case 'quality-check':
+                $next_action = 'Review the deliverables before marking as completed.'; $next_action_icon = '&#128269;'; $next_action_type = 'active'; break;
+            case 'completed':
+                $next_action = 'Project completed. Deliver the final report to the client.'; $next_action_icon = '&#9989;'; $next_action_type = 'success'; break;
+            case 'delivered':
+                $next_action = 'Report delivered to client. Project is complete.'; $next_action_icon = '&#128230;'; $next_action_type = 'success'; break;
+        }
+
+        // v2.7.43: Milestone data (#8)
+        $milestones = array(
+            array( 'label' => 'Agreement', 'done' => (bool) $agreement, 'current' => $project->status === 'awaiting-agreement' ),
+            array( 'label' => 'Questionnaire', 'done' => ! empty( $responses_by_service ), 'current' => $project->status === 'awaiting-questionnaire' ),
+            array( 'label' => 'Documents', 'done' => ! empty( $documents ), 'current' => $project->status === 'awaiting-documents' ),
+            array( 'label' => 'In Progress', 'done' => in_array( $project->status, array( 'in-progress', 'quality-check', 'completed', 'delivered' ), true ), 'current' => in_array( $project->status, array( 'in-progress', 'quality-check' ), true ) ),
+            array( 'label' => 'Delivered', 'done' => $project->status === 'delivered', 'current' => false ),
+        );
+
+        // v2.7.43: Tab badge counts (#9)
+        $tab_badges = array(
+            'agreement'    => $agreement ? 1 : 0,
+            'questionnaire' => count( $responses_raw ),
+            'documents'    => count( $documents ),
+            'reports'      => count( $reports ),
+            'messages'     => $unread_count,
+            'notes'        => count( $notes ),
+        );
+
         $back_url = admin_url( 'admin.php?page=bv-consultant-dashboard' );
         $statuses = array( 'awaiting-agreement', 'awaiting-questionnaire', 'awaiting-documents', 'in-progress', 'quality-check', 'completed', 'delivered', 'archived' );
         $cd_settings = BV_Settings::get_settings();
@@ -604,12 +716,20 @@ class BV_Consultant_Dashboard {
         ?>
         <div class="bv-cd-back"><a href="<?php echo $back_url; ?>">&larr; Back to All Projects</a></div>
 
-        <!-- Project Header -->
+        <!-- Project Header (#3 enhanced) -->
         <div class="bv-cd-project-header">
-            <div>
-                <h2><?php echo esc_html( $project->project_number ); ?></h2>
-                <p>Client: <strong><?php echo esc_html( $project->client_name ); ?></strong> — <?php echo esc_html( $project->client_email ); ?><?php if ($project->client_company) echo ' — ' . esc_html($project->client_company); ?></p>
-                <?php if ($project->client_phone) echo '<p>Phone: ' . esc_html($project->client_phone) . '</p>'; ?>
+            <div class="bv-cd-header-left">
+                <span class="bv-cd-avatar" style="background:<?php echo $avatar_bg; ?>;width:52px;height:52px;font-size:18px;flex-shrink:0;"><?php echo $initials; ?></span>
+                <div>
+                    <h2><?php echo esc_html( $project->project_number ); ?></h2>
+                    <p>
+                        <strong><?php echo esc_html( $project->client_name ); ?></strong>
+                        <?php if ( $project->client_email ) : ?> — <a href="mailto:<?php echo esc_attr( $project->client_email ); ?>"><?php echo esc_html( $project->client_email ); ?></a><?php endif; ?>
+                        <?php if ( $project->client_company ) : ?> — <?php echo esc_html( $project->client_company ); ?><?php endif; ?>
+                    </p>
+                    <?php if ( $project->client_phone ) : ?><p style="margin-top:2px;">&#128222; <a href="tel:<?php echo esc_attr( $project->client_phone ); ?>"><?php echo esc_html( $project->client_phone ); ?></a></p><?php endif; ?>
+                    <p style="font-size:12px;color:#999;margin-top:4px;">Created <?php echo esc_html( date( 'd M Y H:i', strtotime( $project->created_at ) ) ); ?> &middot; Updated <?php echo $this->time_ago( $project->updated_at ); ?></p>
+                </div>
             </div>
             <div class="bv-cd-project-controls">
                 <div class="bv-cd-status-select">
@@ -625,38 +745,69 @@ class BV_Consultant_Dashboard {
                     <input type="range" min="0" max="100" value="<?php echo $project->progress_percent; ?>" class="bv-cd-progress-input" data-project-id="<?php echo $project_id; ?>" />
                 </div>
                 <?php if ($project->wc_order_id) : ?>
-                <a href="<?php echo admin_url('post.php?post=' . $project->wc_order_id . '&action=edit'); ?>" class="button">View Order #<?php echo $project->wc_order_id; ?></a>
+                <a href="<?php echo admin_url('post.php?post=' . $project->wc_order_id . '&action=edit'); ?>" class="button" target="_blank" title="Opens in new tab">
+                    View Order #<?php echo $project->wc_order_id; ?><?php if ($wc_order_total) echo ' &mdash; ' . esc_html($wc_order_total); ?><?php if ($wc_order_date) echo ' (' . esc_html($wc_order_date) . ')'; ?>
+                </a>
                 <?php endif; ?>
+                <button type="button" id="bv-cd-send-reminder" class="button" data-project-id="<?php echo $project_id; ?>" data-project-number="<?php echo esc_attr( $project->project_number ); ?>">&#128231; Send Reminder</button>
                 <button type="button" id="bv-cd-reset-project" class="button" style="color:#dc2626;border-color:#dc2626;margin-left:8px;" data-project-id="<?php echo $project_id; ?>" data-project-number="<?php echo esc_attr( $project->project_number ); ?>">&#x21bb; Reset Project</button>
                 <button type="button" id="bv-cd-remove-project" class="button" style="color:#fff;background:#dc2626;border-color:#dc2626;margin-left:8px;" data-project-id="<?php echo $project_id; ?>" data-project-number="<?php echo esc_attr( $project->project_number ); ?>">&#128465; Remove Project</button>
             </div>
         </div>
 
-        <!-- Tabs -->
+        <!-- Tabs (#9 with badges) -->
         <div class="bv-cd-tabs">
             <button class="bv-cd-tab <?php echo $active_tab === 'overview' ? 'active' : ''; ?>" data-tab="overview">Overview</button>
-            <button class="bv-cd-tab <?php echo $active_tab === 'agreement' ? 'active' : ''; ?>" data-tab="agreement">Agreement</button>
-            <button class="bv-cd-tab <?php echo $active_tab === 'questionnaire' ? 'active' : ''; ?>" data-tab="questionnaire">Questionnaire</button>
-            <button class="bv-cd-tab <?php echo $active_tab === 'documents' ? 'active' : ''; ?>" data-tab="documents">Documents</button>
-            <button class="bv-cd-tab <?php echo $active_tab === 'reports' ? 'active' : ''; ?>" data-tab="reports">Reports</button>
+            <button class="bv-cd-tab <?php echo $active_tab === 'agreement' ? 'active' : ''; ?>" data-tab="agreement">Agreement<?php if ( $tab_badges['agreement'] ) : ?><span class="bv-cd-tab-badge bv-cd-tab-done">&#10003;</span><?php endif; ?></button>
+            <button class="bv-cd-tab <?php echo $active_tab === 'questionnaire' ? 'active' : ''; ?>" data-tab="questionnaire">Questionnaire<?php if ( $tab_badges['questionnaire'] ) : ?><span class="bv-cd-tab-badge"><?php echo $tab_badges['questionnaire']; ?></span><?php endif; ?></button>
+            <button class="bv-cd-tab <?php echo $active_tab === 'documents' ? 'active' : ''; ?>" data-tab="documents">Documents<?php if ( $tab_badges['documents'] ) : ?><span class="bv-cd-tab-badge"><?php echo $tab_badges['documents']; ?></span><?php endif; ?></button>
+            <button class="bv-cd-tab <?php echo $active_tab === 'reports' ? 'active' : ''; ?>" data-tab="reports">Reports<?php if ( $tab_badges['reports'] ) : ?><span class="bv-cd-tab-badge"><?php echo $tab_badges['reports']; ?></span><?php endif; ?></button>
             <?php if ( $show_messages ) : ?>
-            <button class="bv-cd-tab <?php echo $active_tab === 'messages' ? 'active' : ''; ?>" data-tab="messages">Messages</button>
+            <button class="bv-cd-tab <?php echo $active_tab === 'messages' ? 'active' : ''; ?>" data-tab="messages">Messages<?php if ( $tab_badges['messages'] ) : ?><span class="bv-cd-tab-badge bv-cd-tab-urgent"><?php echo $tab_badges['messages']; ?></span><?php endif; ?></button>
             <?php endif; ?>
             <?php if ( $show_notes ) : ?>
-            <button class="bv-cd-tab <?php echo $active_tab === 'notes' ? 'active' : ''; ?>" data-tab="notes">Notes</button>
+            <button class="bv-cd-tab <?php echo $active_tab === 'notes' ? 'active' : ''; ?>" data-tab="notes">Notes<?php if ( $tab_badges['notes'] ) : ?><span class="bv-cd-tab-badge"><?php echo $tab_badges['notes']; ?></span><?php endif; ?></button>
             <?php endif; ?>
         </div>
 
         <!-- Tab Panels -->
         <div id="bv-cd-panel-overview" class="bv-cd-panel" style="<?php echo $active_tab === 'overview' ? '' : 'display:none'; ?>">
+            <?php if ( $next_action ) : ?>
+            <div class="bv-cd-next-action bv-cd-na-<?php echo esc_attr( $next_action_type ); ?>">
+                <span class="bv-cd-na-icon"><?php echo $next_action_icon; ?></span>
+                <div>
+                    <strong>Next Action</strong>
+                    <p style="margin:2px 0 0;font-size:14px;"><?php echo $next_action; ?></p>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- Milestone Progress (#8) -->
+            <div class="bv-cd-card">
+                <h4>Project Milestones</h4>
+                <div class="bv-cd-milestones">
+                    <?php $ms_count = count( $milestones ); foreach ( $milestones as $i => $m ) :
+                        $m_class = $m['done'] ? 'bv-cd-ms-done' : ( $m['current'] ? 'bv-cd-ms-current' : 'bv-cd-ms-pending' );
+                        $conn_class = ( isset( $milestones[ $i - 1 ] ) && $milestones[ $i - 1 ]['done'] ) ? 'bv-cd-conn-done' : '';
+                    ?>
+                    <?php if ( $i > 0 ) : ?><div class="bv-cd-ms-connector <?php echo $conn_class; ?>"></div><?php endif; ?>
+                    <div class="bv-cd-milestone <?php echo $m_class; ?>">
+                        <div class="bv-cd-ms-dot"></div>
+                        <span class="bv-cd-ms-label"><?php echo esc_html( $m['label'] ); ?></span>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+
             <div class="bv-cd-overview-grid">
                 <div class="bv-cd-card">
                     <h4>Services</h4>
                     <ul><?php foreach ($services as $s) echo '<li>' . esc_html($s->name) . ' — R' . esc_html($s->price) . '</li>'; ?></ul>
+                    <?php if ( empty( $services ) ) : ?><p><em>No services linked</em></p><?php endif; ?>
                 </div>
                 <div class="bv-cd-card">
                     <h4>Internal Notes</h4>
-                    <textarea id="bv-cd-internal-notes" rows="8" class="large-text"><?php echo esc_textarea($project->internal_notes); ?></textarea>
+                    <textarea id="bv-cd-internal-notes" rows="6" class="large-text"><?php echo esc_textarea($project->internal_notes); ?></textarea>
                     <br><button id="bv-cd-save-notes" class="button button-primary" data-project-id="<?php echo $project_id; ?>">Save Notes</button>
                 </div>
                 <div class="bv-cd-card">
@@ -664,6 +815,35 @@ class BV_Consultant_Dashboard {
                     <p><?php echo nl2br(esc_html($project->notes)) ?: '<em>No notes yet</em>'; ?></p>
                 </div>
             </div>
+
+            <!-- Quick Note Widget (#6) -->
+            <?php if ( $show_notes ) : ?>
+            <div class="bv-cd-card bv-cd-quick-note-card">
+                <h4>Quick Note</h4>
+                <div style="display:flex;gap:8px;align-items:flex-start;">
+                    <textarea id="bv-cd-detail-quick-note" rows="2" class="large-text" placeholder="Add a quick internal note..." style="flex:1;"></textarea>
+                    <button id="bv-cd-save-detail-quick-note" class="button button-primary" data-project-id="<?php echo $project_id; ?>" style="margin-top:0;">Add</button>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- Activity Timeline (#2) -->
+            <?php if ( $show_activity && ! empty( $activity_log ) ) : ?>
+            <div class="bv-cd-card">
+                <h4>Recent Activity</h4>
+                <div class="bv-cd-timeline-detail">
+                    <?php foreach ( $activity_log as $al ) : ?>
+                    <div class="bv-cd-tl-item">
+                        <div class="bv-cd-tl-dot"></div>
+                        <div class="bv-cd-tl-body">
+                            <span class="bv-cd-tl-time"><?php echo $this->time_ago( $al->created_at ); ?></span>
+                            <span class="bv-cd-tl-desc"><?php echo esc_html( $al->description ); ?></span>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endif; ?>
         </div>
 
         <div id="bv-cd-panel-agreement" class="bv-cd-panel" style="<?php echo $active_tab === 'agreement' ? '' : 'display:none'; ?>">
@@ -761,15 +941,20 @@ class BV_Consultant_Dashboard {
 
         <div id="bv-cd-panel-documents" class="bv-cd-panel" style="<?php echo $active_tab === 'documents' ? '' : 'display:none'; ?>">
             <?php if (empty($documents)) : ?>
-            <div class="bv-cd-card"><p>No documents uploaded.</p></div>
+            <div class="bv-cd-card bv-cd-empty-state">
+                <div class="bv-cd-empty-icon">&#128206;</div>
+                <div class="bv-cd-empty-title">No documents uploaded yet</div>
+                <div class="bv-cd-empty-text">Documents will appear here once the client uploads them through their portal.</div>
+                <button type="button" class="button button-primary" id="bv-cd-send-reminder-docs" data-project-id="<?php echo $project_id; ?>" style="margin-top:12px;">&#128231; Send Reminder to Client</button>
+            </div>
             <?php else : ?>
             <table class="widefat striped bv-cd-table">
                 <thead><tr><th>Document</th><th>Category</th><th>Uploaded By</th><th>Date</th><th>Size</th><th>Actions</th></tr></thead>
                 <tbody>
                 <?php foreach ($documents as $d) : ?>
                 <tr>
-                    <td><?php echo esc_html($d->name); ?></td>
-                    <td><?php echo esc_html(ucfirst(str_replace('-',' ',$d->category))); ?></td>
+                    <td><strong><?php echo esc_html($d->name); ?></strong></td>
+                    <td><span style="font-size:12px;color:#666;"><?php echo esc_html(ucfirst(str_replace('-',' ',$d->category))); ?></span></td>
                     <td><?php echo esc_html($d->uploaded_by); ?></td>
                     <td><?php echo esc_html(date('d M Y H:i', strtotime($d->created_at))); ?></td>
                     <td><?php echo esc_html(size_format($d->filesize)); ?></td>
@@ -845,6 +1030,20 @@ class BV_Consultant_Dashboard {
                     <p><?php echo nl2br(esc_html($n->content)); ?></p>
                 </div>
                 <?php endforeach; ?>
+            </div>
+        </div>
+
+        <!-- Confirmation Modal (#11) -->
+        <div id="bv-cd-confirm-modal" class="bv-cd-modal" style="display:none;">
+            <div class="bv-cd-modal-backdrop"></div>
+            <div class="bv-cd-modal-box bv-cd-confirm-box">
+                <div class="bv-cd-confirm-icon" id="bv-cd-confirm-icon"></div>
+                <h3 id="bv-cd-confirm-title"></h3>
+                <div id="bv-cd-confirm-body" class="bv-cd-confirm-body"></div>
+                <div class="bv-cd-confirm-actions">
+                    <button type="button" class="button bv-cd-confirm-cancel">Cancel</button>
+                    <button type="button" class="button bv-cd-confirm-ok" id="bv-cd-confirm-ok"></button>
+                </div>
             </div>
         </div>
         <?php
