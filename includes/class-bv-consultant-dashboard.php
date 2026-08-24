@@ -204,7 +204,23 @@ class BV_Consultant_Dashboard {
         $settings      = BV_Settings::get_settings();
         $company_name  = $settings['company_name'] ?? 'BusinessVance';
         $from_email    = $settings['consultant_email'] ?? get_option( 'admin_email' );
-        $portal_url    = ! empty( $settings['portal_url'] ) ? $settings['portal_url'] : site_url();
+        // Resolve portal URL: use setting, then auto-detect the client portal page, then site_url
+        $portal_url = '';
+        if ( ! empty( $settings['portal_url'] ) ) {
+            $portal_url = $settings['portal_url'];
+        } else {
+            $portal_page = get_posts( array(
+                'post_type'      => 'page',
+                'posts_per_page' => 1,
+                'post_status'    => 'publish',
+                's'              => '[businessvance_client_portal]',
+            ) );
+            if ( ! empty( $portal_page ) ) {
+                $portal_url = get_permalink( $portal_page[0]->ID );
+            } else {
+                $portal_url = site_url();
+            }
+        }
         $primary_color = $settings['primary_color'] ?? '#002B5C';
         $logo_url      = $settings['logo_url'] ?? '';
 
