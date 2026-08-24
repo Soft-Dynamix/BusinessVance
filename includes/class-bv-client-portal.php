@@ -489,7 +489,7 @@ class BV_Client_Portal {
                 "SELECT COUNT(*) FROM {$wpdb->prefix}bv_project_agreements WHERE project_id = %d",
                 $project_id
             ) );
-            $steps[] = array( 'num' => $num, 'label' => esc_html__( 'Agreement', 'businessvance-services-manager' ), 'done' => $signed, 'active' => ! $signed );
+            $steps[] = array( 'num' => $num, 'tab' => 'agreement', 'label' => esc_html__( 'Agreement', 'businessvance-services-manager' ), 'done' => $signed, 'active' => ! $signed );
             $num++;
         }
 
@@ -520,7 +520,7 @@ class BV_Client_Portal {
             if ( empty( $steps ) || ! in_array( false, array_column( $steps, 'done' ), true ) ) {
                 $is_active = ! $done;
             }
-            $steps[] = array( 'num' => $num, 'label' => esc_html__( 'Questionnaire', 'businessvance-services-manager' ), 'done' => $done, 'active' => $is_active );
+            $steps[] = array( 'num' => $num, 'tab' => 'questionnaire', 'label' => esc_html__( 'Questionnaire', 'businessvance-services-manager' ), 'done' => $done, 'active' => $is_active );
             $num++;
         }
 
@@ -541,7 +541,7 @@ class BV_Client_Portal {
             if ( empty( $steps ) || ! in_array( false, array_column( $steps, 'done' ), true ) ) {
                 $is_active = ! $done;
             }
-            $steps[] = array( 'num' => $num, 'label' => esc_html__( 'Documents', 'businessvance-services-manager' ), 'done' => $done, 'active' => $is_active );
+            $steps[] = array( 'num' => $num, 'tab' => 'documents', 'label' => esc_html__( 'Documents', 'businessvance-services-manager' ), 'done' => $done, 'active' => $is_active );
             $num++;
         }
 
@@ -625,11 +625,11 @@ class BV_Client_Portal {
             foreach ( $step_info as $si ) {
                 if ( $si['done'] ) { $step_reached++; } else { break; }
             }
-            $step_labels = array( 'agreement', 'questionnaire', 'documents' );
-            $steps_total = count( $step_info );
-            for ( $si = 0; $si < $steps_total; $si++ ) {
+            // Hide tabs for steps beyond the current reached step.
+            // Use the 'tab' key from step_info directly (handles gaps correctly).
+            for ( $si = 0; $si < count( $step_info ); $si++ ) {
                 if ( $si > $step_reached ) {
-                    $step_tab = $step_labels[ $si ] ?? '';
+                    $step_tab = $step_info[ $si ]['tab'] ?? '';
                     if ( $step_tab && isset( $all_tabs[ $step_tab ] ) ) {
                         unset( $all_tabs[ $step_tab ] );
                     }
@@ -1247,11 +1247,14 @@ class BV_Client_Portal {
             ...$template_ids
         ) );
 
-        // v2.7.44: Deduplicate sections by title, then dedup questions within merged sections.
+        // v2.7.44: Deduplicate questions at the INDIVIDUAL QUESTION level.
+        // Each question is compared by its normalized label|type|options composite key.
+        // Questions that match are merged (service IDs combined), so the client
+        // is never asked the same question twice — even if it appears in different
+        // sections across different services' questionnaires.
+        // After dedup, unique questions are grouped back by section title for display.
         // Track ALL service_ids per question (not just first) for correct per-service response storage.
-        $seen_question_keys = array();
-        $question_service_map = array(); // question_id => [service_id, ...]
-        $all_sections_raw = array();
+        $all_questions_flat = array();
 
         // Build reverse map: template_id => service_ids
         $template_service_map = array();
@@ -1264,6 +1267,7 @@ class BV_Client_Portal {
             }
         }
 
+        // Flatten ALL questions from ALL sections across ALL templates
         foreach ( $sections as $section ) {
             $questions = $wpdb->get_results( $wpdb->prepare(
                 "SELECT q.*, r.response_value
@@ -1275,37 +1279,45 @@ class BV_Client_Portal {
                 $project_id, $section->id
             ) );
 
-            // Collect questions with their service mapping for this section
+            // Attach service mapping to each individual question
             $tpl_id = absint( $section->template_id );
             $tpl_services = isset( $template_service_map[ $tpl_id ] ) ? $template_service_map[ $tpl_id ] : array();
 
             foreach ( $questions as $q ) {
-                $q->_source_services = $tpl_services; // attach service IDs
+                $q->_source_services = $tpl_services;
                 $q->_source_section_title = $section->title;
-                $all_sections_raw[] = $q;
+                $all_questions_flat[] = $q;
             }
         }
 
-        // Deduplicate questions by label|type|options composite key
+        // Per-question deduplication using a normalized composite key.
+        // Trim whitespace and normalize line endings so minor formatting
+        // differences don't defeat the dedup.
         $seen_keys = array();
         $unique_questions = array();
-        foreach ( $all_sections_raw as $q ) {
-            $key = $q->label . '|' . $q->type . '|' . $q->options;
+        foreach ( $all_questions_flat as $q ) {
+            // Build a normalized key from the question's identity fields
+            $norm_label = trim( preg_replace( '/\s+/', ' ', $q->label ) );
+            $norm_type  = strtolower( trim( $q->type ) );
+            $norm_opts  = trim( preg_replace( '/\s+/', ' ', $q->options ?? '' ) );
+            $key = $norm_label . '||' . $norm_type . '||' . $norm_opts;
+
             if ( isset( $seen_keys[ $key ] ) ) {
-                // Merge service IDs from duplicate
+                // Duplicate found — merge service IDs into the kept question
                 $existing_q = $seen_keys[ $key ];
                 foreach ( $q->_source_services as $sid ) {
                     if ( ! in_array( $sid, $existing_q->_source_services, true ) ) {
                         $existing_q->_source_services[] = $sid;
                     }
                 }
-                continue;
+                continue; // skip this duplicate entirely
             }
             $seen_keys[ $key ] = $q;
             $unique_questions[] = $q;
         }
 
-        // Group unique questions by section title
+        // Regroup unique questions by their original section title for display.
+        // This preserves the section structure while ensuring no duplicates within.
         $sections_by_title = array();
         $section_order = array();
         foreach ( $unique_questions as $q ) {
@@ -2192,6 +2204,8 @@ class BV_Client_Portal {
         $has_nda_only = $this->all_services_nda_only( $services );
 
         // Build template content from junction table ONLY
+        // v2.7.44: Deduplicate — if multiple services share the same agreement template,
+        // combine service names and show the template only once.
         $template_parts = array();
         if ( ! empty( $service_ids ) ) {
             $placeholders = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
@@ -2204,17 +2218,31 @@ class BV_Client_Portal {
                 ...$service_ids
             ) );
 
+            // Dedup by template ID — combine service names for same template
+            $seen_tpl = array();
             foreach ( $junction_rows as $jr ) {
+                $tid = $jr->agreement_template_id;
+                if ( isset( $seen_tpl[ $tid ] ) ) {
+                    $seen_tpl[ $tid ]['service_names'] .= ', ' . $jr->service_name;
+                    continue;
+                }
+                $seen_tpl[ $tid ] = array(
+                    'service_names' => $jr->service_name,
+                    'agreement_template_id' => $tid,
+                );
+            }
+
+            foreach ( $seen_tpl as $entry ) {
                 $tpl = $wpdb->get_row( $wpdb->prepare(
                     "SELECT * FROM {$wpdb->prefix}bv_agreement_templates WHERE id = %d",
-                    $jr->agreement_template_id
+                    $entry['agreement_template_id']
                 ) );
                 if ( $tpl ) {
                     // If NDA-only, filter out non-NDA types
                     if ( $has_nda_only && ! in_array( $tpl->type, array( 'nda', 'confidentiality' ), true ) ) {
                         continue;
                     }
-                    $template_parts[] = '<h3>' . esc_html( $jr->service_name ) . ' — ' . esc_html( $tpl->name ) . '</h3>' . $tpl->content;
+                    $template_parts[] = '<h3>' . esc_html( $entry['service_names'] ) . ' — ' . esc_html( $tpl->name ) . '</h3>' . $tpl->content;
                 }
             }
         }

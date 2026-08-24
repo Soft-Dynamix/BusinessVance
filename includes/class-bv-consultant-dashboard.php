@@ -1760,7 +1760,9 @@ class BV_Consultant_Dashboard {
             $template_ids = array_unique( $template_ids );
         }
 
-        // --- Get ALL questions for these templates, with responses ---
+        // --- Get ALL questions for these templates, with responses per service ---
+        // v2.7.44: Match r.service_id = sq.service_id to avoid Cartesian products
+        // when the same question is linked to multiple services.
         $all_questions = array();
         if ( ! empty( $template_ids ) ) {
             $tpl_ph = implode( ',', array_fill( 0, count( $template_ids ), '%d' ) );
@@ -1776,7 +1778,8 @@ class BV_Consultant_Dashboard {
                  JOIN {$wpdb->prefix}bv_service_questionnaires sq ON sq.questionnaire_template_id = qs.template_id
                  JOIN {$wpdb->prefix}bv_project_services ps ON ps.service_id = sq.service_id AND ps.project_id = %d
                  LEFT JOIN {$wpdb->prefix}bv_services s ON sq.service_id = s.id
-                 LEFT JOIN {$wpdb->prefix}bv_questionnaire_responses r ON r.question_id = q.id AND r.project_id = %d
+                 LEFT JOIN {$wpdb->prefix}bv_questionnaire_responses r
+                   ON r.question_id = q.id AND r.project_id = %d AND r.service_id = sq.service_id
                  WHERE qs.template_id IN ($tpl_ph)
                  ORDER BY COALESCE(s.name, 'zzz'), qs.display_order, q.display_order",
                 $project_id, $project_id, ...$template_ids
@@ -1807,7 +1810,8 @@ class BV_Consultant_Dashboard {
                  JOIN {$wpdb->prefix}bv_questionnaire_sections qs ON q.section_id = qs.id
                  JOIN {$wpdb->prefix}bv_services s ON s.questionnaire_template_id = qs.template_id
                  JOIN {$wpdb->prefix}bv_project_services ps ON ps.service_id = s.id AND ps.project_id = %d
-                 LEFT JOIN {$wpdb->prefix}bv_questionnaire_responses r ON r.question_id = q.id AND r.project_id = %d
+                 LEFT JOIN {$wpdb->prefix}bv_questionnaire_responses r
+                   ON r.question_id = q.id AND r.project_id = %d AND r.service_id = s.id
                  WHERE qs.template_id IN ($tpl_ph)
                  ORDER BY COALESCE(s.name, 'zzz'), qs.display_order, q.display_order",
                 $project_id, $project_id, ...$template_ids
