@@ -210,3 +210,24 @@
 .bv-cd-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .bv-cd-confirm-cancel { color: #666; }
 .bv-cd-confirm-ok { font-weight: 600; }
+
+/* Stale project warning (#5) */
+.bv-cd-stale-banner { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 8px; margin-bottom: 12px; font-size: 14px; font-weight: 500; border-left: 4px solid; }
+.bv-cd-stale-icon { font-size: 18px; flex-shrink: 0; }
+.bv-cd-stale-mid { background: #fffbeb; border-color: #f59e0b; color: #92400e; }
+.bv-cd-stale-high { background: #fef3c7; border-color: #f97316; color: #9a3412; }
+.bv-cd-stale-critical { background: #fef2f2; border-color: #dc2626; color: #991b1b; animation: bv-pulse 2s infinite; }
+
+/* Client history link (#3) */
+.bv-cd-client-history-link { color: var(--bv-cd-primary, #002B5C) !important; font-weight: 500; }
+.bv-cd-client-history-link:hover { text-decoration: underline; }
+.bv-cd-client-history-banner { display: flex; align-items: center; padding: 10px 16px; margin-bottom: 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; font-size: 14px; }
+.bv-cd-client-history-banner a { text-decoration: none; color: var(--bv-cd-primary, #002B5C); }
+.bv-cd-client-history-banner a:hover { text-decoration: underline; }
+
+/* Document version badge (#7) */
+.bv-cd-doc-icon { margin-right: 6px; font-size: 16px; }
+.bv-cd-doc-version-badge { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 700; background: #e0e7ff; color: #4338ca; vertical-align: middle; }
+
+/* Order link enhancement (#10) */
+.bv-cd-project-controls .button[title="Opens in new tab"] { white-space: nowrap; }

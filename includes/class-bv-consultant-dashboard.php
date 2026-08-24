@@ -336,6 +336,14 @@ class BV_Consultant_Dashboard {
         }
         if ( $search ) $where .= $wpdb->prepare( " AND (p.project_number LIKE %s OR p.client_name LIKE %s OR p.client_email LIKE %s OR p.client_company LIKE %s)", "%{$search}%", "%{$search}%", "%{$search}%", "%{$search}%" );
 
+        // v2.7.43: Client history filter (#3)
+        $client_email_filter = isset( $_GET['client_email'] ) ? sanitize_email( $_GET['client_email'] ) : '';
+        $client_name_for_title = '';
+        if ( $client_email_filter ) {
+            $where .= $wpdb->prepare( ' AND p.client_email = %s', $client_email_filter );
+            $client_name_for_title = $wpdb->get_var( $wpdb->prepare( "SELECT client_name FROM {$wpdb->prefix}bv_projects WHERE client_email = %s LIMIT 1", $client_email_filter ) );
+        }
+
         // Feature 3: last activity + Feature 8: unread messages — join once
         $projects = $wpdb->get_results( "
             SELECT p.*,
@@ -399,6 +407,15 @@ class BV_Consultant_Dashboard {
                 <a href="#bv-cd-new-project" class="button button-primary" onclick="jQuery('#bv-cd-new-project-form').toggle(); return false;">+ New Project</a>
             </div>
         </div>
+
+        <!-- v2.7.43: Client history banner (#3) -->
+        <?php if ( $client_email_filter && $client_name_for_title ) : ?>
+        <div class="bv-cd-client-history-banner">
+            <a href="<?php echo esc_url( $base_url ); ?>">&larr; All Projects</a>
+            <span style="margin:0 8px;color:#ccc;">|</span>
+            <strong>Client History:</strong> <?php echo esc_html( $client_name_for_title ); ?> &lt;<?php echo esc_html( $client_email_filter ); ?>&gt;
+        </div>
+        <?php endif; ?>
 
         <!-- Bulk Actions Bar (Feature 9) -->
         <div id="bv-cd-bulk-bar" class="bv-cd-bulk-bar" style="display:none;">
@@ -627,10 +644,12 @@ class BV_Consultant_Dashboard {
         // v2.7.43: WC order data for enhanced order link
         $wc_order_total = '';
         $wc_order_date = '';
+        $wc_order_currency = 'R';
         if ( $project->wc_order_id && function_exists( 'wc_get_order' ) ) {
             $wc_order = wc_get_order( $project->wc_order_id );
             if ( $wc_order ) {
-                $wc_order_total = $wc_order->get_formatted_order_total();
+                $wc_order_total = $wc_order->get_total();
+                $wc_order_currency = $wc_order->get_currency_symbol();
                 $wc_order_date = $wc_order->get_date_created() ? $wc_order->get_date_created()->date( 'd M Y' ) : '';
             }
         }
@@ -666,14 +685,42 @@ class BV_Consultant_Dashboard {
         $initials = strtoupper( substr( $name_parts[0] ?? 'U', 0, 1 ) . substr( $name_parts[1] ?? '', 0, 1 ) );
         $avatar_bg = $avatar_colors[ abs( crc32( $project->client_email ) ) % count( $avatar_colors ) ];
 
+        // v2.7.43: Stale project warning (#5)
+        // Shows amber/red badge when project is stuck in an "awaiting" status.
+        // Consultants don't control agreement — but the project IS stuck, so warn.
+        $stale_warning = '';
+        $stale_class = '';
+        $awaiting_statuses = array( 'awaiting-agreement', 'awaiting-questionnaire', 'awaiting-documents' );
+        if ( in_array( $project->status, $awaiting_statuses, true ) && $project->updated_at ) {
+            $days_stale = ( time() - strtotime( $project->updated_at ) ) / DAY_IN_SECONDS;
+            if ( $days_stale >= 7 ) {
+                $stale_warning = 'Stuck for ' . (int) $days_stale . ' days — client may need a reminder.';
+                $stale_class = 'bv-cd-stale-critical';
+            } elseif ( $days_stale >= 5 ) {
+                $stale_warning = 'Waiting ' . (int) $days_stale . ' days — consider sending a reminder.';
+                $stale_class = 'bv-cd-stale-high';
+            } elseif ( $days_stale >= 3 ) {
+                $stale_warning = 'Waiting ' . (int) $days_stale . ' days.';
+                $stale_class = 'bv-cd-stale-mid';
+            }
+        }
+
+        // v2.7.43: Client history (#3)
+        $client_past_count = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}bv_projects WHERE client_email = %s AND id != %d",
+            $project->client_email, $project_id
+        ) );
+
         // v2.7.43: Next action message (#5)
+        // NOTE: Consultants do NOT send agreements — they are already on the client portal
+        // based on services selected. The client signs them there.
         $next_action = '';
         $next_action_type = '';
         $next_action_icon = '';
         $cname = esc_html( $project->client_name );
         switch ( $project->status ) {
             case 'awaiting-agreement':
-                $next_action = 'Send the agreement to ' . $cname . ' to get started.'; $next_action_icon = '&#9997;&#65039;'; $next_action_type = 'warning'; break;
+                $next_action = 'Waiting for ' . $cname . ' to review and sign the agreement on their portal.'; $next_action_icon = '&#128221;'; $next_action_type = 'warning'; break;
             case 'awaiting-questionnaire':
                 $next_action = 'Waiting for ' . $cname . ' to complete the questionnaire.'; $next_action_icon = '&#128203;'; $next_action_type = 'info'; break;
             case 'awaiting-documents':
@@ -689,9 +736,10 @@ class BV_Consultant_Dashboard {
         }
 
         // v2.7.43: Milestone data (#8)
+        // NOTE: 'Agreement' is NOT a consultant action — agreements are on the client portal.
+        // The consultant workflow starts at Questionnaire.
         $milestones = array(
-            array( 'label' => 'Agreement', 'done' => (bool) $agreement, 'current' => $project->status === 'awaiting-agreement' ),
-            array( 'label' => 'Questionnaire', 'done' => ! empty( $responses_by_service ), 'current' => $project->status === 'awaiting-questionnaire' ),
+            array( 'label' => 'Questionnaire', 'done' => ! empty( $responses_by_service ), 'current' => $project->status === 'awaiting-agreement' || $project->status === 'awaiting-questionnaire' ),
             array( 'label' => 'Documents', 'done' => ! empty( $documents ), 'current' => $project->status === 'awaiting-documents' ),
             array( 'label' => 'In Progress', 'done' => in_array( $project->status, array( 'in-progress', 'quality-check', 'completed', 'delivered' ), true ), 'current' => in_array( $project->status, array( 'in-progress', 'quality-check' ), true ) ),
             array( 'label' => 'Delivered', 'done' => $project->status === 'delivered', 'current' => false ),
@@ -716,6 +764,13 @@ class BV_Consultant_Dashboard {
         ?>
         <div class="bv-cd-back"><a href="<?php echo $back_url; ?>">&larr; Back to All Projects</a></div>
 
+        <?php if ( $stale_warning ) : ?>
+        <div class="bv-cd-stale-banner <?php echo $stale_class; ?>">
+            <span class="bv-cd-stale-icon">&#9888;&#65039;</span>
+            <span><?php echo esc_html( $stale_warning ); ?></span>
+        </div>
+        <?php endif; ?>
+
         <!-- Project Header (#3 enhanced) -->
         <div class="bv-cd-project-header">
             <div class="bv-cd-header-left">
@@ -728,7 +783,7 @@ class BV_Consultant_Dashboard {
                         <?php if ( $project->client_company ) : ?> — <?php echo esc_html( $project->client_company ); ?><?php endif; ?>
                     </p>
                     <?php if ( $project->client_phone ) : ?><p style="margin-top:2px;">&#128222; <a href="tel:<?php echo esc_attr( $project->client_phone ); ?>"><?php echo esc_html( $project->client_phone ); ?></a></p><?php endif; ?>
-                    <p style="font-size:12px;color:#999;margin-top:4px;">Created <?php echo esc_html( date( 'd M Y H:i', strtotime( $project->created_at ) ) ); ?> &middot; Updated <?php echo $this->time_ago( $project->updated_at ); ?></p>
+                    <p style="font-size:12px;color:#999;margin-top:4px;">Created <?php echo esc_html( date( 'd M Y H:i', strtotime( $project->created_at ) ) ); ?> &middot; Updated <?php echo $this->time_ago( $project->updated_at ); ?><?php if ( $client_past_count > 0 ) : ?> &middot; <a href="<?php echo esc_url( add_query_arg( array( 'page' => 'bv-consultant-dashboard', 'client_email' => urlencode( $project->client_email ) ), admin_url( 'admin.php' ) ) ); ?>" class="bv-cd-client-history-link"><?php echo $client_past_count; ?> previous project<?php echo $client_past_count > 1 ? 's' : ''; ?> &rarr;</a><?php endif; ?></p>
                 </div>
             </div>
             <div class="bv-cd-project-controls">
@@ -746,7 +801,7 @@ class BV_Consultant_Dashboard {
                 </div>
                 <?php if ($project->wc_order_id) : ?>
                 <a href="<?php echo admin_url('post.php?post=' . $project->wc_order_id . '&action=edit'); ?>" class="button" target="_blank" title="Opens in new tab">
-                    View Order #<?php echo $project->wc_order_id; ?><?php if ($wc_order_total) echo ' &mdash; ' . esc_html($wc_order_total); ?><?php if ($wc_order_date) echo ' (' . esc_html($wc_order_date) . ')'; ?>
+                    View Order #<?php echo $project->wc_order_id; ?><?php if ($wc_order_total) echo ' &mdash; ' . esc_html($wc_order_currency . number_format((float)$wc_order_total, 2)); ?><?php if ($wc_order_date) echo ' (' . esc_html($wc_order_date) . ')'; ?>
                 </a>
                 <?php endif; ?>
                 <button type="button" id="bv-cd-send-reminder" class="button" data-project-id="<?php echo $project_id; ?>" data-project-number="<?php echo esc_attr( $project->project_number ); ?>">&#128231; Send Reminder</button>
@@ -948,12 +1003,43 @@ class BV_Consultant_Dashboard {
                 <button type="button" class="button button-primary" id="bv-cd-send-reminder-docs" data-project-id="<?php echo $project_id; ?>" style="margin-top:12px;">&#128231; Send Reminder to Client</button>
             </div>
             <?php else : ?>
+            <?php
+            // v2.7.43: Document version grouping (#7)
+            $doc_name_counts = array();
+            $doc_version_idx = array();
+            foreach ( $documents as $d ) {
+                $key = $d->name;
+                if ( ! isset( $doc_name_counts[ $key ] ) ) {
+                    $doc_name_counts[ $key ] = 0;
+                    $doc_version_idx[ $key ] = 0;
+                }
+                $doc_name_counts[ $key ]++;
+            }
+            // Second pass: assign version numbers (newest = v1)
+            $doc_ver = array();
+            foreach ( $documents as $d ) {
+                $key = $d->name;
+                if ( ! isset( $doc_ver[ $key ] ) ) $doc_ver[ $key ] = $doc_name_counts[ $key ];
+                $doc_ver[ $key ]--;
+            }
+            $doc_mime_icon = function( $mime ) {
+                if ( strpos( $mime, 'pdf' ) !== false ) return '&#128196;';
+                if ( strpos( $mime, 'image' ) !== false ) return '&#128247;';
+                if ( strpos( $mime, 'word' ) !== false || strpos( $mime, 'document' ) !== false ) return '&#128196;';
+                if ( strpos( $mime, 'sheet' ) !== false || strpos( $mime, 'excel' ) !== false ) return '&#128202;';
+                return '&#128209;';
+            };
+            ?>
             <table class="widefat striped bv-cd-table">
                 <thead><tr><th>Document</th><th>Category</th><th>Uploaded By</th><th>Date</th><th>Size</th><th>Actions</th></tr></thead>
                 <tbody>
                 <?php foreach ($documents as $d) : ?>
                 <tr>
-                    <td><strong><?php echo esc_html($d->name); ?></strong></td>
+                    <td>
+                        <span class="bv-cd-doc-icon"><?php echo $doc_mime_icon( $d->mime_type ); ?></span>
+                        <strong><?php echo esc_html($d->name); ?></strong>
+                        <?php if ( $doc_name_counts[ $d->name ] > 1 ) : ?><span class="bv-cd-doc-version-badge">v<?php echo $doc_ver[ $d->name ] + 1; ?></span><?php endif; ?>
+                    </td>
                     <td><span style="font-size:12px;color:#666;"><?php echo esc_html(ucfirst(str_replace('-',' ',$d->category))); ?></span></td>
                     <td><?php echo esc_html($d->uploaded_by); ?></td>
                     <td><?php echo esc_html(date('d M Y H:i', strtotime($d->created_at))); ?></td>
