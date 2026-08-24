@@ -3,7 +3,7 @@
  * Plugin Name: BusinessVance Services Manager
  * Plugin URI: https://www.studyvance.co.za
  * Description: Dynamically manage BusinessVance Consulting services, subscription plans, and categories. Includes Client Portal for WooCommerce customers, Consultant Dashboard for project management, questionnaire system, agreement signing, document exchange, and report delivery.
- * Version: 2.7.47
+ * Version: 2.7.48
  * Author: BusinessVance Consulting
  * Author URI: https://www.studyvance.co.za
  * License: GPL v2 or later
