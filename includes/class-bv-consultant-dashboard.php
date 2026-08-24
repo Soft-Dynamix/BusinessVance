@@ -354,7 +354,7 @@ class BV_Consultant_Dashboard {
 
         // Logo or fallback text header
         if ( ! empty( $logo_url ) ) {
-            $header_content = '<img src="' . esc_url( $logo_url ) . '" alt="' . esc_attr( $company_name ) . '" style="max-height:60px;max-width:200px;" />';
+            $header_content = '<img src="' . esc_url( $logo_url ) . '" alt="' . esc_attr( $company_name ) . '" style="max-height:40px;max-width:140px;" />';
         } else {
             $header_content = '<span style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.5px;">' . esc_html( $company_name ) . '</span>';
         }
