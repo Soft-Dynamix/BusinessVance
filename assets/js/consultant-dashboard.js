@@ -44,6 +44,64 @@
         $(this).closest('form').submit();
     });
 
+    // Feature 4: Quick status change from table row
+    $(document).on('change', '.bv-cd-quick-status', function() {
+        var $sel = $(this);
+        var pid = $sel.data('project-id');
+        var status = $sel.val();
+        $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: { action: 'bv_cd_update_project_status', nonce: bv_cd.nonce, project_id: pid, status: status }, success: function(r) {
+            if (r.success) { location.href = location.pathname + location.search + '&_t=' + Date.now(); } else { alert(r.data || 'Error'); $sel.val($sel.data('prev')); }
+        }, error: function() { alert('Request failed.'); $sel.val($sel.data('prev')); } });
+    });
+    // Remember previous value for revert on error
+    $(document).on('focus', '.bv-cd-quick-status', function() { $(this).data('prev', $(this).val()); });
+
+    // Feature 9: Bulk select all
+    $(document).on('change', '#bv-cd-select-all', function() {
+        $('.bv-cd-bulk-cb').prop('checked', this.checked).trigger('change');
+    });
+    $(document).on('change', '.bv-cd-bulk-cb', function() {
+        var total = $('.bv-cd-bulk-cb').length;
+        var checked = $('.bv-cd-bulk-cb:checked').length;
+        $('#bv-cd-select-all').prop('checked', total === checked);
+        if (checked > 0) {
+            $('#bv-cd-bulk-bar').show().find('.bv-cd-bulk-count').text(checked + ' selected');
+        } else {
+            $('#bv-cd-bulk-bar').hide();
+        }
+    });
+
+    // Feature 9: Bulk apply
+    $(document).on('click', '#bv-cd-bulk-apply', function() {
+        var pids = $('.bv-cd-bulk-cb:checked').map(function() { return $(this).val(); }).get();
+        var status = $('#bv-cd-bulk-status').val();
+        if (!pids.length) return;
+        if (!confirm('Change ' + pids.length + ' project(s) to "' + status + '"?')) return;
+        var $btn = $(this).prop('disabled', true).text('Applying...');
+        $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: { action: 'bv_cd_bulk_update_status', nonce: bv_cd.nonce, project_ids: pids, status: status }, success: function(r) {
+            if (r.success) { location.href = location.pathname + location.search + '&_t=' + Date.now(); } else { alert(r.data || 'Error'); $btn.prop('disabled', false).text('Apply'); }
+        }, error: function() { alert('Request failed.'); $btn.prop('disabled', false).text('Apply'); } });
+    });
+
+    // Feature 10: Quick note modal
+    var quickNotePid = 0;
+    $(document).on('click', '.bv-cd-quick-note-btn', function() {
+        quickNotePid = $(this).data('project-id');
+        $('#bv-cd-note-modal-pnum').text($(this).data('project-number'));
+        $('#bv-cd-quick-note-text').val('');
+        $('#bv-cd-note-modal').show();
+        $('#bv-cd-quick-note-text').focus();
+    });
+    $(document).on('click', '.bv-cd-modal-backdrop', function() { $(this).closest('.bv-cd-modal').hide(); });
+    $(document).on('click', '#bv-cd-save-quick-note', function() {
+        var content = $('#bv-cd-quick-note-text').val();
+        if (!content) return alert('Note cannot be empty');
+        var $btn = $(this).prop('disabled', true).text('Saving...');
+        $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: { action: 'bv_cd_quick_note', nonce: bv_cd.nonce, project_id: quickNotePid, content: content }, success: function(r) {
+            if (r.success) { $('#bv-cd-note-modal').hide(); } else { alert(r.data || 'Error'); $btn.prop('disabled', false).text('Save Note'); }
+        }, error: function() { alert('Request failed.'); $btn.prop('disabled', false).text('Save Note'); } });
+    });
+
     $(function() {
         // Tab switching in project detail
         $('.bv-cd-tab').on('click', function(e) {

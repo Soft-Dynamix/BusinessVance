@@ -11,12 +11,15 @@
 .bv-cd-title { display: flex; align-items: center; gap: 10px; color: var(--bv-cd-primary, #002B5C); }
 .bv-cd-icon { font-size: 28px; }
 .bv-cd-stats { display: flex; gap: 16px; margin: 20px 0; }
-.bv-cd-stat { background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px 24px; text-align: center; min-width: 100px; }
+.bv-cd-stat { background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px 24px; text-align: center; min-width: 100px; text-decoration: none; transition: box-shadow 0.15s, transform 0.15s; }
+.bv-cd-stat-clickable:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); transform: translateY(-1px); }
 .bv-cd-stat-num { display: block; font-size: 28px; font-weight: 700; color: var(--bv-cd-primary, #002B5C); }
 .bv-cd-stat-label { font-size: 12px; color: #666; text-transform: uppercase; }
+.bv-cd-stat-sub { display: block; font-size: 11px; color: #999; margin-top: 2px; }
 .bv-cd-stat-active .bv-cd-stat-num { color: var(--bv-cd-secondary, #0A2647); }
 .bv-cd-stat-waiting .bv-cd-stat-num { color: #F4A261; }
 .bv-cd-stat-done .bv-cd-stat-num { color: #27AE60; }
+.bv-cd-stat-pipeline .bv-cd-stat-num { color: #8B5CF6; font-size: 22px; }
 .bv-cd-toolbar { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
 .bv-cd-filter-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .bv-cd-status-filters { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -75,3 +78,73 @@
 /* Questionnaire service group headers */
 .bv-cd-service-group-header { background: var(--bv-cd-primary, #002B5C); color: #fff; padding: 8px 14px; border-radius: 6px; font-size: 14px; font-weight: 700; margin: 20px 0 8px; letter-spacing: 0.3px; }
 .bv-cd-service-group-header:first-child { margin-top: 0; }
+
+/* === v2.7.42 Feature Styles === */
+
+/* Feature 1: Overdue badge */
+.bv-cd-overdue-badge { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; background: #dc2626; color: #fff; text-transform: uppercase; vertical-align: middle; animation: bv-pulse 2s infinite; }
+@keyframes bv-pulse { 0%,100%{opacity:1} 50%{opacity:.7} }
+
+/* Feature 12: Avatar initials */
+.bv-cd-avatar { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; color: #fff; font-size: 13px; font-weight: 700; flex-shrink: 0; letter-spacing: 0.5px; }
+.bv-cd-client-cell { display: flex; align-items: center; gap: 10px; }
+.bv-cd-client-cell > div { min-width: 0; }
+
+/* Feature 14: Color-coded progress bars */
+.bv-pbar-low  { background: #dc2626 !important; }
+.bv-pbar-mid  { background: #f59e0b !important; }
+.bv-pbar-high { background: var(--bv-cd-secondary, #0A2647) !important; }
+.bv-pbar-done { background: #22c55e !important; }
+
+/* Feature 8: Unread message badge */
+.bv-cd-open-btn { position: relative; }
+.bv-cd-unread-dot { position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; border-radius: 9px; background: #dc2626; color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 4px; line-height: 1; }
+
+/* Feature 4: Quick status dropdown in table */
+.bv-cd-quick-status { max-width: 160px; }
+
+/* Feature 9: Bulk actions bar */
+.bv-cd-bulk-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; margin-bottom: 12px; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 6px; font-size: 13px; }
+.bv-cd-bulk-count { font-weight: 600; color: var(--bv-cd-primary, #002B5C); }
+
+/* Feature 11: Empty state */
+.bv-cd-empty-state { text-align: center; padding: 60px 20px !important; }
+.bv-cd-empty-icon { font-size: 48px; margin-bottom: 12px; }
+.bv-cd-empty-title { font-size: 18px; font-weight: 600; color: #333; margin-bottom: 6px; }
+.bv-cd-empty-text { font-size: 14px; color: #888; }
+
+/* Feature 10: Quick note modal */
+.bv-cd-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 160000; }
+.bv-cd-modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.4); }
+.bv-cd-modal-box { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); background: #fff; border-radius: 10px; padding: 24px; width: 420px; max-width: 90vw; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+.bv-cd-modal-box h3 { margin: 0 0 14px; font-size: 16px; }
+.bv-cd-modal-box textarea { border: 1px solid #ccd0d4; border-radius: 4px; padding: 8px; font-size: 14px; resize: vertical; }
+
+/* Features 15 & 16: Sidebar widgets */
+.bv-cd-widgets-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 24px; }
+.bv-cd-widget { margin-bottom: 0; }
+.bv-cd-widget-list { display: flex; flex-direction: column; gap: 4px; }
+.bv-cd-widget-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; text-decoration: none; color: #333; transition: background 0.1s; }
+.bv-cd-widget-item:hover { background: #f3f4f6; }
+.bv-cd-widget-meta { font-size: 12px; color: #888; }
+.bv-cd-widget-days { margin-left: auto; font-size: 12px; font-weight: 600; color: #999; white-space: nowrap; }
+.bv-cd-widget-item.bv-cd-warning .bv-cd-widget-days { color: #f59e0b; }
+.bv-cd-widget-item.bv-cd-urgent { background: #fef2f2; }
+.bv-cd-widget-item.bv-cd-urgent .bv-cd-widget-days { color: #dc2626; }
+.bv-cd-widget-empty { padding: 20px; text-align: center; color: #888; font-size: 14px; }
+.bv-cd-timeline-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--bv-cd-primary, #002B5C); flex-shrink: 0; }
+.bv-cd-services-cell { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Toolbar right */
+.bv-cd-toolbar-right { display: flex; gap: 8px; align-items: center; }
+
+/* Sort links */
+.bv-cd-table thead a { text-decoration: none; color: #666; font-weight: normal; }
+.bv-cd-table thead a:hover { color: var(--bv-cd-primary, #002B5C); }
+
+@media (max-width: 782px) {
+    .bv-cd-stats { flex-wrap: wrap; }
+    .bv-cd-overview-grid { grid-template-columns: 1fr; }
+    .bv-cd-project-header { flex-direction: column; }
+    .bv-cd-widgets-grid { grid-template-columns: 1fr; }
+}

@@ -52,6 +52,8 @@ class BV_Consultant_Dashboard {
         add_action( 'bv_project_completion_email', array( $this, 'email_project_package_to_consultant' ) );
         add_action( 'wp_ajax_bv_cd_reset_project', array( $this, 'ajax_reset_project' ) );
         add_action( 'wp_ajax_bv_cd_remove_project', array( $this, 'ajax_delete_project' ) );
+        add_action( 'wp_ajax_bv_cd_bulk_update_status', array( $this, 'ajax_bulk_update_status' ) );
+        add_action( 'wp_ajax_bv_cd_quick_note', array( $this, 'ajax_quick_note' ) );
     }
     public function add_menu_page() {
         add_menu_page(
@@ -159,6 +161,36 @@ class BV_Consultant_Dashboard {
         ) );
     }
 
+    public function ajax_bulk_update_status() {
+        check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
+        if ( ! current_user_can( self::CAP ) ) wp_send_json_error( 'Unauthorized' );
+        $pids = isset( $_POST['project_ids'] ) ? array_map( 'absint', (array) $_POST['project_ids'] ) : array();
+        $status = sanitize_text_field( $_POST['status'] );
+        $allowed = array( 'awaiting-agreement', 'awaiting-questionnaire', 'awaiting-documents', 'in-progress', 'quality-check', 'completed', 'delivered', 'archived' );
+        if ( empty( $pids ) || ! in_array( $status, $allowed, true ) ) wp_send_json_error( 'Invalid data' );
+        global $wpdb;
+        $count = 0;
+        foreach ( $pids as $pid ) {
+            $wpdb->update( $wpdb->prefix . 'bv_projects', array( 'status' => $status ), array( 'id' => $pid ), array( '%s' ), array( '%d' ) );
+            $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array( 'project_id' => $pid, 'entity_type' => 'project', 'entity_id' => $pid, 'action' => 'status_changed', 'description' => "Bulk status changed to {$status}", 'metadata' => '', 'user_id' => get_current_user_id() ), array( '%d','%s','%d','%s','%s','%s','%d' ) );
+            $count++;
+        }
+        wp_send_json_success( $count . ' projects updated to ' . $status );
+    }
+
+    public function ajax_quick_note() {
+        check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
+        if ( ! current_user_can( self::CAP ) ) wp_send_json_error( 'Unauthorized' );
+        $pid = absint( $_POST['project_id'] );
+        $content = sanitize_textarea_field( $_POST['content'] );
+        if ( ! $pid || empty( $content ) ) wp_send_json_error( 'Project ID and note required' );
+        global $wpdb;
+        $user = wp_get_current_user();
+        $wpdb->insert( $wpdb->prefix . 'bv_project_notes', array( 'project_id' => $pid, 'author_name' => $user->display_name, 'content' => $content ), array( '%d', '%s', '%s' ) );
+        $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array( 'project_id' => $pid, 'entity_type' => 'note', 'entity_id' => $wpdb->insert_id, 'action' => 'added', 'description' => 'Quick note added from project list', 'metadata' => '', 'user_id' => get_current_user_id() ), array( '%d','%s','%d','%s','%s','%s','%d' ) );
+        wp_send_json_success( 'Note added' );
+    }
+
     public function render_page() {
         if ( ! current_user_can( self::CAP ) ) {
             wp_die( 'Access denied' );
@@ -180,15 +212,38 @@ class BV_Consultant_Dashboard {
             <!-- Stats Bar -->
             <div class="bv-cd-stats">
                 <?php
-                $total = $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}bv_projects" );
-                $active = $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}bv_projects WHERE status NOT IN ('delivered', 'archived')" );
-                $completed = $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}bv_projects WHERE status IN ('completed', 'delivered')" );
-                $awaiting = $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}bv_projects WHERE status = 'awaiting-agreement'" );
+                $dash_url = admin_url( 'admin.php?page=bv-consultant-dashboard' );
+                $total = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}bv_projects" );
+                $active = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}bv_projects WHERE status NOT IN ('delivered', 'archived')" );
+                $completed = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}bv_projects WHERE status IN ('completed', 'delivered')" );
+                $awaiting = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}bv_projects WHERE status IN ('awaiting-agreement', 'awaiting-questionnaire', 'awaiting-documents')" );
+                $this_week = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}bv_projects WHERE status IN ('completed','delivered') AND updated_at >= %s", date( 'Y-m-d H:i:s', strtotime( 'monday this week' ) ) ) );
+                $this_month = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}bv_projects WHERE status IN ('completed','delivered') AND updated_at >= %s", date( 'Y-m-01 00:00:00' ) ) );
+                $pipeline_raw = $wpdb->get_var( "SELECT SUM(CAST(REPLACE(REPLACE(s.price, '$', ''), ',', '') AS DECIMAL(10,2))) FROM {$wpdb->prefix}bv_project_services ps JOIN {$wpdb->prefix}bv_services s ON ps.service_id = s.id JOIN {$wpdb->prefix}bv_projects p ON ps.project_id = p.id WHERE p.status NOT IN ('delivered', 'archived')" );
+                $pipeline = $pipeline_raw ? (float) $pipeline_raw : 0;
+                $cur = function_exists( 'get_woocommerce_currency_symbol' ) ? get_woocommerce_currency_symbol() : 'R';
                 ?>
-                <div class="bv-cd-stat"><span class="bv-cd-stat-num"><?php echo $total; ?></span><span class="bv-cd-stat-label">Total</span></div>
-                <div class="bv-cd-stat bv-cd-stat-active"><span class="bv-cd-stat-num"><?php echo $active; ?></span><span class="bv-cd-stat-label">Active</span></div>
-                <div class="bv-cd-stat bv-cd-stat-waiting"><span class="bv-cd-stat-num"><?php echo $awaiting; ?></span><span class="bv-cd-stat-label">Awaiting</span></div>
-                <div class="bv-cd-stat bv-cd-stat-done"><span class="bv-cd-stat-num"><?php echo $completed; ?></span><span class="bv-cd-stat-label">Done</span></div>
+                <a href="<?php echo esc_url( $dash_url ); ?>" class="bv-cd-stat bv-cd-stat-clickable" title="Clear filters">
+                    <span class="bv-cd-stat-num"><?php echo $total; ?></span>
+                    <span class="bv-cd-stat-label">Total</span>
+                </a>
+                <a href="<?php echo esc_url( $dash_url . '&filter_status[]=awaiting-agreement&filter_status[]=awaiting-questionnaire&filter_status[]=awaiting-documents&filter_status[]=in-progress&filter_status[]=quality-check&filter_status[]=delivered' ); ?>" class="bv-cd-stat bv-cd-stat-active bv-cd-stat-clickable" title="Active projects">
+                    <span class="bv-cd-stat-num"><?php echo $active; ?></span>
+                    <span class="bv-cd-stat-label">Active</span>
+                </a>
+                <a href="<?php echo esc_url( $dash_url . '&filter_status[]=awaiting-agreement&filter_status[]=awaiting-questionnaire&filter_status[]=awaiting-documents' ); ?>" class="bv-cd-stat bv-cd-stat-waiting bv-cd-stat-clickable" title="Awaiting client action">
+                    <span class="bv-cd-stat-num"><?php echo $awaiting; ?></span>
+                    <span class="bv-cd-stat-label">Awaiting</span>
+                </a>
+                <a href="<?php echo esc_url( $dash_url . '&filter_status[]=completed&filter_status[]=delivered' ); ?>" class="bv-cd-stat bv-cd-stat-done bv-cd-stat-clickable" title="Completed & delivered">
+                    <span class="bv-cd-stat-num"><?php echo $completed; ?></span>
+                    <span class="bv-cd-stat-label">Done</span>
+                    <span class="bv-cd-stat-sub">+<?php echo $this_week; ?> week / +<?php echo $this_month; ?> month</span>
+                </a>
+                <div class="bv-cd-stat bv-cd-stat-pipeline">
+                    <span class="bv-cd-stat-num"><?php echo esc_html( $cur . number_format( $pipeline, 0 ) ); ?></span>
+                    <span class="bv-cd-stat-label">Pipeline</span>
+                </div>
             </div>
 
             <?php if ( $project_id ) : ?>
@@ -204,7 +259,7 @@ class BV_Consultant_Dashboard {
     private function render_projects_list() {
         global $wpdb;
 
-        // Multi-status filter: checkbox array via GET
+        // --- Status filter (unchanged logic) ---
         $all_statuses = array(
             'awaiting-agreement'     => 'Awaiting Agreement',
             'awaiting-questionnaire' => 'Awaiting Questionnaire',
@@ -215,38 +270,74 @@ class BV_Consultant_Dashboard {
             'delivered'              => 'Delivered',
             'archived'               => 'Archived',
         );
-        // Default: all checked EXCEPT completed and archived
         $default_off = array( 'completed', 'archived' );
         $default_on  = array_keys( array_diff_key( $all_statuses, array_flip( $default_off ) ) );
-
-        // Parse submitted statuses from GET
         $raw = isset( $_GET['filter_status'] ) ? (array) $_GET['filter_status'] : array();
         $raw = array_filter( array_map( 'sanitize_text_field', $raw ) );
         $active_statuses = array_filter( $raw, function($v) use ($all_statuses) { return isset( $all_statuses[ $v ] ); } );
+        if ( ! isset( $_GET['filter_status'] ) ) $active_statuses = $default_on;
+        if ( isset( $_GET['filter_status'] ) && empty( $active_statuses ) ) $active_statuses = array();
 
-        // No filter_status in GET = first visit, use defaults
-        if ( ! isset( $_GET['filter_status'] ) ) {
-            $active_statuses = $default_on;
-        }
-        // If user unchecked everything, show all projects (no status filter)
-        if ( isset( $_GET['filter_status'] ) && empty( $active_statuses ) ) {
-            $active_statuses = array();
-        }
-
-        $search = isset( $_GET['s'] ) ? sanitize_text_field( $_GET['s'] ) : '';
+        $search   = isset( $_GET['s'] ) ? sanitize_text_field( $_GET['s'] ) : '';
         $base_url = admin_url( 'admin.php?page=bv-consultant-dashboard' );
 
-        $where = "1=1";
+        // --- Sorting (Feature 2) ---
+        $allowed_orderby = array( 'project_number', 'client_name', 'status', 'progress_percent', 'created_at', 'updated_at' );
+        $orderby = isset( $_GET['orderby'] ) && in_array( $_GET['orderby'], $allowed_orderby, true ) ? sanitize_text_field( $_GET['orderby'] ) : 'created_at';
+        $order   = ( isset( $_GET['order'] ) && 'asc' === strtolower( $_GET['order'] ) ) ? 'ASC' : 'DESC';
+
+        // --- Build query ---
+        $where = '1=1';
         if ( ! empty( $active_statuses ) ) {
-            $placeholders = implode( ',', array_fill( 0, count( $active_statuses ), '%s' ) );
-            $where .= $wpdb->prepare( " AND p.status IN ($placeholders)", $active_statuses );
+            $ph = implode( ',', array_fill( 0, count( $active_statuses ), '%s' ) );
+            $where .= $wpdb->prepare( " AND p.status IN ($ph)", $active_statuses );
         }
         if ( $search ) $where .= $wpdb->prepare( " AND (p.project_number LIKE %s OR p.client_name LIKE %s OR p.client_email LIKE %s OR p.client_company LIKE %s)", "%{$search}%", "%{$search}%", "%{$search}%", "%{$search}%" );
 
-        $projects = $wpdb->get_results( "SELECT p.* FROM {$wpdb->prefix}bv_projects p WHERE {$where} ORDER BY p.created_at DESC" );
+        // Feature 3: last activity + Feature 8: unread messages — join once
+        $projects = $wpdb->get_results( "
+            SELECT p.*,
+                ( SELECT MAX(al.created_at) FROM {$wpdb->prefix}bv_activity_log al WHERE al.project_id = p.id ) AS last_activity,
+                ( SELECT COUNT(*) FROM {$wpdb->prefix}bv_project_messages m WHERE m.project_id = p.id AND m.sender_type = 'client' AND m.is_read = 0 ) AS unread_count
+            FROM {$wpdb->prefix}bv_projects p
+            WHERE {$where}
+            ORDER BY p.{$orderby} {$order}
+        " );
 
-        // Which checkboxes should be checked?
+        // Pre-fetch service data + prices for all projects (avoid N+1)
+        $pids = array_map( function($pr) { return $pr->id; }, $projects );
+        $project_services = array();
+        $project_values  = array();
+        $cur = function_exists( 'get_woocommerce_currency_symbol' ) ? get_woocommerce_currency_symbol() : 'R';
+        if ( ! empty( $pids ) ) {
+            $pid_ph = implode( ',', array_fill( 0, count( $pids ), '%d' ) );
+            $svc_rows = $wpdb->get_results( $wpdb->prepare( "SELECT ps.project_id, s.name, s.price FROM {$wpdb->prefix}bv_project_services ps JOIN {$wpdb->prefix}bv_services s ON ps.service_id = s.id WHERE ps.project_id IN ($pid_ph)", $pids ) );
+            foreach ( $svc_rows as $sr ) {
+                $project_services[ $sr->project_id ][] = $sr->name;
+                $num = preg_replace( '/[^0-9.]/', '', $sr->price );
+                $project_values[ $sr->project_id ] = ( $project_values[ $sr->project_id ] ?? 0 ) + (float) $num;
+            }
+        }
+
+        // --- Overdue config (Feature 1) ---
+        $overdue_days    = 7;
+        $overdue_statuses = array( 'awaiting-agreement', 'awaiting-questionnaire', 'awaiting-documents' );
+        $now_ts = time();
+
+        // --- Avatar color palette (Feature 12) ---
+        $avatar_colors = array( '#e74c3c','#e67e22','#f1c40f','#2ecc71','#1abc9c','#3498db','#9b59b6','#e84393','#00b894','#6c5ce7' );
+
         $checked_statuses = isset( $_GET['filter_status'] ) ? $active_statuses : $default_on;
+
+        // --- Sort link helper ---
+        $sort_link = function( $col ) use ( $base_url, $orderby, $order, $active_statuses, $search ) {
+            $new_order = ( $orderby === $col && $order === 'DESC' ) ? 'asc' : 'desc';
+            $url = $base_url . '&orderby=' . $col . '&order=' . $new_order;
+            foreach ( $active_statuses as $st ) $url .= '&filter_status[]=' . $st;
+            if ( $search ) $url .= '&s=' . urlencode( $search );
+            $arrow = ( $orderby === $col ) ? ( $order === 'ASC' ? ' ↑' : ' ↓' ) : '';
+            return '<a href="' . esc_url( $url ) . '">' . $arrow . '</a>';
+        };
         ?>
         <div class="bv-cd-toolbar">
             <form method="get" class="bv-cd-filter-form">
@@ -262,7 +353,20 @@ class BV_Consultant_Dashboard {
                 <input type="text" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="Search projects..." />
                 <button type="submit" class="button">Filter</button>
             </form>
-            <a href="#bv-cd-new-project" class="button button-primary" onclick="jQuery('#bv-cd-new-project-form').toggle(); return false;">+ New Project</a>
+            <div class="bv-cd-toolbar-right">
+                <a href="#bv-cd-new-project" class="button button-primary" onclick="jQuery('#bv-cd-new-project-form').toggle(); return false;">+ New Project</a>
+            </div>
+        </div>
+
+        <!-- Bulk Actions Bar (Feature 9) -->
+        <div id="bv-cd-bulk-bar" class="bv-cd-bulk-bar" style="display:none;">
+            <span class="bv-cd-bulk-count">0 selected</span>
+            <select id="bv-cd-bulk-status">
+                <?php foreach ( $all_statuses as $slug => $label ) : ?>
+                <option value="<?php echo esc_attr( $slug ); ?>"><?php echo esc_html( $label ); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <button id="bv-cd-bulk-apply" class="button">Apply</button>
         </div>
 
         <!-- New Project Form -->
@@ -282,41 +386,175 @@ class BV_Consultant_Dashboard {
         <table class="wp-list-table widefat fixed striped bv-cd-table">
             <thead>
                 <tr>
-                    <th>Project #</th>
-                    <th>Client</th>
+                    <th class="column-cb" style="width:30px;padding:8px 4px"><input type="checkbox" id="bv-cd-select-all" /></th>
+                    <th>Project # <?php echo $sort_link( 'project_number' ); ?></th>
+                    <th>Client <?php echo $sort_link( 'client_name' ); ?></th>
                     <th>Services</th>
-                    <th>Status</th>
-                    <th>Progress</th>
+                    <th>Status <?php echo $sort_link( 'status' ); ?></th>
+                    <th>Progress <?php echo $sort_link( 'progress_percent' ); ?></th>
+                    <th>Value</th>
+                    <th>Last Activity <?php echo $sort_link( 'updated_at' ); ?></th>
                     <th>Created</th>
-                    <th>Actions</th>
+                    <th style="width:160px">Actions</th>
                 </tr>
             </thead>
             <tbody>
             <?php if ( empty( $projects ) ) : ?>
-                <tr><td colspan="7" style="text-align:center; padding:40px; color:#666;">No projects found.</td></tr>
+                <tr><td colspan="10" class="bv-cd-empty-state">
+                    <div class="bv-cd-empty-icon">📁</div>
+                    <div class="bv-cd-empty-title">No projects found</div>
+                    <div class="bv-cd-empty-text">Try adjusting your filters or create a new project to get started.</div>
+                </td></tr>
             <?php else : foreach ( $projects as $p ) :
-                $services = $wpdb->get_results( $wpdb->prepare(
-                    "SELECT s.name FROM {$wpdb->prefix}bv_project_services ps JOIN {$wpdb->prefix}bv_services s ON ps.service_id = s.id WHERE ps.project_id = %d", $p->id ) );
-                $svc_names = array_map( function($s) { return $s->name; }, $services );
+                $svc_names = isset( $project_services[ $p->id ] ) ? $project_services[ $p->id ] : array();
+                $value = isset( $project_values[ $p->id ] ) ? $project_values[ $p->id ] : 0;
+                // Feature 1: overdue check
+                $is_overdue = in_array( $p->status, $overdue_statuses, true ) && ( $now_ts - strtotime( $p->updated_at ) ) > $overdue_days * 86400;
+                // Feature 12: avatar
+                $name_parts = preg_split( '/[\s]+/', trim( $p->client_name ), 2 );
+                $initials = strtoupper( substr( $name_parts[0] ?? 'U', 0, 1 ) . substr( $name_parts[1] ?? '', 0, 1 ) );
+                $color_idx = abs( crc32( $p->client_email ) ) % count( $avatar_colors );
+                // Feature 14: progress color class
+                $pct = max( 0, min( 100, (int) $p->progress_percent ) );
+                $pbar_class = $pct >= 100 ? 'bv-pbar-done' : ( $pct >= 71 ? 'bv-pbar-high' : ( $pct >= 31 ? 'bv-pbar-mid' : 'bv-pbar-low' ) );
+                // Feature 3: relative time
+                $last_rel = $p->last_activity ? $this->time_ago( $p->last_activity ) : '—';
+                // Feature 8: unread
+                $unread = (int) $p->unread_count;
             ?>
-                <tr>
-                    <td><strong><a href="<?php echo $base_url; ?>&project_id=<?php echo $p->id; ?>"><?php echo esc_html( $p->project_number ); ?></a></strong></td>
+                <tr data-pid="<?php echo $p->id; ?>">
+                    <td class="column-cb" style="padding:8px 4px"><input type="checkbox" class="bv-cd-bulk-cb" value="<?php echo $p->id; ?>" /></td>
                     <td>
-                        <?php echo esc_html( $p->client_name ); ?><br>
-                        <small style="color:#666;"><?php echo esc_html( $p->client_email ); ?><?php if ($p->client_company) echo ' — ' . esc_html($p->client_company); ?></small>
+                        <strong><a href="<?php echo $base_url; ?>&project_id=<?php echo $p->id; ?>"><?php echo esc_html( $p->project_number ); ?></a></strong>
+                        <?php if ( $is_overdue ) : ?><span class="bv-cd-overdue-badge" title="No action for <?php echo $overdue_days; ?>+ days">Overdue</span><?php endif; ?>
                     </td>
-                    <td><?php echo esc_html( implode( ', ', $svc_names ) ); ?></td>
-                    <td><span class="bv-status bv-status-<?php echo esc_attr($p->status); ?>"><?php echo esc_html( ucfirst(str_replace('-', ' ', $p->status))); ?></span></td>
                     <td>
-                        <div class="bv-cd-mini-progress"><div class="bv-cd-mini-fill" style="width:<?php echo max(0,min(100,$p->progress_percent)); ?>%"></div></div>
-                        <small><?php echo $p->progress_percent; ?>%</small>
+                        <div class="bv-cd-client-cell">
+                            <span class="bv-cd-avatar" style="background:<?php echo $avatar_colors[ $color_idx ]; ?>"><?php echo $initials; ?></span>
+                            <div>
+                                <?php echo esc_html( $p->client_name ); ?><br>
+                                <small style="color:#666;"><?php echo esc_html( $p->client_email ); ?><?php if ($p->client_company) echo ' — ' . esc_html($p->client_company); ?></small>
+                            </div>
+                        </div>
                     </td>
-                    <td><?php echo esc_html( date( 'd M Y', strtotime($p->created_at) ) ); ?></td>
-                    <td><a href="<?php echo $base_url; ?>&project_id=<?php echo $p->id; ?>" class="button button-small">Open</a></td>
+                    <td class="bv-cd-services-cell"><?php echo esc_html( implode( ', ', $svc_names ) ); ?></td>
+                    <td>
+                        <select class="bv-cd-quick-status" data-project-id="<?php echo $p->id; ?>" style="font-size:12px;padding:2px 4px;">
+                            <?php foreach ( $all_statuses as $slug => $label ) : ?>
+                            <option value="<?php echo esc_attr( $slug ); ?>" <?php selected( $p->status, $slug ); ?>><?php echo esc_html( $label ); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </td>
+                    <td>
+                        <div class="bv-cd-mini-progress"><div class="bv-cd-mini-fill <?php echo $pbar_class; ?>" style="width:<?php echo $pct; ?>%"></div></div>
+                        <small><?php echo $pct; ?>%</small>
+                    </td>
+                    <td><?php echo $value > 0 ? esc_html( $cur . number_format( $value, 0 ) ) : '—'; ?></td>
+                    <td><small style="color:#666;"><?php echo esc_html( $last_rel ); ?></small></td>
+                    <td><small style="color:#666;"><?php echo esc_html( date( 'd M Y', strtotime( $p->created_at ) ) ); ?></small></td>
+                    <td>
+                        <a href="<?php echo $base_url; ?>&project_id=<?php echo $p->id; ?>" class="button button-small bv-cd-open-btn" style="position:relative;">Open<?php if ( $unread > 0 ) : ?><span class="bv-cd-unread-dot"><?php echo $unread; ?></span><?php endif; ?></a>
+                        <button type="button" class="button button-small bv-cd-quick-note-btn" data-project-id="<?php echo $p->id; ?>" data-project-number="<?php echo esc_attr( $p->project_number ); ?>" title="Quick note">📝</button>
+                    </td>
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
         </table>
+
+        <!-- Quick Note Modal (Feature 10) -->
+        <div id="bv-cd-note-modal" class="bv-cd-modal" style="display:none;">
+            <div class="bv-cd-modal-backdrop"></div>
+            <div class="bv-cd-modal-box">
+                <h3>Quick Note — <span id="bv-cd-note-modal-pnum"></span></h3>
+                <textarea id="bv-cd-quick-note-text" rows="4" style="width:100%" placeholder="Add a quick internal note..."></textarea>
+                <div style="margin-top:10px;text-align:right;">
+                    <button type="button" class="button" onclick="jQuery('#bv-cd-note-modal').hide()">Cancel</button>
+                    <button type="button" id="bv-cd-save-quick-note" class="button button-primary">Save Note</button>
+                </div>
+            </div>
+        </div>
+
+        <?php
+        // --- Sidebar Widgets (Features 15 & 16) ---
+        $this->render_sidebar_widgets( $all_statuses, $base_url );
+    }
+
+    /**
+     * Relative time helper (e.g. "2 hours ago", "3 days ago").
+     */
+    private function time_ago( $datetime ) {
+        $diff = time() - strtotime( $datetime );
+        if ( $diff < 60 ) return 'Just now';
+        if ( $diff < 3600 ) return floor( $diff / 60 ) . 'm ago';
+        if ( $diff < 86400 ) return floor( $diff / 3600 ) . 'h ago';
+        if ( $diff < 604800 ) return floor( $diff / 86400 ) . 'd ago';
+        return date( 'd M', strtotime( $datetime ) );
+    }
+
+    /**
+     * Sidebar widgets: Stale Projects + Activity Timeline (Features 15 & 16).
+     */
+    private function render_sidebar_widgets( $all_statuses, $base_url ) {
+        global $wpdb;
+        ?>
+        <div class="bv-cd-widgets-grid">
+            <!-- Feature 15: Stale / Overdue Projects -->
+            <div class="bv-cd-card bv-cd-widget">
+                <h4>🔥 Needs Attention</h4>
+                <div class="bv-cd-widget-list">
+                <?php
+                $stale = $wpdb->get_results( "
+                    SELECT p.id, p.project_number, p.client_name, p.status, p.updated_at,
+                        DATEDIFF(NOW(), p.updated_at) AS days_waiting
+                    FROM {$wpdb->prefix}bv_projects p
+                    WHERE p.status IN ('awaiting-agreement','awaiting-questionnaire','awaiting-documents')
+                    ORDER BY p.updated_at ASC LIMIT 5
+                " );
+                if ( empty( $stale ) ) {
+                    echo '<div class="bv-cd-widget-empty">All projects are moving ✅</div>';
+                } else {
+                    foreach ( $stale as $s ) {
+                        $label = $all_statuses[ $s->status ] ?? $s->status;
+                        $days = (int) $s->days_waiting;
+                        $urgency = $days >= 14 ? 'bv-cd-urgent' : ( $days >= 7 ? 'bv-cd-warning' : '' );
+                        echo '<a href="' . esc_url( $base_url . '&project_id=' . $s->id ) . '" class="bv-cd-widget-item ' . $urgency . '">';
+                        echo '<strong>' . esc_html( $s->project_number ) . '</strong> ';
+                        echo '<span class="bv-cd-widget-meta">' . esc_html( $s->client_name ) . ' · ' . esc_html( $label ) . '</span>';
+                        echo '<span class="bv-cd-widget-days">' . $days . 'd waiting</span>';
+                        echo '</a>';
+                    }
+                }
+                ?>
+                </div>
+            </div>
+
+            <!-- Feature 16: Activity Timeline -->
+            <div class="bv-cd-card bv-cd-widget">
+                <h4>📜 Recent Activity</h4>
+                <div class="bv-cd-widget-list">
+                <?php
+                $recent = $wpdb->get_results( "
+                    SELECT al.*, p.project_number, p.client_name
+                    FROM {$wpdb->prefix}bv_activity_log al
+                    JOIN {$wpdb->prefix}bv_projects p ON al.project_id = p.id
+                    ORDER BY al.created_at DESC LIMIT 8
+                " );
+                if ( empty( $recent ) ) {
+                    echo '<div class="bv-cd-widget-empty">No activity yet</div>';
+                } else {
+                    foreach ( $recent as $r ) {
+                        echo '<a href="' . esc_url( $base_url . '&project_id=' . $r->project_id ) . '" class="bv-cd-widget-item">';
+                        echo '<div class="bv-cd-timeline-dot"></div>';
+                        echo '<div>';
+                        echo '<div>' . esc_html( $r->description ) . '</div>';
+                        echo '<span class="bv-cd-widget-meta">' . esc_html( $r->project_number ) . ' · ' . esc_html( $r->client_name ) . '</span>';
+                        echo '</div></a>';
+                    }
+                }
+                ?>
+                </div>
+            </div>
+        </div>
         <?php
     }
 
