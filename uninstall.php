@@ -22,13 +22,13 @@ $prefix = $wpdb->prefix;
 // Read the uninstall flag BEFORE deleting any options
 $delete_all_data = get_option( 'bv_delete_data_on_uninstall', 'no' );
 
-// Always clean up plugin options (safe, no client data)
+// Clean up lightweight plugin options on every uninstall (safe, no user config)
 $options_to_delete = array(
     'bv_plugin_version',
     'bv_agreement_template',
     'bv_services_manager_db_version',
     'bv_services_manager_seeded',
-    'bv_settings',
+    // 'bv_settings' — preserved across reinstalls so user config survives
     'bv_delete_data_on_uninstall',
     'bv_agreements_migrated',
     'bv_questionnaires_migrated',
@@ -40,6 +40,9 @@ foreach ( $options_to_delete as $option ) {
 
 if ( $delete_all_data === 'yes' ) {
     // ===== FULL CLEANUP — User explicitly requested complete removal =====
+
+    // Delete settings
+    delete_option( 'bv_settings' );
 
     // Drop all BV tables
     $tables = array(
