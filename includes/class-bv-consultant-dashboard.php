@@ -204,7 +204,7 @@ class BV_Consultant_Dashboard {
         $settings      = BV_Settings::get_settings();
         $company_name  = $settings['company_name'] ?? 'BusinessVance';
         $from_email    = $settings['consultant_email'] ?? get_option( 'admin_email' );
-        $portal_url    = $settings['portal_url'] ?? site_url();
+        $portal_url    = ! empty( $settings['portal_url'] ) ? $settings['portal_url'] : site_url();
         $primary_color = $settings['primary_color'] ?? '#002B5C';
         $logo_url      = $settings['logo_url'] ?? '';
 
