@@ -239,8 +239,20 @@ class BV_Consultant_Dashboard {
         }
         global $wpdb;
         $project_id = isset( $_GET['project_id'] ) ? absint( $_GET['project_id'] ) : 0;
-        $tab = isset( $_GET['cd_tab'] ) ? sanitize_text_field( $_GET['cd_tab'] ) : 'projects';
+        $tab = isset( $_GET['cd_tab'] ) ? sanitize_text_field( $_GET['cd_tab'] ) : ( $project_id ? 'overview' : 'projects' );
         $statuses = array( 'awaiting-agreement', 'awaiting-questionnaire', 'awaiting-documents', 'in-progress', 'quality-check', 'completed', 'delivered', 'archived' );
+
+        // v2.7.44: Capture fatal errors for diagnosis
+        register_shutdown_function( function() {
+            $error = error_get_last();
+            if ( $error && in_array( $error['type'], array( E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_RECOVERABLE_ERROR ), true ) ) {
+                $log = '[' . date('Y-m-d H:i:s') . '] BV Dashboard Fatal: ' . $error['message'] . ' in ' . $error['file'] . ':' . $error['line'];
+                if ( function_exists( 'wp_mail' ) ) {
+                    wp_mail( get_option( 'admin_email' ), 'BV Dashboard Error', $log );
+                }
+                error_log( $log );
+            }
+        } );
 
         ?>
         <?php
