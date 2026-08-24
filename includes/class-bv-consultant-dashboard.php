@@ -200,26 +200,218 @@ class BV_Consultant_Dashboard {
         global $wpdb;
         $project = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_projects WHERE id = %d", $pid ) );
         if ( ! $project ) wp_send_json_error( 'Project not found' );
-        $settings = BV_Settings::get_settings();
-        $company_name = $settings['company_name'] ?? 'BusinessVance';
-        $from_email = $settings['consultant_email'] ?? get_option( 'admin_email' );
-        $portal_url = $settings['portal_url'] ?? site_url();
-        $status_messages = array(
-            'awaiting-agreement' => 'Please review and sign the agreement to get your project started.',
-            'awaiting-questionnaire' => 'Please complete the questionnaire so we can begin working on your project.',
-            'awaiting-documents' => 'Please upload the required documents so we can proceed with your project.',
-            'in-progress' => 'Your project is currently in progress. We will keep you updated.',
-            'quality-check' => 'Your project is in the final review stage. We will deliver it soon.',
+
+        $settings      = BV_Settings::get_settings();
+        $company_name  = $settings['company_name'] ?? 'BusinessVance';
+        $from_email    = $settings['consultant_email'] ?? get_option( 'admin_email' );
+        $portal_url    = $settings['portal_url'] ?? site_url();
+        $primary_color = $settings['primary_color'] ?? '#002B5C';
+        $logo_url      = $settings['logo_url'] ?? '';
+
+        // Fetch project services
+        $services_with_ids = $wpdb->get_results( $wpdb->prepare(
+            "SELECT s.id, s.name FROM {$wpdb->prefix}bv_project_services ps JOIN {$wpdb->prefix}bv_services s ON ps.service_id = s.id WHERE ps.project_id = %d",
+            $pid
+        ) );
+        $service_names = array();
+        $service_ids   = array();
+        foreach ( $services_with_ids as $si ) {
+            $service_names[] = esc_html( $si->name );
+            $service_ids[]   = absint( $si->id );
+        }
+        $services_list = implode( ', ', $service_names );
+
+        // Build step completion info (mirrors client-portal logic)
+        $steps = array();
+        $ph    = "";
+
+        // Agreement step
+        if ( ! empty( $service_ids ) ) {
+            $ph = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
+            $has_agreement = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_service_agreements WHERE service_id IN ($ph)",
+                ...$service_ids
+            ) );
+        } else {
+            $has_agreement = false;
+        }
+        if ( $has_agreement ) {
+            $signed = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_project_agreements WHERE project_id = %d", $pid
+            ) );
+            $steps[] = array( 'label' => 'Sign Agreement', 'done' => $signed, 'icon' => $signed ? '✅' : '📝' );
+        }
+
+        // Questionnaire step
+        if ( ! empty( $service_ids ) ) {
+            $ph = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
+            $has_q = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_service_questionnaires WHERE service_id IN ($ph)",
+                ...$service_ids
+            ) );
+            if ( ! $has_q ) {
+                $has_q = (bool) $wpdb->get_var( $wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$wpdb->prefix}bv_services WHERE id IN ($ph) AND questionnaire_template_id > 0",
+                    ...$service_ids
+                ) );
+            }
+        } else {
+            $has_q = false;
+        }
+        if ( $has_q ) {
+            $done = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_questionnaire_responses WHERE project_id = %d", $pid
+            ) );
+            $steps[] = array( 'label' => 'Complete Questionnaire', 'done' => $done, 'icon' => $done ? '✅' : '📋' );
+        }
+
+        // Documents step
+        if ( ! empty( $service_ids ) ) {
+            $ph = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
+            $has_docs = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_service_documents WHERE service_id IN ($ph)",
+                ...$service_ids
+            ) );
+        } else {
+            $has_docs = false;
+        }
+        if ( $has_docs ) {
+            $total_req  = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(DISTINCT sd.document_requirement_id) FROM {$wpdb->prefix}bv_service_documents sd WHERE sd.service_id IN ($ph) AND sd.required = 1",
+                ...$service_ids
+            ) );
+            $uploaded   = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(DISTINCT pd.document_requirement_id) FROM {$wpdb->prefix}bv_project_documents pd WHERE pd.project_id = %d AND pd.document_requirement_id IN (SELECT DISTINCT sd.document_requirement_id FROM {$wpdb->prefix}bv_service_documents sd WHERE sd.service_id IN ($ph) AND sd.required = 1)",
+                $pid, ...$service_ids
+            ) );
+            $done = ( $total_req > 0 && $uploaded >= $total_req );
+            $steps[] = array( 'label' => 'Upload Documents', 'done' => $done, 'icon' => $done ? '✅' : '📁', 'detail' => $total_req > 0 ? $uploaded . '/' . $total_req . ' uploaded' : '' );
+        }
+
+        // Determine next action message
+        $next_action = '';
+        foreach ( $steps as $s ) {
+            if ( ! $s['done'] ) {
+                $next_action = 'Please complete the <strong>' . esc_html( $s['label'] ) . '</strong>' . ( ! empty( $s['detail'] ) ? ' (' . esc_html( $s['detail'] ) . ')' : '' ) . ' step to move your project forward.';
+                break;
+            }
+        }
+        if ( empty( $next_action ) && ! empty( $steps ) ) {
+            $next_action = 'All your required steps are complete! We are now working on your project and will keep you updated.';
+        } elseif ( empty( $next_action ) ) {
+            $next_action = 'Your project is currently in progress. We will keep you updated.';
+        }
+
+        // Determine overall progress percentage
+        $total_steps  = count( $steps );
+        $done_steps   = count( array_filter( $steps, function( $s ) { return $s['done']; } ) );
+        $progress_pct = $total_steps > 0 ? round( ( $done_steps / $total_steps ) * 100 ) : 0;
+
+        // Status-specific subject lines
+        $status_subjects = array(
+            'awaiting-agreement'   => 'Action Required: Sign Your Agreement — ' . $project->project_number,
+            'awaiting-questionnaire' => 'Action Required: Complete Your Questionnaire — ' . $project->project_number,
+            'awaiting-documents'   => 'Action Required: Upload Your Documents — ' . $project->project_number,
+            'in-progress'          => 'Project Update — ' . $project->project_number,
+            'quality-check'        => 'Almost Done — Final Review for ' . $project->project_number,
         );
-        $action_msg = $status_messages[ $project->status ] ?? 'Please check your project dashboard for updates.';
-        $subject = 'Reminder: Action Required - ' . $project->project_number;
-        $body = "Hi " . $project->client_name . ",\n\n"
-              . "This is a friendly reminder regarding your project " . $project->project_number . ".\n\n"
-              . $action_msg . "\n\n"
-              . "You can access your project portal here: " . $portal_url . "\n\n"
-              . "If you have any questions, feel free to reply to this email.\n\n"
-              . "Best regards,\n" . $company_name;
-        $headers = array( 'Content-Type: text/plain; charset=UTF-8', 'From: ' . $company_name . ' <' . $from_email . '>' );
+        $subject = $status_subjects[ $project->status ] ?? 'Project Reminder — ' . $project->project_number;
+
+        // Lighter version of primary color for accents
+        $light_color = $this->lighten_color( $primary_color, 0.92 );
+
+        // Build step progress rows
+        $steps_html = '';
+        foreach ( $steps as $step ) {
+            $bg       = $step['done'] ? '#f0fdf4' : '#fffbeb';
+            $border   = $step['done'] ? '#86efac' : '#fde68a';
+            $text_clr = $step['done'] ? '#166534' : '#92400e';
+            $detail   = ! empty( $step['detail'] ) ? ' <span style="font-size:12px;color:#6b7280;">(' . esc_html( $step['detail'] ) . ')</span>' : '';
+            $steps_html .= '<tr style="background:' . $bg . ';border-left:4px solid ' . $border . ';">
+                <td style="padding:12px 16px;font-size:14px;color:' . $text_clr . ';">' . $step['icon'] . '  ' . esc_html( $step['label'] ) . $detail . '</td>
+                <td style="padding:12px 16px;text-align:right;font-size:13px;font-weight:600;color:' . $text_clr . ';white-space:nowrap;">' . ( $step['done'] ? 'Complete' : 'Pending' ) . '</td>
+            </tr>';
+        }
+
+        // Logo or fallback text header
+        if ( ! empty( $logo_url ) ) {
+            $header_content = '<img src="' . esc_url( $logo_url ) . '" alt="' . esc_attr( $company_name ) . '" style="max-height:60px;max-width:200px;" />';
+        } else {
+            $header_content = '<span style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.5px;">' . esc_html( $company_name ) . '</span>';
+        }
+
+        $body = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head><body style="margin:0;padding:0;background-color:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,\'Helvetica Neue\',Arial,sans-serif;">'
+        . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6;min-height:100%;padding:32px 16px;">'
+        . '<tr><td align="center">'
+
+        // Header banner
+        . '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;margin:0 auto;">'
+        . '<tr><td style="background-color:' . esc_attr( $primary_color ) . ';padding:24px 32px;border-radius:12px 12px 0 0;text-align:center;">'
+        . $header_content
+        . '</td></tr>'
+
+        // Main content card
+        . '<tr><td style="background-color:#ffffff;padding:32px;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;">'
+
+        // Greeting
+        . '<p style="margin:0 0 6px;font-size:20px;font-weight:700;color:#111827;">Hi ' . esc_html( $project->client_name ) . ',</p>'
+        . '<p style="margin:0 0 20px;font-size:15px;color:#6b7280;line-height:1.5;">This is a friendly reminder about your project.</p>'
+
+        // Project info card
+        . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:' . esc_attr( $light_color ) . ';border-radius:8px;margin-bottom:24px;overflow:hidden;">'
+        . '<tr><td style="padding:16px 20px;">'
+        . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
+        . '<tr><td style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;padding-bottom:4px;">Project</td><td style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;padding-bottom:4px;text-align:right;">Status</td></tr>'
+        . '<tr><td style="font-size:18px;font-weight:700;color:#111827;">' . esc_html( $project->project_number ) . '</td><td style="font-size:14px;font-weight:600;color:' . esc_attr( $primary_color ) . ';text-align:right;">' . esc_html( ucfirst( str_replace( '-', ' ', $project->status ) ) ) . '</td></tr>'
+        . ( ! empty( $services_list ) ? '<tr><td colspan="2" style="padding-top:8px;font-size:13px;color:#374151;"><strong>Services:</strong> ' . $services_list . '</td></tr>' : '' )
+        . '</table></td></tr></table>'
+
+        // Progress bar
+        . ( $total_steps > 0
+            ? '<p style="margin:0 0 8px;font-size:13px;font-weight:600;color:#374151;">Your Progress</p>'
+              . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#e5e7eb;border-radius:8px;height:12px;margin-bottom:20px;overflow:hidden;">'
+              . '<tr><td style="width:' . $progress_pct . '%;height:12px;background:' . esc_attr( $primary_color ) . ';border-radius:8px;' . ( $progress_pct >= 100 ? '' : 'border-radius:8px 0 0 8px;' ) . '"></td></tr>'
+              . '</table>'
+            : '' )
+
+        // Step checklist
+        . ( ! empty( $steps_html )
+            ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-bottom:24px;">'
+              . $steps_html
+              . '</table>'
+            : '' )
+
+        // Next action message
+        . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:' . esc_attr( $light_color ) . ';border-radius:8px;margin-bottom:28px;border-left:4px solid ' . esc_attr( $primary_color ) . ';">'
+        . '<tr><td style="padding:16px 20px;font-size:14px;color:#374151;line-height:1.6;">' . $next_action . '</td></tr>'
+        . '</table>'
+
+        // CTA button
+        . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
+        . '<tr><td align="center" style="padding:0 0 8px;">'
+        . '<a href="' . esc_url( $portal_url ) . '" target="_blank" style="display:inline-block;background-color:' . esc_attr( $primary_color ) . ';color:#ffffff !important;text-decoration:none !important;font-size:15px;font-weight:600;padding:14px 36px;border-radius:8px;mso-padding-alt:0;text-align:center;min-width:200px;">&#128640;  Go to My Project Portal</a>'
+        . '</td></tr>'
+        . '<tr><td align="center" style="padding:0;">'
+        . '<p style="margin:0;font-size:12px;color:#9ca3af;">If the button above doesn\'t work, copy and paste this link into your browser:<br><a href="' . esc_url( $portal_url ) . '" style="color:' . esc_attr( $primary_color ) . ';word-break:break-all;">' . esc_html( $portal_url ) . '</a></p>'
+        . '</td></tr>'
+        . '</table>'
+
+        . '</td></tr>' // End main content
+
+        // Footer
+        . '<tr><td style="background-color:#f9fafb;padding:20px 32px;border-radius:0 0 12px 12px;border:1px solid #e5e7eb;border-top:none;text-align:center;">'
+        . '<p style="margin:0 0 4px;font-size:13px;color:#6b7280;">If you have any questions, feel free to reply to this email.</p>'
+        . '<p style="margin:0;font-size:13px;color:#9ca3af;">Best regards,<br><strong style="color:#374151;">' . esc_html( $company_name ) . '</strong></p>'
+        . '</td></tr>'
+
+        . '</table>' // End 600px wrapper
+        . '</td></tr></table>' // End outer
+        . '</body></html>';
+
+        $headers = array(
+            'Content-Type: text/html; charset=UTF-8',
+            'From: ' . $company_name . ' <' . $from_email . '>',
+        );
         $sent = wp_mail( $project->client_email, $subject, $body, $headers );
         if ( $sent ) {
             $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array(
@@ -231,6 +423,23 @@ class BV_Consultant_Dashboard {
         } else {
             wp_send_json_error( 'Failed to send email. Please check your mail configuration.' );
         }
+    }
+
+    /**
+     * Lighten a hex color by a factor (0-1).
+     */
+    private function lighten_color( $hex, $factor ) {
+        $hex = ltrim( $hex, '#' );
+        if ( strlen( $hex ) === 3 ) {
+            $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+        }
+        $r = hexdec( substr( $hex, 0, 2 ) );
+        $g = hexdec( substr( $hex, 2, 2 ) );
+        $b = hexdec( substr( $hex, 4, 2 ) );
+        $r = (int) ( $r + ( 255 - $r ) * $factor );
+        $g = (int) ( $g + ( 255 - $g ) * $factor );
+        $b = (int) ( $b + ( 255 - $b ) * $factor );
+        return '#' . sprintf( '%02x%02x%02x', $r, $g, $b );
     }
 
     public function render_page() {
