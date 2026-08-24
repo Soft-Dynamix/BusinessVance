@@ -1213,6 +1213,21 @@ class BV_Consultant_Dashboard {
                                 $display_val .= '</div>';
                             }
                         }
+                        // v2.7.55: Single-file JSON (has 'file' key, no 'url' key)
+                        elseif ( $json_val && isset( $json_val[0] ) && isset( $json_val[0]['file'] ) && ! isset( $json_val[0]['url'] ) ) {
+                            $display_val = '';
+                            $is_html = true;
+                            $nonce = wp_create_nonce( 'bv_consultant_dashboard' );
+                            foreach ( $json_val as $f ) {
+                                $display_val .= '<div style="margin-bottom:4px;">' . esc_html( $f['name'] ?? 'File' );
+                                if ( ! empty( $f['size'] ) ) $display_val .= ' <small>(' . esc_html( $f['size'] ) . ')</small>';
+                                if ( ! empty( $f['file'] ) ) {
+                                    $dl_url = admin_url( 'admin-ajax.php?action=bv_cd_download_qfile&nonce=' . $nonce . '&project_id=' . $project_id . '&file=' . rawurlencode( $f['file'] ) );
+                                    $display_val .= ' — <a href="' . esc_url( $dl_url ) . '" class="button button-small" style="margin-left:4px;">⬇ Download</a>';
+                                }
+                                $display_val .= '</div>';
+                            }
+                        }
                         elseif ( is_array( $json_val ) ) {
                             if ( isset( $json_val[0] ) && is_array( $json_val[0] ) ) {
                                 // Repeatable table: 2D array
@@ -2261,6 +2276,15 @@ foreach ( $service_questions as $q ) :
             <div class="mf-list"><?php foreach ( $qjson as $f ) : ?>
                 <div class="mf-file">
                     <span class="mf-file-name"><?php echo esc_html( $f['name'] ?? 'File' ); ?></span><?php if ( ! empty( $f['size'] ) ) : ?> <span class="mf-file-size"><?php echo esc_html( $f['size'] ); ?></span><?php endif; ?><?php if ( ! empty( $f['file'] ) && ! $for_email ) : ?> <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=bv_cd_download_qfile&nonce=' . $nonce . '&project_id=' . $project_id . '&file=' . rawurlencode( $f['file'] ) ) ); ?>" class="mf-file-dl">⬇ Download</a><?php elseif ( ! empty( $f['file'] ) && $for_email ) : ?> <span class="mf-file-size"><?php echo esc_html( $f['name'] ?? $f['file'] ); ?></span><?php elseif ( ! empty( $f['url'] ) ) : ?> <a href="<?php echo esc_url( $f['url'] ); ?>" class="mf-file-dl" target="_blank">⬇ Open</a><?php endif; ?>
+                </div>
+            <?php endforeach; ?></div>
+        <?php
+        // v2.7.55: Single-file JSON (has 'file' key, no 'url' key)
+        elseif ( $qjson && isset( $qjson[0] ) && isset( $qjson[0]['file'] ) && ! isset( $qjson[0]['url'] ) ) :
+        ?>
+            <div class="mf-list"><?php foreach ( $qjson as $f ) : ?>
+                <div class="mf-file">
+                    <span class="mf-file-name"><?php echo esc_html( $f['name'] ?? 'File' ); ?></span><?php if ( ! empty( $f['size'] ) ) : ?> <span class="mf-file-size"><?php echo esc_html( $f['size'] ); ?></span><?php endif; ?><?php if ( ! empty( $f['file'] ) && ! $for_email ) : ?> <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=bv_cd_download_qfile&nonce=' . $nonce . '&project_id=' . $project_id . '&file=' . rawurlencode( $f['file'] ) ) ); ?>" class="mf-file-dl">⬇ Download</a><?php elseif ( ! empty( $f['file'] ) && $for_email ) : ?> <span class="mf-file-size"><?php echo esc_html( $f['name'] ?? $f['file'] ); ?></span><?php endif; ?>
                 </div>
             <?php endforeach; ?></div>
         <?php

@@ -4,6 +4,7 @@
  * @since 2.7.20 Fixed repeatable/checkbox/address serialization, added multifile/signature/static fields
  * @since 2.7.20 Moved inline handlers here for reliability, added rating hover, fixed all field types
  * @since 2.7.22 Rewrote signature pad: one-time init, mobile fix, clear & re-sign from saved image
+ * @since 2.7.55 Fixed single file upload, added Save Draft & Continue Later, file change feedback
  */
 (function($) {
     'use strict';
@@ -355,11 +356,9 @@
     }
 
     // ============================================
-    // Questionnaire form submission
+    // Questionnaire form submission (final + draft)
     // ============================================
-    $(document).on('submit', '#bv-questionnaire-form', function(e) {
-        e.preventDefault();
-        var $form = $(this);
+    function bvPrepareAndSubmit($form, isDraft) {
         var projectId = $form.data('project-id');
         var responses = {};
 
@@ -368,9 +367,9 @@
             window.tinyMCE.triggerSave();
         }
 
-        // Collect all unique question IDs
+        // Collect all unique question IDs (exclude actual file inputs — use hidden data fields)
         var qids = {};
-        $form.find('input[name^="q_"], select[name^="q_"], textarea[name^="q_"]').each(function() {
+        $form.find('input[name^="q_"]:not([type="file"]), select[name^="q_"], textarea[name^="q_"]').each(function() {
             var qid = bvExtractQid($(this).attr('name'));
             if (qid) qids[qid] = true;
         });
@@ -383,12 +382,29 @@
             }
         }
 
+        // Collect single-file hidden data (previously uploaded or to be uploaded)
+        $form.find('input.bv-q-file-data').each(function() {
+            var $h = $(this);
+            var qid = $h.data('qid');
+            if (qid && $h.val()) {
+                responses[qid] = $h.val();
+            }
+        });
+
+        // Collect multifile hidden data
+        $form.find('input.bv-q-multifile-data').each(function() {
+            var $h = $(this);
+            var qid = $h.data('qid');
+            if (qid && $h.val()) {
+                responses[qid] = $h.val();
+            }
+        });
+
         // Collect signature data
         $form.find('.bv-q-signature-canvas').each(function() {
             var canvas = this;
             var qid = $(canvas).data('qid');
             if (qid && canvas.toDataURL) {
-                // Only save if canvas has been drawn on
                 var blank = document.createElement('canvas');
                 blank.width = canvas.width;
                 blank.height = canvas.height;
@@ -398,7 +414,41 @@
             }
         });
 
-        // Handle multifile uploads via AJAX first
+        // Handle single-file uploads via AJAX first (same endpoint as multifile)
+        var singleFilePromises = [];
+        $form.find('.bv-q-file').each(function() {
+            var $input = $(this);
+            var qid = $input.data('qid');
+            if (!qid || !$input[0].files.length) return;
+
+            var fd = new FormData();
+            fd.append('files[]', $input[0].files[0]);
+            fd.append('action', 'bv_portal_upload_multifile');
+            fd.append('nonce', bv_portal.nonce);
+            fd.append('project_id', projectId);
+            fd.append('question_id', qid);
+
+            var promise = new Promise(function(resolve, reject) {
+                $.ajax({
+                    url: bv_portal.ajax_url,
+                    type: 'POST',
+                    data: fd,
+                    processData: false,
+                    contentType: false,
+                    success: function(r) {
+                        if (r.success) {
+                            resolve({ qid: qid, data: r.data });
+                        } else {
+                            reject(r.data || 'File upload failed');
+                        }
+                    },
+                    error: function() { reject('Network error during file upload.'); }
+                });
+            });
+            singleFilePromises.push(promise);
+        });
+
+        // Handle multifile uploads via AJAX
         var multifilePromises = [];
         $form.find('.bv-q-multifile-input').each(function() {
             var $input = $(this);
@@ -434,18 +484,19 @@
             multifilePromises.push(promise);
         });
 
-        $('#bv-q-status').html('<span class="bv-q-saving">Saving...</span>');
-        var $btn = $form.find('.bv-btn');
-        var origText = $btn.text();
-        $btn.text('Saving...').prop('disabled', true);
+        var allPromises = singleFilePromises.concat(multifilePromises);
+        var $status = $('#bv-q-status');
+        var $btns = $form.find('.bv-btn');
+        var origTexts = $btns.map(function() { return $(this).data('bv-orig-text') || $(this).text(); }).get();
+        $btns.each(function(i) { $(this).data('bv-orig-text', origTexts[i]); }).text('Saving...').prop('disabled', true);
+        $status.html('<span class="bv-q-saving">Saving...</span>');
 
-        if (multifilePromises.length > 0) {
-            Promise.all(multifilePromises).then(function(results) {
+        if (allPromises.length > 0) {
+            Promise.all(allPromises).then(function(results) {
                 for (var i = 0; i < results.length; i++) {
                     var qid = results[i].qid;
-                    // Merge with previously uploaded files from hidden field
-                    var existing = responses[qid];
                     var existingFiles = [];
+                    var existing = responses[qid];
                     if (typeof existing === 'string') {
                         try { existingFiles = JSON.parse(existing); } catch(e) {}
                     } else if (Array.isArray(existing)) {
@@ -453,31 +504,51 @@
                     }
                     responses[qid] = existingFiles.concat(results[i].data);
                 }
-                bvSubmitResponses(projectId, responses, $btn, origText);
+                bvSubmitResponses(projectId, responses, $btns, origTexts, isDraft);
             }).catch(function(err) {
-                $btn.text(origText).prop('disabled', false);
-                $('#bv-q-status').html('<span class="bv-q-error">' + bvEscapeHtml(String(err)) + '</span>');
+                $btns.each(function(i) { $(this).text(origTexts[i]).prop('disabled', false); });
+                $status.html('<span class="bv-q-error">' + bvEscapeHtml(String(err)) + '</span>');
             });
         } else {
-            bvSubmitResponses(projectId, responses, $btn, origText);
+            bvSubmitResponses(projectId, responses, $btns, origTexts, isDraft);
         }
+    }
+
+    // Final submit (Save Questionnaire)
+    $(document).on('submit', '#bv-questionnaire-form', function(e) {
+        e.preventDefault();
+        bvPrepareAndSubmit($(this), false);
     });
 
-    function bvSubmitResponses(projectId, responses, $btn, origText) {
-        $.post(bv_portal.ajax_url, {
+    // Draft submit (Save Draft & Continue Later)
+    $(document).on('click', '.bv-save-draft', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        bvPrepareAndSubmit($(this).closest('#bv-questionnaire-form'), true);
+    });
+
+    function bvSubmitResponses(projectId, responses, $btns, origTexts, isDraft) {
+        var postData = {
             action: 'bv_portal_submit_questionnaire',
             nonce: bv_portal.nonce,
             project_id: projectId,
             responses: responses
-        }, function(r) {
-            $btn.text(origText).prop('disabled', false);
+        };
+        if (isDraft) postData.is_draft = '1';
+
+        $.post(bv_portal.ajax_url, postData, function(r) {
+            $btns.each(function(i) { $(this).text(origTexts[i]).prop('disabled', false); });
             if (r.success) {
-                $('#bv-q-status').html('<span class="bv-q-saved">&#10003; ' + bvEscapeHtml(r.data || 'Saved') + '</span>');
+                if (isDraft) {
+                    $('#bv-q-status').html('<span class="bv-q-saved" style="color:#f59e0b;">&#128190; ' + bvEscapeHtml(r.data || 'Draft saved') + '</span>');
+                } else {
+                    $('#bv-q-status').html('<span class="bv-q-saved">&#10003; ' + bvEscapeHtml(r.data || 'Saved') + '</span>');
+                }
             } else {
                 $('#bv-q-status').html('<span class="bv-q-error">' + bvEscapeHtml(r.data || 'Error saving') + '</span>');
             }
         }).fail(function() {
-            $btn.text(origText).prop('disabled', false);
+            $btns.each(function(i) { $(this).text(origTexts[i]).prop('disabled', false); });
             $('#bv-q-status').html('<span class="bv-q-error">Network error. Please try again.</span>');
         });
     }
@@ -616,6 +687,25 @@
                 $wrap.empty().removeClass('bv-q-sig-confirmed').append($canvas).append($actions).append($hint);
                 // Initialize the new canvas for drawing (only once!)
                 bvInitSignatureCanvas($canvas[0]);
+            }
+        }
+    });
+
+    // ============================================
+    // Single file: show selected filename, allow re-selection
+    // ============================================
+    $(document).on('change', '.bv-q-file', function() {
+        var $input = $(this);
+        var $wrap = $input.closest('.bv-q-file-area');
+        var qid = $input.data('qid');
+        var $status = $wrap.find('.bv-q-file-status');
+        if (this.files.length > 0) {
+            var sizeStr = (this.files[0].size / 1024).toFixed(1);
+            sizeStr = sizeStr > 1024 ? (sizeStr / 1024).toFixed(1) + ' MB' : sizeStr + ' KB';
+            if ($status.length) {
+                $status.html('<span class="bv-q-file-selected">&#128196; ' + bvEscapeHtml(this.files[0].name) + ' <small>(' + sizeStr + ')</small></span>');
+            } else {
+                $wrap.append('<div class="bv-q-file-status"><span class="bv-q-file-selected">&#128196; ' + bvEscapeHtml(this.files[0].name) + ' <small>(' + sizeStr + ')</small></span></div>');
             }
         }
     });

@@ -1376,6 +1376,11 @@ class BV_Client_Portal {
                 <div class="bv-empty-state"><?php echo esc_html__( 'No questionnaire available for this project yet.', 'businessvance-services-manager' ); ?></div>
             <?php else : ?>
             <form id="bv-questionnaire-form" data-project-id="<?php echo $project->id; ?>">
+                <?php
+                // v2.7.55: Load draft responses if they exist
+                $bv_draft = get_option( 'bv_q_draft_' . $project->id, false );
+                $bv_draft_data = $bv_draft ? ( is_array( $bv_draft ) ? $bv_draft : json_decode( $bv_draft, true ) ) : array();
+                ?>
                 <?php $section_num = 0; foreach ( $sections as $section ) : $section_num++; ?>
                 <div class="bv-q-section" id="bv-q-section-<?php echo $section_num; ?>">
                     <div class="bv-q-section-header">
@@ -1394,7 +1399,8 @@ class BV_Client_Portal {
                     <?php foreach ( $section->questions as $q ) : ?>
                     <?php
                         $options = json_decode( $q->options, true );
-                        $val = $q->response_value ? $q->response_value : '';
+                        // v2.7.55: Check draft responses first, then fall back to actual saved response
+                        $val = isset( $bv_draft_data[ $q->id ] ) ? $bv_draft_data[ $q->id ] : ( $q->response_value ? $q->response_value : '' );
                         $qid = esc_attr( $q->id );
                         $req = $q->is_required ? 'required' : '';
 
@@ -1445,9 +1451,22 @@ class BV_Client_Portal {
                                 <?php endif; ?>
                             </div>
                         <?php elseif ( $q->type === 'file' ) : ?>
+                            <?php
+                            // Parse previously uploaded file data (JSON array)
+                            $saved_file_data = $val;
+                            $saved_file_name = '';
+                            $saved_file_arr = json_decode( $val, true );
+                            if ( is_array( $saved_file_arr ) && isset( $saved_file_arr[0] ) ) {
+                                $saved_file_name = $saved_file_arr[0]['name'] ?? '';
+                                $saved_file_data = $val; // keep full JSON for hidden field
+                            }
+                            ?>
                             <div class="bv-q-file-area">
-                                <input type="file" id="q_<?php echo $qid; ?>" name="q_<?php echo $qid; ?>" class="bv-q-file" data-question-id="<?php echo $qid; ?>" />
-                                <?php if ( $val ) : ?><span class="bv-q-file-saved">&#10003; <?php echo esc_html__( 'File uploaded', 'businessvance-services-manager' ); ?></span><?php endif; ?>
+                                <input type="file" id="q_<?php echo $qid; ?>" class="bv-q-file" data-qid="<?php echo $qid; ?>" />
+                                <input type="hidden" class="bv-q-file-data" name="q_<?php echo $qid; ?>" data-qid="<?php echo $qid; ?>" value="<?php echo esc_attr( $saved_file_data ); ?>" />
+                                <?php if ( $saved_file_name ) : ?>
+                                <div class="bv-q-file-status"><span class="bv-q-file-saved">&#10003; <?php echo esc_html( $saved_file_name ); ?></span></div>
+                                <?php endif; ?>
                             </div>
                         <?php elseif ( $q->type === 'number' ) : ?>
                             <input type="number" id="q_<?php echo $qid; ?>" name="q_<?php echo $qid; ?>" value="<?php echo esc_attr( $val ); ?>" placeholder="<?php echo esc_attr( $q->placeholder ); ?>" <?php echo $req; ?> />
@@ -1594,6 +1613,7 @@ class BV_Client_Portal {
                 <?php endforeach; ?>
                 <div class="bv-q-actions">
                     <button type="submit" class="bv-btn bv-btn-primary"><?php echo esc_html__( 'Save Questionnaire', 'businessvance-services-manager' ); ?></button>
+                    <button type="button" class="bv-btn bv-btn-outline bv-save-draft"><?php echo esc_html__( 'Save Draft & Continue Later', 'businessvance-services-manager' ); ?></button>
                     <span id="bv-q-status"></span>
                 </div>
             </form>
@@ -2057,13 +2077,35 @@ class BV_Client_Portal {
         $project = $this->verify_project_access( $project_id );
         if ( ! $project ) wp_send_json_error( esc_html__( 'Project not found or access denied', 'businessvance-services-manager' ) );
 
+        $is_draft = ! empty( $_POST['is_draft'] );
+        $responses = $_POST['responses'];
+
+        // v2.7.55: Draft mode — save to WP option, do NOT write to responses table
+        if ( $is_draft ) {
+            update_option( 'bv_q_draft_' . $project_id, wp_json_encode( $responses ), false );
+            wp_send_json_success( esc_html__( 'Draft saved successfully. You can continue later.', 'businessvance-services-manager' ) );
+        }
+
+        // v2.7.55: Final submit — migrate any draft to actual responses, then delete draft
+        $existing_draft = get_option( 'bv_q_draft_' . $project_id, false );
+        if ( $existing_draft ) {
+            $draft_arr = is_array( $existing_draft ) ? $existing_draft : ( json_decode( $existing_draft, true ) ?: array() );
+            // Merge: current responses take priority over draft
+            foreach ( $draft_arr as $dq_id => $dq_val ) {
+                if ( ! isset( $responses[ $dq_id ] ) ) {
+                    $responses[ $dq_id ] = $dq_val;
+                }
+            }
+            delete_option( 'bv_q_draft_' . $project_id );
+        }
+
         global $wpdb;
         $responses_table = $wpdb->prefix . 'bv_questionnaire_responses';
 
         // Build question-service map if not already available (recompute for AJAX context)
         $question_service_map = $this->_question_service_map ?? array();
 
-        foreach ( $_POST['responses'] as $question_id => $value ) {
+        foreach ( $responses as $question_id => $value ) {
             if ( is_array( $value ) ) $value = wp_json_encode( $value );
             $q_id = absint( $question_id );
 
