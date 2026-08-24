@@ -661,7 +661,8 @@ class BV_Consultant_Dashboard {
             $wc_order = wc_get_order( $project->wc_order_id );
             if ( $wc_order ) {
                 $wc_order_total = $wc_order->get_total();
-                $wc_order_currency = $wc_order->get_currency_symbol();
+                $order_currency   = $wc_order->get_currency();
+                $wc_order_currency = function_exists( 'get_woocommerce_currency_symbol' ) ? get_woocommerce_currency_symbol( $order_currency ) : $order_currency;
                 $wc_order_date = $wc_order->get_date_created() ? $wc_order->get_date_created()->date( 'd M Y' ) : '';
             }
         }
