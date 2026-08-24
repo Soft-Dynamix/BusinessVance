@@ -613,6 +613,30 @@ class BV_Client_Portal {
         $portal_settings = BV_Settings::get_settings();
         $all_tabs = $this->get_visible_tabs( $project_id, $services, $portal_settings );
 
+        // v2.7.44: Hard step enforcement — client must complete steps in order.
+        // Steps: Agreement → Questionnaire → Documents.
+        // Tabs for steps not yet reachable are hidden from navigation.
+        // Overview, Reports, and Messages are always accessible.
+        // Skip enforcement if project is already past all steps (in-progress+).
+        $final_statuses = array( 'in-progress', 'quality-check', 'completed', 'delivered', 'archived' );
+        if ( ! in_array( $active_project->status, $final_statuses, true ) ) {
+            $step_info = $this->get_step_completion_info( $project_id, $services );
+            $step_reached = 0;
+            foreach ( $step_info as $si ) {
+                if ( $si['done'] ) { $step_reached++; } else { break; }
+            }
+            $step_labels = array( 'agreement', 'questionnaire', 'documents' );
+            $steps_total = count( $step_info );
+            for ( $si = 0; $si < $steps_total; $si++ ) {
+                if ( $si > $step_reached ) {
+                    $step_tab = $step_labels[ $si ] ?? '';
+                    if ( $step_tab && isset( $all_tabs[ $step_tab ] ) ) {
+                        unset( $all_tabs[ $step_tab ] );
+                    }
+                }
+            }
+        }
+
         // If requested tab is not visible, redirect to first available tab
         if ( ! isset( $all_tabs[ $tab ] ) ) {
             $tab_keys = array_keys( $all_tabs );
@@ -1064,20 +1088,32 @@ class BV_Client_Portal {
                 ...$service_ids
             ) );
 
+            // v2.7.44: Dedup — if multiple services share the same agreement template, show once
+            $seen_tpl_ids = array();
+            $deduped_templates = array();
             foreach ( $junction_rows as $jr ) {
-                $tpl = $wpdb->get_row( $wpdb->prepare(
-                    "SELECT * FROM {$wpdb->prefix}bv_agreement_templates WHERE id = %d",
-                    $jr->agreement_template_id
-                ) );
-                if ( $tpl ) {
-                    // If ALL services are NDA-only, only show NDA/confidentiality type agreements
-                    if ( $has_nda_only && ! in_array( $tpl->type, array( 'nda', 'confidentiality' ), true ) ) {
-                        continue;
+                $tid = $jr->agreement_template_id;
+                if ( isset( $seen_tpl_ids[ $tid ] ) ) {
+                    // Append service name to existing entry
+                    $seen_tpl_ids[ $tid ]['services'] .= ', ' . $jr->service_name;
+                } else {
+                    $tpl = $wpdb->get_row( $wpdb->prepare(
+                        "SELECT * FROM {$wpdb->prefix}bv_agreement_templates WHERE id = %d",
+                        $tid
+                    ) );
+                    if ( $tpl ) {
+                        if ( $has_nda_only && ! in_array( $tpl->type, array( 'nda', 'confidentiality' ), true ) ) {
+                            $seen_tpl_ids[ $tid ] = null;
+                            continue;
+                        }
+                        $seen_tpl_ids[ $tid ] = array(
+                            'services' => $jr->service_name,
+                            'template' => $tpl,
+                        );
+                        $deduped_templates[] = $seen_tpl_ids[ $tid ];
+                    } else {
+                        $seen_tpl_ids[ $tid ] = null;
                     }
-                    $custom_templates[] = array(
-                        'service'  => $jr->service_name,
-                        'template' => $tpl,
-                    );
                 }
             }
         }
@@ -1096,7 +1132,7 @@ class BV_Client_Portal {
                 <div class="bv-agreement-content">
                     <?php echo wp_kses_post( $agreement->template_content ); ?>
                 </div>
-            <?php elseif ( empty( $custom_templates ) ) : ?>
+            <?php elseif ( empty( $deduped_templates ) ) : ?>
                 <div class="bv-empty-state">
                     <p><?php echo esc_html__( 'No agreement is required for this project.', 'businessvance-services-manager' ); ?></p>
                 </div>
@@ -1105,10 +1141,10 @@ class BV_Client_Portal {
                     <p>⚠️ <?php echo esc_html__( 'Please read and sign the agreement(s) below to proceed with your project.', 'businessvance-services-manager' ); ?></p>
                 </div>
 
-                <?php foreach ( $custom_templates as $ct ) : ?>
+                <?php foreach ( $deduped_templates as $dt ) : ?>
                 <div class="bv-agreement-content" style="margin-bottom: 20px;">
-                    <h3 style="margin-top:0;"><?php echo esc_html( $ct['service'] ); ?> — <?php echo esc_html( $ct['template']->name ); ?></h3>
-                    <?php echo wp_kses_post( $ct['template']->content ); ?>
+                    <h3 style="margin-top:0;"><?php echo esc_html( $dt['services'] ); ?> — <?php echo esc_html( $dt['template']->name ); ?></h3>
+                    <?php echo wp_kses_post( $dt['template']->content ); ?>
                 </div>
                 <?php endforeach; ?>
 
@@ -1211,11 +1247,11 @@ class BV_Client_Portal {
             ...$template_ids
         ) );
 
-        // Deduplicate questions by label|type|options composite key
-        // Track which questions came from which template for display
+        // v2.7.44: Deduplicate sections by title, then dedup questions within merged sections.
+        // Track ALL service_ids per question (not just first) for correct per-service response storage.
         $seen_question_keys = array();
-        $question_service_map = array(); // question_id => service_id
-        $all_sections = array();
+        $question_service_map = array(); // question_id => [service_id, ...]
+        $all_sections_raw = array();
 
         // Build reverse map: template_id => service_ids
         $template_service_map = array();
@@ -1239,27 +1275,66 @@ class BV_Client_Portal {
                 $project_id, $section->id
             ) );
 
-            // Deduplicate by label|type|options composite key
-            $unique_questions = array();
+            // Collect questions with their service mapping for this section
+            $tpl_id = absint( $section->template_id );
+            $tpl_services = isset( $template_service_map[ $tpl_id ] ) ? $template_service_map[ $tpl_id ] : array();
+
             foreach ( $questions as $q ) {
-                $key = $q->label . '|' . $q->type . '|' . $q->options;
-                if ( isset( $seen_question_keys[ $key ] ) ) {
-                    continue;
-                }
-                $seen_question_keys[ $key ] = true;
-                $unique_questions[] = $q;
-
-                // Track which service this question belongs to
-                $tpl_id = absint( $section->template_id );
-                if ( isset( $template_service_map[ $tpl_id ] ) ) {
-                    $question_service_map[ $q->id ] = $template_service_map[ $tpl_id ][0];
-                }
+                $q->_source_services = $tpl_services; // attach service IDs
+                $q->_source_section_title = $section->title;
+                $all_sections_raw[] = $q;
             }
+        }
 
-            if ( ! empty( $unique_questions ) ) {
-                $section->questions   = $unique_questions;
-                $section->template_name = $section->template_name;
-                $all_sections[]        = $section;
+        // Deduplicate questions by label|type|options composite key
+        $seen_keys = array();
+        $unique_questions = array();
+        foreach ( $all_sections_raw as $q ) {
+            $key = $q->label . '|' . $q->type . '|' . $q->options;
+            if ( isset( $seen_keys[ $key ] ) ) {
+                // Merge service IDs from duplicate
+                $existing_q = $seen_keys[ $key ];
+                foreach ( $q->_source_services as $sid ) {
+                    if ( ! in_array( $sid, $existing_q->_source_services, true ) ) {
+                        $existing_q->_source_services[] = $sid;
+                    }
+                }
+                continue;
+            }
+            $seen_keys[ $key ] = $q;
+            $unique_questions[] = $q;
+        }
+
+        // Group unique questions by section title
+        $sections_by_title = array();
+        $section_order = array();
+        foreach ( $unique_questions as $q ) {
+            $title = $q->_source_section_title;
+            if ( ! isset( $sections_by_title[ $title ] ) ) {
+                $sections_by_title[ $title ] = array(
+                    'title' => $title,
+                    'questions' => array(),
+                );
+                $section_order[] = $title;
+            }
+            $sections_by_title[ $title ]['questions'][] = $q;
+        }
+
+        // Build final sections array and question-service map
+        $all_sections = array();
+        foreach ( $section_order as $title ) {
+            $grp = $sections_by_title[ $title ];
+            $section_obj = new stdClass();
+            $section_obj->id = 0; // merged, no single ID
+            $section_obj->title = $grp['title'];
+            $section_obj->description = '';
+            $section_obj->template_name = '';
+            $section_obj->questions = $grp['questions'];
+            $all_sections[] = $section_obj;
+
+            // Build question_service_map: question_id => [service_ids]
+            foreach ( $grp['questions'] as $q ) {
+                $question_service_map[ $q->id ] = $q->_source_services;
             }
         }
 
@@ -1535,19 +1610,31 @@ class BV_Client_Portal {
             $service_ids[] = absint( $svc->id );
         }
 
-        // Get document requirements for all project services
+        // v2.7.44: Dedup — if multiple services share the same document requirement, show once
         $requirements = array();
         if ( ! empty( $service_ids ) ) {
             $placeholders = implode( ',', array_fill( 0, count( $service_ids ), '%d' ) );
-            $requirements = $wpdb->get_results( $wpdb->prepare(
+            $raw_reqs = $wpdb->get_results( $wpdb->prepare(
                 "SELECT dr.*, sd.service_id, s.name as service_name
                  FROM {$wpdb->prefix}bv_service_documents sd
                  JOIN {$wpdb->prefix}bv_document_requirements dr ON dr.id = sd.document_requirement_id
                  JOIN {$wpdb->prefix}bv_services s ON s.id = sd.service_id
                  WHERE sd.service_id IN ($placeholders)
-                 ORDER BY s.name, sd.display_order ASC, dr.display_order ASC",
+                 ORDER BY sd.display_order ASC, dr.display_order ASC",
                 ...$service_ids
             ) );
+
+            // Group by document_requirement_id, combine service names
+            $seen_reqs = array();
+            foreach ( $raw_reqs as $r ) {
+                $rid = $r->id;
+                if ( isset( $seen_reqs[ $rid ] ) ) {
+                    $seen_reqs[ $rid ]->service_name .= ', ' . $r->service_name;
+                } else {
+                    $seen_reqs[ $rid ] = $r;
+                }
+            }
+            $requirements = array_values( $seen_reqs );
         }
 
         // Build a map: requirement_id => uploaded documents count
@@ -1968,27 +2055,26 @@ class BV_Client_Portal {
             if ( is_array( $value ) ) $value = wp_json_encode( $value );
             $q_id = absint( $question_id );
 
-            // Determine the correct service_id for this question
-            $service_id = isset( $question_service_map[ $q_id ] ) ? absint( $question_service_map[ $q_id ] ) : 0;
+            // v2.7.44: question_service_map now stores arrays of service_ids
+            $service_ids = isset( $question_service_map[ $q_id ] ) ? (array) $question_service_map[ $q_id ] : array();
 
-            // Fallback: look up which service's template contains this question
-            if ( ! $service_id ) {
-                $service_id = $wpdb->get_var( $wpdb->prepare(
-                    "SELECT sq.service_id
+            // Fallback: look up which services' templates contain this question
+            if ( empty( $service_ids ) ) {
+                $fallback_sids = $wpdb->get_results( $wpdb->prepare(
+                    "SELECT DISTINCT sq.service_id
                      FROM {$wpdb->prefix}bv_questionnaire_questions q
                      JOIN {$wpdb->prefix}bv_questionnaire_sections qs ON qs.id = q.section_id
                      JOIN {$wpdb->prefix}bv_service_questionnaires sq ON sq.questionnaire_template_id = qs.template_id
                      JOIN {$wpdb->prefix}bv_project_services ps ON ps.service_id = sq.service_id
-                     WHERE q.id = %d AND ps.project_id = %d
-                     LIMIT 1",
+                     WHERE q.id = %d AND ps.project_id = %d",
                     $q_id, $project_id
                 ) );
-                $service_id = absint( $service_id );
+                $service_ids = array_map( 'absint', wp_list_pluck( $fallback_sids, 'service_id' ) );
             }
 
             // Second fallback: legacy column
-            if ( ! $service_id ) {
-                $service_id = $wpdb->get_var( $wpdb->prepare(
+            if ( empty( $service_ids ) ) {
+                $fallback_sid = $wpdb->get_var( $wpdb->prepare(
                     "SELECT ps.service_id
                      FROM {$wpdb->prefix}bv_questionnaire_questions q
                      JOIN {$wpdb->prefix}bv_questionnaire_sections qs ON qs.id = q.section_id
@@ -1998,30 +2084,36 @@ class BV_Client_Portal {
                      LIMIT 1",
                     $q_id, $project_id
                 ) );
-                $service_id = absint( $service_id );
+                $service_ids = $fallback_sid ? array( absint( $fallback_sid ) ) : array();
             }
 
-            $existing = $wpdb->get_var( $wpdb->prepare(
-                "SELECT id FROM {$responses_table} WHERE project_id = %d AND question_id = %d",
-                $project_id, $q_id
-            ) );
-            // Sanitize value: use wp_unslash for JSON strings to preserve structure,
-            // sanitize_text_field for plain text values. Uses ord() to avoid brace/bracket
-            // characters in source code that may confuse certain PHP parsers or security scanners.
+            // Sanitize value
             $first_ord = ( is_string( $value ) && strlen( $value ) > 0 ) ? ord( substr( $value, 0, 1 ) ) : 0;
             $is_json_value = ( $first_ord === 91 || $first_ord === 123 );
             $clean_value = $is_json_value ? wp_unslash( $value ) : sanitize_text_field( $value );
-            $data = array(
-                'project_id'     => $project_id,
-                'service_id'     => $service_id,
-                'question_id'    => $q_id,
-                'response_value' => $clean_value,
-            );
-            $format = array( '%d', '%d', '%d', '%s' );
-            if ( $existing ) {
-                $wpdb->update( $responses_table, $data, array( 'id' => $existing ), $format, array( '%d' ) );
-            } else {
-                $wpdb->insert( $responses_table, $data, $format );
+
+            // v2.7.44: Save response for EACH service that shares this question
+            // so consultant dashboard can show per-service questionnaire answers
+            if ( empty( $service_ids ) ) {
+                $service_ids = array( 0 ); // backward compat
+            }
+            foreach ( $service_ids as $sid ) {
+                $existing = $wpdb->get_var( $wpdb->prepare(
+                    "SELECT id FROM {$responses_table} WHERE project_id = %d AND service_id = %d AND question_id = %d",
+                    $project_id, absint( $sid ), $q_id
+                ) );
+                $data = array(
+                    'project_id'     => $project_id,
+                    'service_id'     => absint( $sid ),
+                    'question_id'    => $q_id,
+                    'response_value' => $clean_value,
+                );
+                $format = array( '%d', '%d', '%d', '%s' );
+                if ( $existing ) {
+                    $wpdb->update( $responses_table, $data, array( 'id' => $existing ), $format, array( '%d' ) );
+                } else {
+                    $wpdb->insert( $responses_table, $data, $format );
+                }
             }
         }
 
