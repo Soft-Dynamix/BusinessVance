@@ -104,6 +104,11 @@ class BV_Consultant_Dashboard {
      * @return string
      */
     public function wc_login_redirect( $redirect, $user ) {
+        // If login came from [bv_login_page] shortcode, pass through —
+        // the shortcode will show a destination picker (Client Portal / LMS Dashboard).
+        // Consultant Dashboard is separate and should NOT intercept this flow.
+        if ( ! empty( $_REQUEST['bv_login_source'] ) ) return $redirect;
+
         if ( $user->has_cap( 'manage_options' ) ) return $redirect;
         if ( ! $user->has_cap( self::CAP ) ) return $redirect;
         return admin_url( 'admin.php?page=bv-consultant-dashboard', 'admin' );

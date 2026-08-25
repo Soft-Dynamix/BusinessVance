@@ -2,6 +2,11 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.64] - 2026-08-25
+### Fixed
+- **Login page redirect to Consultant Dashboard**: Consultant dashboard's `woocommerce_login_redirect` filter (priority 99999) was overriding the login page redirect, sending ALL users (including consultants logging in via `[bv_login_page]`) to the Consultant Dashboard instead of back to the login page's destination picker. Now checks for `bv_login_source` hidden field and passes through when login came from `[bv_login_page]`.
+- Updated `render_login_page()` docblock to accurately describe the two-step flow (was still describing v2.7.61's auto-redirect)
+
 ## [2.7.63] - 2026-08-25
 ### Changed
 - `[bv_login_page]` now uses a two-step flow: **login first**, then choose destination
