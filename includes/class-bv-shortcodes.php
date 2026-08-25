@@ -607,19 +607,9 @@ class BV_Shortcodes {
      * @return string HTML output
      */
     public function render_login_page( $atts ) {
-        // If already logged in, redirect based on role
-        if ( is_user_logged_in() ) {
-            $redirect = $this->get_redirect_for_user( wp_get_current_user() );
-            if ( $redirect ) {
-                echo '<script>window.location.href=' . json_encode( $redirect ) . ';</script>';
-                return '<noscript><meta http-equiv="refresh" content="0;url=' . esc_url( $redirect ) . '"></noscript>';
-            }
-        }
-
         $atts = shortcode_atts( array(
-            'title'       => '',
-            'subtitle'    => '',
-            'redirect'    => '',
+            'title'        => '',
+            'subtitle'     => '',
             'register_url' => '',
         ), $atts, 'bv_login_page' );
 
@@ -628,9 +618,15 @@ class BV_Shortcodes {
         $primary_color   = $settings['primary_color'] ?? '#002B5C';
         $secondary_color = $settings['secondary_color'] ?? '#008080';
         $logo_url        = $settings['logo_url'] ?? '';
-        $title           = $atts['title'] ?: sprintf( esc_html__( 'Welcome to %s', 'businessvance-services-manager' ), $company_name );
-        $subtitle        = $atts['subtitle'] ?: esc_html__( 'Sign in to access your dashboard, portal, or courses.', 'businessvance-services-manager' );
         $register_url    = $atts['register_url'];
+
+        // Auto-detect registration URL (WooCommerce My Account)
+        if ( empty( $register_url ) && function_exists( 'wc_get_page_permalink' ) ) {
+            $my_account = wc_get_page_permalink( 'myaccount' );
+            if ( $my_account ) {
+                $register_url = $my_account;
+            }
+        }
 
         // Resolve portal URL
         $portal_url = '';
@@ -659,13 +655,168 @@ class BV_Shortcodes {
             }
         }
 
-        // Auto-detect registration URL (WooCommerce My Account)
-        if ( empty( $register_url ) && function_exists( 'wc_get_page_permalink' ) ) {
-            $my_account = wc_get_page_permalink( 'myaccount' );
-            if ( $my_account ) {
-                $register_url = $my_account;
-            }
+        // ---- Already logged in? Show destination picker ----
+        if ( is_user_logged_in() ) {
+            $user    = wp_get_current_user();
+            $title   = $atts['title'] ?: sprintf( esc_html__( 'Welcome back, %s', 'businessvance-services-manager' ), $user->display_name );
+            $current_page = $_SERVER['REQUEST_URI'] ?? '';
+
+            ob_start();
+            ?>
+            <style>
+                .bv-pick-wrap {
+                    max-width: 620px;
+                    margin: 40px auto;
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                }
+                .bv-pick-card {
+                    background: #fff;
+                    border-radius: 16px;
+                    box-shadow: 0 4px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+                    overflow: hidden;
+                }
+                .bv-pick-header {
+                    background: linear-gradient(135deg, <?php echo esc_attr( $primary_color ); ?> 0%, <?php echo esc_attr( $secondary_color ); ?> 100%);
+                    padding: 32px 28px 28px;
+                    text-align: center;
+                }
+                .bv-pick-logo {
+                    max-height: 60px;
+                    max-width: 200px;
+                    margin-bottom: 16px;
+                    border-radius: 4px;
+                }
+                .bv-pick-header h2 {
+                    margin: 0;
+                    font-size: 22px;
+                    font-weight: 700;
+                    color: #fff;
+                }
+                .bv-pick-header p {
+                    margin: 8px 0 0;
+                    font-size: 14px;
+                    color: rgba(255,255,255,0.85);
+                }
+                .bv-pick-destinations {
+                    display: flex;
+                    gap: 16px;
+                    padding: 24px;
+                }
+                .bv-pick-dest {
+                    flex: 1;
+                    border: 2px solid #e5e7eb;
+                    border-radius: 12px;
+                    padding: 24px 20px;
+                    text-align: center;
+                    text-decoration: none;
+                    transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+                    display: block;
+                }
+                .bv-pick-dest:hover {
+                    border-color: <?php echo esc_attr( $primary_color ); ?>;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                    transform: translateY(-2px);
+                }
+                .bv-pick-dest-icon {
+                    width: 56px;
+                    height: 56px;
+                    border-radius: 14px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin: 0 auto 14px;
+                }
+                .bv-pick-dest.bv-pick-portal .bv-pick-dest-icon {
+                    background: <?php echo esc_attr( $primary_color ); ?>12;
+                    color: <?php echo esc_attr( $primary_color ); ?>;
+                }
+                .bv-pick-dest.bv-pick-lms .bv-pick-dest-icon {
+                    background: #f59e0b12;
+                    color: #b45309;
+                }
+                .bv-pick-dest h3 {
+                    margin: 0 0 8px;
+                    font-size: 16px;
+                    font-weight: 700;
+                }
+                .bv-pick-dest p {
+                    margin: 0 0 16px;
+                    font-size: 13px;
+                    color: #6b7280;
+                    line-height: 1.5;
+                }
+                .bv-pick-dest.bv-pick-portal h3 { color: <?php echo esc_attr( $primary_color ); ?>; }
+                .bv-pick-dest.bv-pick-lms h3 { color: #b45309; }
+                .bv-pick-dest .bv-pick-arrow {
+                    font-size: 13px;
+                    font-weight: 600;
+                }
+                .bv-pick-dest.bv-pick-portal .bv-pick-arrow { color: <?php echo esc_attr( $primary_color ); ?>; }
+                .bv-pick-dest.bv-pick-lms .bv-pick-arrow { color: #b45309; }
+                .bv-pick-footer {
+                    text-align: center;
+                    padding: 0 24px 24px;
+                }
+                .bv-pick-footer a {
+                    color: #6b7280;
+                    text-decoration: none;
+                    font-size: 13px;
+                }
+                .bv-pick-footer a:hover {
+                    color: <?php echo esc_attr( $primary_color ); ?>;
+                }
+                @media (max-width: 500px) {
+                    .bv-pick-destinations { flex-direction: column; gap: 12px; }
+                }
+            </style>
+
+            <div class="bv-pick-wrap">
+                <div class="bv-pick-card">
+                    <div class="bv-pick-header">
+                        <?php if ( $logo_url ) : ?>
+                            <img src="<?php echo esc_url( $logo_url ); ?>" alt="<?php echo esc_attr( $company_name ); ?>" class="bv-pick-logo" />
+                        <?php endif; ?>
+                        <h2><?php echo esc_html( $title ); ?></h2>
+                        <p><?php esc_html_e( 'Where would you like to go?', 'businessvance-services-manager' ); ?></p>
+                    </div>
+
+                    <div class="bv-pick-destinations">
+                        <?php if ( $portal_url ) : ?>
+                        <a href="<?php echo esc_url( $portal_url ); ?>" class="bv-pick-dest bv-pick-portal">
+                            <div class="bv-pick-dest-icon">
+                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                            </div>
+                            <h3><?php esc_html_e( 'Client Portal', 'businessvance-services-manager' ); ?></h3>
+                            <p><?php esc_html_e( 'View projects, upload documents, and track your service progress.', 'businessvance-services-manager' ); ?></p>
+                            <span class="bv-pick-arrow"><?php esc_html_e( 'Open Portal →', 'businessvance-services-manager' ); ?></span>
+                        </a>
+                        <?php endif; ?>
+
+                        <?php if ( $tutor_url ) : ?>
+                        <a href="<?php echo esc_url( $tutor_url ); ?>" class="bv-pick-dest bv-pick-lms">
+                            <div class="bv-pick-dest-icon">
+                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                            </div>
+                            <h3><?php esc_html_e( 'LMS Dashboard', 'businessvance-services-manager' ); ?></h3>
+                            <p><?php esc_html_e( 'Access your courses, lessons, quizzes, and learning materials.', 'businessvance-services-manager' ); ?></p>
+                            <span class="bv-pick-arrow"><?php esc_html_e( 'Open Dashboard →', 'businessvance-services-manager' ); ?></span>
+                        </a>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="bv-pick-footer">
+                        <?php $logout_url = wp_logout_url( $current_page ); ?>
+                        <a href="<?php echo esc_url( $logout_url ); ?>"><?php esc_html_e( 'Not you? Log out', 'businessvance-services-manager' ); ?></a>
+                    </div>
+                </div>
+            </div>
+            <?php
+            return ob_get_clean();
         }
+
+        // ---- Not logged in: show login form ----
+        $title    = $atts['title'] ?: sprintf( esc_html__( 'Welcome to %s', 'businessvance-services-manager' ), $company_name );
+        $subtitle = $atts['subtitle'] ?: esc_html__( 'Sign in to access your dashboard and courses.', 'businessvance-services-manager' );
 
         // Login error handling
         $error_message = '';
@@ -677,7 +828,7 @@ class BV_Shortcodes {
         ?>
         <style>
             .bv-login-wrap {
-                max-width: 620px;
+                max-width: 440px;
                 margin: 40px auto;
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             }
@@ -709,69 +860,8 @@ class BV_Shortcodes {
                 font-size: 14px;
                 color: rgba(255,255,255,0.85);
             }
-
-            /* Destination cards */
-            .bv-login-destinations {
-                display: flex;
-                gap: 16px;
-                padding: 24px 24px 0;
-            }
-            .bv-login-dest-card {
-                flex: 1;
-                border: 2px solid #e5e7eb;
-                border-radius: 12px;
-                padding: 20px 16px;
-                text-align: center;
-                cursor: default;
-                transition: border-color 0.2s, box-shadow 0.2s;
-            }
-            .bv-login-dest-card:hover {
-                border-color: <?php echo esc_attr( $primary_color ); ?>;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-            }
-            .bv-login-dest-icon {
-                width: 48px;
-                height: 48px;
-                border-radius: 12px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                margin: 0 auto 12px;
-                font-size: 22px;
-            }
-            .bv-login-dest-card.bv-dest-portal .bv-login-dest-icon {
-                background: <?php echo esc_attr( $primary_color ); ?>15;
-                color: <?php echo esc_attr( $primary_color ); ?>;
-            }
-            .bv-login-dest-card.bv-dest-lms .bv-login-dest-icon {
-                background: #f59e0b15;
-                color: #b45309;
-            }
-            .bv-login-dest-card h3 {
-                margin: 0 0 6px;
-                font-size: 15px;
-                font-weight: 700;
-                color: #111827;
-            }
-            .bv-login-dest-card p {
-                margin: 0;
-                font-size: 12.5px;
-                color: #6b7280;
-                line-height: 1.5;
-            }
-            .bv-login-dest-card.bv-dest-portal h3 { color: <?php echo esc_attr( $primary_color ); ?>; }
-            .bv-login-dest-card.bv-dest-lms h3 { color: #b45309; }
-
-            @media (max-width: 500px) {
-                .bv-login-destinations {
-                    flex-direction: column;
-                    gap: 12px;
-                }
-            }
-
-            /* Form */
             .bv-login-body {
-                padding: 24px 28px 8px;
+                padding: 32px 28px 8px;
             }
             .bv-login-form .bv-login-field {
                 margin-bottom: 20px;
@@ -865,26 +955,8 @@ class BV_Shortcodes {
                     <?php if ( $logo_url ) : ?>
                         <img src="<?php echo esc_url( $logo_url ); ?>" alt="<?php echo esc_attr( $company_name ); ?>" class="bv-login-logo" />
                     <?php endif; ?>
-                    <h2><?php echo $title; ?></h2>
-                    <p><?php echo $subtitle; ?></p>
-                </div>
-
-                <!-- Destination cards: Client Portal + LMS Dashboard -->
-                <div class="bv-login-destinations">
-                    <div class="bv-login-dest-card bv-dest-portal">
-                        <div class="bv-login-dest-icon">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                        </div>
-                        <h3><?php esc_html_e( 'Client Portal', 'businessvance-services-manager' ); ?></h3>
-                        <p><?php esc_html_e( 'View projects, upload documents, and track your service progress.', 'businessvance-services-manager' ); ?></p>
-                    </div>
-                    <div class="bv-login-dest-card bv-dest-lms">
-                        <div class="bv-login-dest-icon">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-                        </div>
-                        <h3><?php esc_html_e( 'LMS Dashboard', 'businessvance-services-manager' ); ?></h3>
-                        <p><?php esc_html_e( 'Access your courses, lessons, quizzes, and learning materials.', 'businessvance-services-manager' ); ?></p>
-                    </div>
+                    <h2><?php echo esc_html( $title ); ?></h2>
+                    <p><?php echo esc_html( $subtitle ); ?></p>
                 </div>
 
                 <div class="bv-login-body">
@@ -916,7 +988,8 @@ class BV_Shortcodes {
                             <?php esc_html_e( 'Sign In', 'businessvance-services-manager' ); ?>
                         </button>
 
-                        <input type="hidden" name="redirect_to" value="<?php echo esc_url( $atts['redirect'] ?: $_SERVER['REQUEST_URI'] ?? '' ); ?>" />
+                        <input type="hidden" name="redirect_to" value="<?php echo esc_url( $_SERVER['REQUEST_URI'] ?? '' ); ?>" />
+                        <input type="hidden" name="bv_login_source" value="1" />
                     </form>
                 </div>
 
@@ -934,18 +1007,19 @@ class BV_Shortcodes {
     }
 
     /**
-     * Role-based login redirect handler.
+     * Login redirect handler.
      *
-     * Runs at priority 100 (before the consultant dashboard filter at 99999).
-     * Priority order: this filter (100) → consultant filter (99999).
-     * The consultant filter will override our redirect for consultant users.
+     * Runs at priority 100 on `woocommerce_login_redirect` and `login_redirect`.
      *
-     * Redirect logic:
-     *  1. Admins → pass through (default WooCommerce behavior)
-     *  2. Consultants → pass through (handled by consultant filter at 99999)
-     *  3. TutorLMS Students → LMS Dashboard URL from settings
-     *  4. WooCommerce Customers (with BV projects) → Client Portal
-     *  5. Others → My Account page or home
+     * When the user logs in via the [bv_login_page] form (bv_login_source=1),
+     * we redirect back to that same page. The page then detects the user is
+     * logged in and shows the destination picker (Client Portal / LMS Dashboard).
+     *
+     * For logins from other sources (e.g. WooCommerce My Account), the default
+     * WooCommerce redirect is passed through unchanged.
+     *
+     * Note: Consultant Dashboard is completely separate — consultants log in
+     * via wp-admin, not through this page.
      *
      * @since 2.7.61
      * @param string   $redirect Default redirect URL.
@@ -955,141 +1029,14 @@ class BV_Shortcodes {
     public function bv_login_redirect( $redirect, $user ) {
         if ( ! is_a( $user, 'WP_User' ) ) return $redirect;
 
-        // Admins — pass through to default
-        if ( $user->has_cap( 'manage_options' ) ) return $redirect;
-
-        // Consultants — let the consultant dashboard filter (priority 99999) handle this
-        if ( $user->has_cap( 'bv_access_consultant_dashboard' ) ) return $redirect;
-
-        $settings = BV_Settings::get_settings();
-
-        // TutorLMS Student — redirect to LMS Dashboard
-        // Check for common TutorLMS roles/capabilities
-        $tutor_roles = array( 'tutor_student', 'student' );
-        $is_student = false;
-        foreach ( $user->roles as $role ) {
-            if ( in_array( $role, $tutor_roles, true ) ) {
-                $is_student = true;
-                break;
-            }
-        }
-        // Also check if user is enrolled in any TutorLMS course
-        if ( ! $is_student && function_exists( 'tutor_utils' ) ) {
-            $enrolled_courses = tutor_utils()->get_enrolled_courses_by_user( $user->ID );
-            if ( ! empty( $enrolled_courses ) ) {
-                $is_student = true;
-            }
-        }
-        if ( $is_student ) {
-            $tutor_url = ! empty( $settings['tutor_dashboard_url'] ) ? $settings['tutor_dashboard_url'] : '';
-            if ( empty( $tutor_url ) && function_exists( 'tutor_utils' ) ) {
-                $tutor_dashboard_page_id = tutor_utils()->get_tutor_dashboard_page_id();
-                if ( $tutor_dashboard_page_id ) {
-                    $tutor_url = get_permalink( $tutor_dashboard_page_id );
-                }
-            }
-            if ( ! empty( $tutor_url ) ) {
-                return $tutor_url;
-            }
+        // If login came from our [bv_login_page] form, redirect back to that page
+        // so the user sees the destination picker (Client Portal / LMS Dashboard).
+        if ( ! empty( $_REQUEST['bv_login_source'] ) ) {
+            return $redirect; // $redirect is already set to the login page via redirect_to
         }
 
-        // WooCommerce Customer with BV projects → Client Portal
-        if ( in_array( 'customer', $user->roles, true ) ) {
-            global $wpdb;
-            $has_projects = $wpdb->get_var( $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_projects WHERE client_email = %s LIMIT 1",
-                $user->user_email
-            ) );
-            if ( $has_projects ) {
-                // Resolve portal URL: use setting, then auto-detect, then site_url
-                $portal_url = '';
-                if ( ! empty( $settings['portal_url'] ) ) {
-                    $portal_url = $settings['portal_url'];
-                } else {
-                    $portal_page = get_posts( array(
-                        'post_type'      => 'page',
-                        'posts_per_page' => 1,
-                        'post_status'    => 'publish',
-                        's'              => '[businessvance_client_portal]',
-                    ) );
-                    if ( ! empty( $portal_page ) ) {
-                        $portal_url = get_permalink( $portal_page[0]->ID );
-                    } else {
-                        $portal_url = site_url();
-                    }
-                }
-                return $portal_url;
-            }
-        }
-
-        // Default — pass through
+        // For all other login sources (My Account, wp-login, etc.),
+        // pass through to WooCommerce/WordPress default behavior.
         return $redirect;
-    }
-
-    /**
-     * Determine the redirect URL for a given user (used for already-logged-in redirect).
-     *
-     * @since 2.7.61
-     * @param WP_User $user
-     * @return string
-     */
-    private function get_redirect_for_user( $user ) {
-        if ( ! is_a( $user, 'WP_User' ) ) return '';
-
-        // Admin → WordPress admin
-        if ( $user->has_cap( 'manage_options' ) ) return admin_url();
-
-        // Consultant → Consultant Dashboard
-        if ( $user->has_cap( 'bv_access_consultant_dashboard' ) ) {
-            return admin_url( 'admin.php?page=bv-consultant-dashboard', 'admin' );
-        }
-
-        $settings = BV_Settings::get_settings();
-
-        // TutorLMS Student → LMS Dashboard
-        $tutor_roles = array( 'tutor_student', 'student' );
-        foreach ( $user->roles as $role ) {
-            if ( in_array( $role, $tutor_roles, true ) ) {
-                $tutor_url = ! empty( $settings['tutor_dashboard_url'] ) ? $settings['tutor_dashboard_url'] : '';
-                if ( empty( $tutor_url ) && function_exists( 'tutor_utils' ) ) {
-                    $tutor_dashboard_page_id = tutor_utils()->get_tutor_dashboard_page_id();
-                    if ( $tutor_dashboard_page_id ) {
-                        $tutor_url = get_permalink( $tutor_dashboard_page_id );
-                    }
-                }
-                return $tutor_url ?: ( function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : home_url() );
-            }
-        }
-
-        // Customer with projects → Client Portal
-        if ( in_array( 'customer', $user->roles, true ) ) {
-            global $wpdb;
-            $has_projects = $wpdb->get_var( $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_projects WHERE client_email = %s LIMIT 1",
-                $user->user_email
-            ) );
-            if ( $has_projects ) {
-                $portal_url = '';
-                if ( ! empty( $settings['portal_url'] ) ) {
-                    $portal_url = $settings['portal_url'];
-                } else {
-                    $portal_page = get_posts( array(
-                        'post_type'      => 'page',
-                        'posts_per_page' => 1,
-                        'post_status'    => 'publish',
-                        's'              => '[businessvance_client_portal]',
-                    ) );
-                    if ( ! empty( $portal_page ) ) {
-                        $portal_url = get_permalink( $portal_page[0]->ID );
-                    } else {
-                        $portal_url = site_url();
-                    }
-                }
-                return $portal_url;
-            }
-        }
-
-        // Default → My Account or Home
-        return function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : home_url();
     }
 }

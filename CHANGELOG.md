@@ -2,6 +2,17 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.63] - 2026-08-25
+### Changed
+- `[bv_login_page]` now uses a two-step flow: **login first**, then choose destination
+- When not logged in: shows clean WooCommerce login form (no destination cards)
+- After login: shows destination picker with clickable cards for **Client Portal** and **LMS Dashboard**
+- Removed automatic role-based redirect — the user chooses where to go after login
+- Consultant Dashboard is completely separate (consultants log in via wp-admin)
+- Added "Not you? Log out" link on the destination picker
+### Fixed
+- Client portal "Please log in" message was rendering raw HTML `<a>` tag instead of a clickable link (v2.7.62 fix carried forward)
+
 ## [2.7.62] - 2026-08-25
 ### Fixed
 - Client portal "Please log in" message was rendering raw HTML `<a>` tag instead of a clickable link (root cause: `esc_html__()` was escaping the `<a>` inside the translatable string)
