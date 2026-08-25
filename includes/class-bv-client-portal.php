@@ -579,7 +579,7 @@ class BV_Client_Portal {
         $active_project = null;
         if ( $project_id ) {
             foreach ( $projects as $p ) {
-                if ( $p->id === $project_id ) { $active_project = $p; break; }
+                if ( $p->id == $project_id ) { $active_project = $p; break; }
             }
         }
         if ( ! $active_project ) {
