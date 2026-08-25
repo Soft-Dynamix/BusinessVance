@@ -415,7 +415,7 @@ class BV_Consultant_Dashboard {
         . '<tr><td align="center" style="padding:0;">'
         . '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
         . '<td bgcolor="' . esc_attr( $primary_color ) . '" style="background-color:' . esc_attr( $primary_color ) . ';border-radius:8px;">'
-        . '<a href="' . esc_url( $portal_url ) . '" target="_blank" style="display:inline-block;padding:15px 36px;font-size:15px;font-weight:600;text-decoration:none;"><font color="#ffffff" style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif;font-size:15px;font-weight:600;">&#128640;  Go to My Project Portal</font></a>'
+        . '<a href="' . esc_url( $portal_url ) . '" target="_blank" style="display:inline-block;padding:15px 36px;font-size:15px;font-weight:600;text-decoration:none;"><font color="#ffffff" style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif;font-size:15px;font-weight:600;">Go to My Project Portal</font></a>'
         . '</td></tr></table>'
         . '</td></tr>'
         . '<tr><td align="center" style="padding:0;">'
@@ -435,12 +435,19 @@ class BV_Consultant_Dashboard {
         . '</td></tr></table>' // End outer
         . '</body></html>';
 
-        $headers = array(
-            'Content-Type: text/html; charset=UTF-8',
-            'From: ' . $company_name . ' <' . $from_email . '>',
-            'Reply-To: ' . $from_email,
-        );
+        $preferred_from = ! empty( $settings['email_address'] ) ? $settings['email_address'] : '';
+        $headers = BV_Settings::build_email_headers(array(
+            'to_email'          => $project->client_email,
+            'company_name'      => $company_name,
+            'from_email'        => $preferred_from,
+            'reply_to_email'    => $from_email,
+            'content_type'      => 'text/html',
+            'notification_type' => 'client-reminder',
+        ));
+
+        BV_Settings::start_bv_email( BV_Settings::$last_resolved_from, $company_name );
         $sent = wp_mail( $project->client_email, $subject, $body, $headers );
+        BV_Settings::end_bv_email();
         if ( $sent ) {
             $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array(
                 'project_id' => $pid, 'entity_type' => 'project', 'entity_id' => $pid,
@@ -1946,8 +1953,19 @@ class BV_Consultant_Dashboard {
         );
 
         $from_email = $settings['consultant_email'] ?? get_option( 'admin_email' );
-        $headers = array( 'Content-Type: text/plain; charset=UTF-8', 'From: ' . $company_name . ' <' . $from_email . '>' );
+        $preferred_from = ! empty( $settings['email_address'] ) ? $settings['email_address'] : '';
+        $headers = BV_Settings::build_email_headers(array(
+            'to_email'          => $client_email,
+            'company_name'      => $company_name,
+            'from_email'        => $preferred_from,
+            'reply_to_email'    => $from_email,
+            'content_type'      => 'text/plain',
+            'notification_type' => 'client-new-message',
+        ));
+
+        BV_Settings::start_bv_email( BV_Settings::$last_resolved_from, $company_name );
         wp_mail( $client_email, $subject, $body, $headers );
+        BV_Settings::end_bv_email();
 
         // Log activity
         $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array(
@@ -3049,7 +3067,9 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
             error_log( sprintf( '[BV 2.7.35] Sending email to %s with %d attachment(s)', $consultant_email, count( $attachments ) ) );
             error_log( sprintf( '[BV 2.7.35] Attachment paths: %s', implode( ', ', $attachments ) ) );
 
+            BV_Settings::start_bv_email( BV_Settings::$last_resolved_from, $company_name );
             $sent = wp_mail( $consultant_email, $subject, $body_html, $headers, $attachments );
+            BV_Settings::end_bv_email();
 
             error_log( sprintf( '[BV 2.7.35] wp_mail result for project %d: %s', $project_id, $sent ? 'SUCCESS' : 'FAILED' ) );
             if ( ! $sent ) {

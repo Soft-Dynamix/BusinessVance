@@ -2,11 +2,21 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
-## [2.7.70] - 2026-08-25
+## [2.7.70] - 2026-08-26
 ### Fixed
-- **Emails going to spam**: Removed `Precedence: bulk` and `X-Auto-Response-Suppress` headers from all outgoing emails. `Precedence: bulk` is a major spam trigger used by Gmail and Outlook to classify automated emails as bulk/marketing spam. Kept only `Auto-Submitted: auto-generated` (RFC 3834 compliant, prevents out-of-office replies without triggering spam).
+- **Emails going to spam — comprehensive anti-spam overhaul**:
+  - Added `BV_Settings::start_bv_email()` / `end_bv_email()` wrapper that configures PHPMailer directly for every BV email:
+    - **Envelope sender (Return-Path) alignment** — PHPMailer's `$Sender` is now set to match the From address. Without this, PHPMailer defaults to `wordpress@hostname`, causing SPF failure. This is the #1 code-level cause of spam classification.
+    - **X-Mailer override** — Replaced `"WordPress"` with generic `"Mail v1.0"`. The `"WordPress"` X-Mailer string is a known spam-filter signal.
+    - **X-Priority set to 3 (normal)** — Prevents accidental high-priority spam scoring.
+  - Enhanced `build_email_headers()` with:
+    - **List-Unsubscribe** (RFC 8058) — Gmail, Outlook, and Yahoo use this to classify transactional mail. Helps prevent spam classification.
+    - **X-Auto-Response-Suppress: All** — Suppresses NDRs and out-of-office replies.
+  - Fixed **2 emails that bypassed `build_email_headers()`** entirely (client reminder email + client message notification). Both now use the centralized header builder with full anti-spam protection.
+  - Wrapped **all 6 user-facing `wp_mail()` calls** with `start_bv_email()`/`end_bv_email()`.
+  - **Removed emoji HTML entities** (`&#128065;`, `&#128172;`, `&#128640;`) from email CTA buttons. Some spam filters flag emoji in email content.
 ### Note
-- **Server-side DNS is also required**: Make sure SPF, DKIM, and DMARC records are properly configured for `studyvance.co.za` on your hosting. This is the #1 cause of spam classification and must be done in your domain's DNS settings (not in the plugin).
+- **Server-side DNS is also required**: Make sure SPF, DKIM, and DMARC records are properly configured for `studyvance.co.za` on your hosting. This is the most impactful factor for spam classification and must be done in your domain's DNS settings (not in the plugin). Without SPF/DKIM, even perfectly formatted emails may still go to spam.
 
 ## [2.7.69] - 2026-08-25
 ### Fixed

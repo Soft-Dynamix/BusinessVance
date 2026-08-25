@@ -910,7 +910,9 @@ class BV_Client_Portal {
             'notification_type' => 'client-completion',
         ));
 
+        BV_Settings::start_bv_email( BV_Settings::$last_resolved_from, $company_name );
         wp_mail( $project->client_email, $subject, $body, $headers );
+        BV_Settings::end_bv_email();
     }
 
     private function render_overview_tab( $project, $services ) {
@@ -2577,7 +2579,7 @@ class BV_Client_Portal {
                 // CTA button
                 . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px;">'
                 . '<tr><td align="center">'
-                . '<a href="' . esc_url( $dashboard_url ) . '" style="display:inline-block;background:#002B5C;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:15px;font-weight:600;">&#128065; Open in Consultant Dashboard</a>'
+                . '<a href="' . esc_url( $dashboard_url ) . '" style="display:inline-block;background:#002B5C;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:15px;font-weight:600;">Open in Consultant Dashboard</a>'
                 . '</td></tr></table>'
 
                 . '</td></tr>'
@@ -2607,7 +2609,9 @@ class BV_Client_Portal {
             'notification_type' => 'consultant-client-action',
         ));
 
+        BV_Settings::start_bv_email( BV_Settings::$last_resolved_from, $company_name );
         wp_mail( $consultant_email, $subject, $body_html, $headers );
+        BV_Settings::end_bv_email();
 
     }
 
@@ -2678,7 +2682,7 @@ class BV_Client_Portal {
                 // CTA button
                 . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px;">'
                 . '<tr><td align="center">'
-                . '<a href="' . esc_url( $dashboard_url ) . '" style="display:inline-block;background:#002B5C;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:15px;font-weight:600;">&#128172; Open in Consultant Dashboard</a>'
+                . '<a href="' . esc_url( $dashboard_url ) . '" style="display:inline-block;background:#002B5C;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:15px;font-weight:600;">Open in Consultant Dashboard</a>'
                 . '</td></tr></table>'
 
                 . '</td></tr>'
@@ -2708,7 +2712,9 @@ class BV_Client_Portal {
             'content_type'      => 'text/html',
             'notification_type' => 'consultant-new-message',
         ));
+        BV_Settings::start_bv_email( BV_Settings::$last_resolved_from, $company_name );
         wp_mail( $consultant_email, $subject, $body, $headers );
+        BV_Settings::end_bv_email();
 
         // Also log activity
         $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array(
