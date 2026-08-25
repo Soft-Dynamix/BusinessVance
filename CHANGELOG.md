@@ -2,6 +2,19 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.71] - 2026-08-26
+### Fixed
+- **Consultant emails still going to spam — template rewrite to match working client reminder format**:
+  - All 3 consultant notification emails (`notify_consultant`, `notify_consultant_new_message`, `email_project_package`) now use the exact same HTML format as the client reminder email (which delivers to inbox, not spam)
+  - **Bulletproof CTA button**: Replaced simple `<a>` with CSS `background` (stripped by Gmail) with table-based `<td bgcolor>` + `<font color="#ffffff">` fallback — identical to client reminder
+  - **Removed `background:linear-gradient(...)` header**: Replaced with `bgcolor` attribute on `<td>` (many email clients can't render CSS gradients)
+  - **Added logo support**: Consultant emails now show the company logo from settings (same as client reminder)
+  - **Dynamic colors from settings**: Uses `$primary_color` setting instead of hardcoded `#002B5C`
+  - **Added fallback URL text** below CTA button: "If the button above doesn't work, copy and paste this link..." (same as client reminder)
+  - **Removed "Please do not reply" footer** (spam signal) — replaced with "If you have any questions, feel free to reply to this email." + "Best regards, CompanyName" (same as client reminder)
+  - **Removed "This is an automated notification"** language (spam signal)
+  - **Removed ALL attachments from project package email** — ZIP file + individual file attachments were a major spam trigger. Email now simply notifies the consultant to review in the dashboard where all files are accessible.
+
 ## [2.7.70] - 2026-08-26
 ### Fixed
 - **Emails going to spam — comprehensive anti-spam overhaul**:

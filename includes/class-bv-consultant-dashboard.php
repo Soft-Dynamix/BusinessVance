@@ -2720,7 +2720,7 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
         $settings = BV_Settings::get_settings();
         $consultant_email = $settings['consultant_email'] ?? get_option( 'admin_email' );
         if ( empty( $consultant_email ) ) {
-            error_log( sprintf( '[BV 2.7.35] email_package skipped project %d: no consultant email', $project_id ) );
+            error_log( sprintf( '[BV] email_package skipped project %d: no consultant email', $project_id ) );
             return false;
         }
 
@@ -2728,372 +2728,111 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
             "SELECT * FROM {$wpdb->prefix}bv_projects WHERE id = %d", $project_id
         ) );
         if ( ! $project ) {
-            error_log( sprintf( '[BV 2.7.35] email_package skipped project %d: not found', $project_id ) );
+            error_log( sprintf( '[BV] email_package skipped project %d: not found', $project_id ) );
             return false;
         }
 
-        error_log( sprintf( '[BV 2.7.35] === email_package START project %d ===', $project_id ) );
+        error_log( sprintf( '[BV] email_package START project %d', $project_id ) );
 
-        $company_name = $settings['company_name'] ?? 'BusinessVance';
+        $company_name  = $settings['company_name'] ?? 'BusinessVance';
+        $primary_color = $settings['primary_color'] ?? '#002B5C';
+        $logo_url      = $settings['logo_url'] ?? '';
         $dashboard_url = admin_url( 'admin.php?page=bv-consultant-dashboard&project_id=' . $project_id );
-        $upload_dir   = wp_upload_dir();
-        $bv_docs_dir  = $upload_dir['basedir'] . '/bv-documents';
-        $zip_path     = null;
-        $attachments  = array(); // files to attach individually to the email
 
-        try {
-            if ( ! class_exists( 'ZipArchive' ) ) {
-                error_log( '[BV 2.7.35] ZipArchive not available — will attach files individually only.' );
-                $zip_available = false;
-            } else {
-                $zip_available = true;
-            }
+        // Subject
+        $tokens = array(
+            '{project_number}'  => $project->project_number,
+            '{client_name}'     => $project->client_name,
+            '{client_email}'    => $project->client_email,
+            '{company_name}'    => $company_name,
+            '{dashboard_url}'   => $dashboard_url,
+        );
+        $subject = $settings['email_project_package_subject'] ?? 'Project {project_number} Complete';
+        $subject = str_replace( array_keys( $tokens ), array_values( $tokens ), $subject );
 
-            // =============================================
-            // 1. Generate questionnaire HTML report
-            // =============================================
-            $questionnaire_html = $this->build_questionnaire_report_html( $project_id, true );
-            error_log( sprintf( '[BV 2.7.35] Questionnaire HTML: %d bytes', strlen( $questionnaire_html ) ) );
-
-            // =============================================
-            // 2. Collect multifile uploads from questionnaire
-            // =============================================
-            $multifile_paths = array();
-            $responses = $wpdb->get_results( $wpdb->prepare(
-                "SELECT response_value FROM {$wpdb->prefix}bv_questionnaire_responses WHERE project_id = %d",
-                $project_id
-            ) );
-            error_log( sprintf( '[BV 2.7.35] Found %d response rows for project %d', count( $responses ), $project_id ) );
-
-            foreach ( $responses as $r ) {
-                $raw = $r->response_value;
-                error_log( sprintf( '[BV 2.7.35] Response raw (first 120 chars): %s', substr( $raw, 0, 120 ) ) );
-
-                $json = json_decode( $raw, true );
-                if ( ! is_array( $json ) ) {
-                    continue;
-                }
-
-                // Check if any entry in the array looks like a multifile upload (has 'url' key)
-                $is_multifile = false;
-                foreach ( $json as $entry ) {
-                    if ( is_array( $entry ) && isset( $entry['url'] ) && ! empty( $entry['file'] ) ) {
-                        $is_multifile = true;
-                        break;
-                    }
-                }
-                if ( ! $is_multifile ) {
-                    continue;
-                }
-
-                foreach ( $json as $f ) {
-                    // Skip entries without file key (failed uploads have 'error' instead)
-                    if ( ! is_array( $f ) || empty( $f['file'] ) ) {
-                        continue;
-                    }
-
-                    // Try multiple path patterns
-                    $found_path = null;
-                    $candidates = array(
-                        $bv_docs_dir . '/' . $f['file'],                             // Standard: basedir/bv-documents/filename
-                        $bv_docs_dir . '/' . basename( $f['file'] ),                // Basename only
-                        $upload_dir['basedir'] . '/' . $f['file'],                   // basedir/filename
-                        $f['url'] ? ABSPATH . wp_make_link_relative( $f['url'] ) : '', // From URL
-                    );
-
-                    foreach ( $candidates as $candidate ) {
-                        if ( $candidate && file_exists( $candidate ) ) {
-                            $found_path = $candidate;
-                            break;
-                        }
-                    }
-
-                    if ( $found_path ) {
-                        $safe_name = basename( $found_path );
-                        $multifile_paths[ $safe_name ] = $found_path;
-                        error_log( sprintf( '[BV 2.7.35]   Found file: %s (%d bytes)', $safe_name, filesize( $found_path ) ) );
-                    } else {
-                        error_log( sprintf( '[BV 2.7.35]   FILE NOT FOUND for: %s', $f['file'] ) );
-                        error_log( sprintf( '[BV 2.7.35]   Tried: %s', implode( ' | ', array_filter( $candidates ) ) ) );
-                    }
-                }
-            }
-            error_log( sprintf( '[BV 2.7.35] Total multifile paths found: %d', count( $multifile_paths ) ) );
-
-            // =============================================
-            // 3. Collect required documents from bv_project_documents
-            // =============================================
-            $doc_paths = array();
-            $documents = $wpdb->get_results( $wpdb->prepare(
-                "SELECT filepath, filename, filesize FROM {$wpdb->prefix}bv_project_documents WHERE project_id = %d",
-                $project_id
-            ) );
-            error_log( sprintf( '[BV 2.7.35] Found %d required document rows', count( $documents ) ) );
-
-            foreach ( $documents as $doc ) {
-                if ( empty( $doc->filepath ) ) {
-                    error_log( '[BV 2.7.35]   Skipping doc with empty filepath' );
-                    continue;
-                }
-
-                error_log( sprintf( '[BV 2.7.35]   Doc filepath from DB: %s', $doc->filepath ) );
-
-                // Try multiple path patterns
-                $found_path = null;
-                $candidates = array(
-                    $doc->filepath,                                           // As stored
-                    $bv_docs_dir . '/' . basename( $doc->filepath ),         // Relative to bv-documents
-                    $upload_dir['basedir'] . '/' . basename( $doc->filepath ),// Relative to uploads
-                );
-
-                foreach ( $candidates as $candidate ) {
-                    if ( $candidate && file_exists( $candidate ) ) {
-                        $found_path = $candidate;
-                        break;
-                    }
-                }
-
-                if ( $found_path ) {
-                    $safe_name = ! empty( $doc->filename ) ? $doc->filename : basename( $found_path );
-                    $doc_paths[ $safe_name ] = $found_path;
-                    error_log( sprintf( '[BV 2.7.35]   Found doc: %s (%d bytes)', $safe_name, filesize( $found_path ) ) );
-                } else {
-                    error_log( sprintf( '[BV 2.7.35]   DOC NOT FOUND: %s', $doc->filepath ) );
-                }
-            }
-            error_log( sprintf( '[BV 2.7.35] Total required doc paths found: %d', count( $doc_paths ) ) );
-
-            // =============================================
-            // 4. Collect agreement
-            // =============================================
-            $agreement_html = '';
-            $agreement = $wpdb->get_row( $wpdb->prepare(
-                "SELECT template_content, full_name, agreed_at FROM {$wpdb->prefix}bv_project_agreements WHERE project_id = %d ORDER BY id DESC LIMIT 1",
-                $project_id
-            ) );
-            if ( $agreement ) {
-                $agreement_content = ! empty( $agreement->template_content )
-                    ? $agreement->template_content
-                    : '<p><em>No agreement template content was configured for this service.</em></p>';
-                $signed_time = ! empty( $agreement->agreed_at ) ? $agreement->agreed_at : '';
-                $agreement_html = '<!DOCTYPE html>'
-                    . '<html><head><meta charset="UTF-8"><title>Service Agreement</title>'
-                    . '<style>body{font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;max-width:800px;margin:40px auto;padding:20px;color:#1a1a2e;line-height:1.7;}h1{color:#002B5C;border-bottom:3px solid #002B5C;padding-bottom:10px;}.meta{font-size:13px;color:#666;margin-bottom:20px;}</style>'
-                    . '</head><body>'
-                    . '<h1>Service Agreement</h1>'
-                    . '<div class="meta">'
-                    . 'Project: ' . esc_html( $project->project_number ) . '<br>'
-                    . 'Client: ' . esc_html( $project->client_name ) . '<br>'
-                    . 'Signed by: ' . esc_html( $agreement->full_name ?? '' ) . '<br>'
-                    . 'Signed at: ' . esc_html( $signed_time )
-                    . '</div>'
-                    . wp_kses_post( $agreement_content )
-                    . '</body></html>';
-                error_log( sprintf( '[BV 2.7.35] Agreement HTML: %d bytes', strlen( $agreement_html ) ) );
-            } else {
-                error_log( sprintf( '[BV 2.7.35] No agreement found for project %d', $project_id ) );
-            }
-
-            // =============================================
-            // 5. Collect all file attachments for individual email attachment
-            // =============================================
-            $all_file_paths = array_merge( $multifile_paths, $doc_paths );
-            foreach ( $all_file_paths as $name => $path ) {
-                if ( file_exists( $path ) && is_readable( $path ) ) {
-                    $attachments[] = $path;
-                }
-            }
-            error_log( sprintf( '[BV 2.7.35] Individual attachments prepared: %d', count( $attachments ) ) );
-
-            // =============================================
-            // 6. Build ZIP
-            // =============================================
-            if ( $zip_available ) {
-                $zip_filename = 'project-' . sanitize_file_name( $project->project_number ) . '-package.zip';
-                // Use WordPress uploads dir instead of sys_get_temp_dir for reliable access
-                $zip_path = $bv_docs_dir . '/' . $zip_filename;
-
-                if ( ! file_exists( $bv_docs_dir ) ) {
-                    wp_mkdir_p( $bv_docs_dir );
-                }
-
-                if ( file_exists( $zip_path ) ) {
-                    @unlink( $zip_path );
-                }
-
-                $zip = new ZipArchive();
-                $zip_opened = $zip->open( $zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE );
-                if ( $zip_opened !== true ) {
-                    error_log( sprintf( '[BV 2.7.35] ZIP create failed: error code %d, path: %s', $zip_opened, $zip_path ) );
-                    $zip_path = null;
-                } else {
-                    $zip->addFromString( 'questionnaire-report.html', $questionnaire_html );
-
-                    if ( ! empty( $agreement_html ) ) {
-                        $zip->addFromString( 'agreement.html', $agreement_html );
-                    }
-
-                    $mf_count = 0;
-                    foreach ( $multifile_paths as $name => $path ) {
-                        $zip->addFile( $path, 'questionnaire-files/' . $name );
-                        $mf_count++;
-                    }
-
-                    $doc_count = 0;
-                    foreach ( $doc_paths as $name => $path ) {
-                        $zip->addFile( $path, 'required-documents/' . $name );
-                        $doc_count++;
-                    }
-
-                    $zip->close();
-
-                    if ( file_exists( $zip_path ) && filesize( $zip_path ) > 0 ) {
-                        $attachments[] = $zip_path; // Add ZIP as attachment too
-                        error_log( sprintf( '[BV 2.7.35] ZIP created: %s (%d bytes) — contains: 1 HTML report, %s agreement, %d questionnaire files, %d required docs',
-                            $zip_path, filesize( $zip_path ),
-                            empty( $agreement_html ) ? 'no' : '1',
-                            $mf_count, $doc_count
-                        ) );
-                    } else {
-                        error_log( sprintf( '[BV 2.7.35] ZIP file empty or not created at: %s', $zip_path ) );
-                        $zip_path = null;
-                    }
-                }
-            }
-
-            // =============================================
-            // 7. Build and send email (HTML format)
-            // =============================================
-            $tokens = array(
-                '{project_number}'  => $project->project_number,
-                '{client_name}'     => $project->client_name,
-                '{client_email}'    => $project->client_email,
-                '{company_name}'    => $company_name,
-                '{dashboard_url}'   => $dashboard_url,
-            );
-
-            $subject = $settings['email_project_package_subject'] ?? 'Project {project_number} Complete — All Client Information';
-            $subject = str_replace( array_keys( $tokens ), array_values( $tokens ), $subject );
-
-            // Build file listing for email body
-            $file_listing_html = '';
-            if ( ! empty( $multifile_paths ) ) {
-                $file_listing_html .= '<h3 style="color:#002B5C;margin:16px 0 8px;">Questionnaire Files (' . count( $multifile_paths ) . ')</h3><ul style="margin:0 0 12px;padding-left:20px;">';
-                foreach ( $multifile_paths as $name => $path ) {
-                    $file_listing_html .= '<li>' . esc_html( $name ) . ' (' . size_format( filesize( $path ) ) . ')</li>';
-                }
-                $file_listing_html .= '</ul>';
-            }
-            if ( ! empty( $doc_paths ) ) {
-                $file_listing_html .= '<h3 style="color:#002B5C;margin:16px 0 8px;">Required Documents (' . count( $doc_paths ) . ')</h3><ul style="margin:0 0 12px;padding-left:20px;">';
-                foreach ( $doc_paths as $name => $path ) {
-                    $file_listing_html .= '<li>' . esc_html( $name ) . ' (' . size_format( filesize( $path ) ) . ')</li>';
-                }
-                $file_listing_html .= '</ul>';
-            }
-            if ( empty( $multifile_paths ) && empty( $doc_paths ) && empty( $agreement_html ) ) {
-                $file_listing_html = '<p style="color:#e67e22;font-weight:600;">⚠ No uploaded files, required documents, or signed agreement were found for this project. Only the questionnaire HTML report is included.</p>';
-            }
-
-            // Build HTML email body with proper document wrapper (consistent with
-            // other consultant notifications — helps avoid spam-classification).
-            $body_html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-                . '</head><body style="margin:0;padding:0;background:#f0f2f5;font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;">'
-                . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:32px 16px;">'
-                . '<tr><td align="center">'
-                . '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">'
-
-                // Header banner
-                . '<tr><td style="background:linear-gradient(135deg,#002B5C 0%,#004080 100%);color:#fff;padding:28px 32px;border-radius:12px 12px 0 0;">'
-                . '<h1 style="margin:0;font-size:20px;font-weight:700;">Project Complete: ' . esc_html( $project->project_number ) . '</h1>'
-                . '<p style="margin:6px 0 0;opacity:0.85;font-size:14px;">All client information has been submitted</p>'
-                . '</td></tr>'
-
-                // Body
-                . '<tr><td style="background:#fff;padding:28px 32px;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;">'
-                . '<p style="margin:0 0 16px;font-size:15px;color:#374151;">Project <strong>' . esc_html( $project->project_number ) . '</strong> for client <strong>' . esc_html( $project->client_name ) . '</strong> (<span style="color:#6b7280;">' . esc_html( $project->client_email ) . '</span>) is now <strong>100% complete</strong>.</p>'
-
-                // Package contents card
-                . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:20px;">'
-                . '<tr><td style="padding:16px 20px;">'
-                . '<p style="margin:0 0 8px;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Package Contents</p>'
-                . '<ul style="margin:0;padding-left:20px;font-size:14px;color:#374151;line-height:1.8;">'
-                . '<li>Complete Project Report (HTML) — questionnaire responses, required documents, and signed agreement</li>'
-                . ( ! empty( $agreement_html ) ? '<li>Signed Service Agreement (HTML)</li>' : '' )
-                . ( ! empty( $multifile_paths ) ? '<li>' . count( $multifile_paths ) . ' file(s) uploaded via questionnaire</li>' : '' )
-                . ( ! empty( $doc_paths ) ? '<li>' . count( $doc_paths ) . ' required document(s)</li>' : '' )
-                . '</ul>'
-                . $file_listing_html
-                . '</td></tr></table>'
-
-                // Info box
-                . '<div style="background:#f8f9fb;border:1px solid #e2e8f0;border-radius:6px;padding:14px 18px;margin-top:20px;">'
-                . '<p style="margin:0 0 6px;font-size:13px;color:#666;">All files are attached to this email individually AND as a ZIP package for your convenience.</p>'
-                . '<p style="margin:0;font-size:13px;"><a href="' . esc_url( $dashboard_url ) . '" style="color:#002B5C;font-weight:600;">Open in Consultant Dashboard &rarr;</a></p>'
-                . '</div>'
-
-                . '</td></tr>'
-
-                // Footer
-                . '<tr><td style="background:#f8fafc;padding:16px 32px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;text-align:center;">'
-                . '<p style="margin:0;font-size:12px;color:#9ca3af;">This is an automated notification from <strong>' . esc_html( $company_name ) . '</strong>.<br>Please do not reply to this email.</p>'
-                . '</td></tr>'
-
-                . '</table>'
-                . '</td></tr></table>'
-                . '</body></html>';
-
-            // Also build a plain text fallback body (used for logging / debugging only;
-            // wp_mail sends the HTML version above).
-            $body_text  = "Project {$project->project_number} for {$project->client_name} ({$project->client_email}) is 100% complete.\n\n";
-            $body_text .= "Package Contents:\n";
-            $body_text .= "- questionnaire-report.html (Complete report: responses, documents, agreement)\n";
-            if ( ! empty( $agreement_html ) ) $body_text .= "- agreement.html (Signed service agreement)\n";
-            if ( ! empty( $multifile_paths ) ) $body_text .= "- " . count( $multifile_paths ) . " uploaded file(s) from questionnaire\n";
-            if ( ! empty( $doc_paths ) ) $body_text .= "- " . count( $doc_paths ) . " required document(s)\n";
-            $body_text .= "\nAll files are attached to this email.\n";
-            $body_text .= "Dashboard: {$dashboard_url}\n";
-
-            $preferred_from = ! empty( $settings['email_address'] ) ? $settings['email_address'] : '';
-            $headers = BV_Settings::build_email_headers(array(
-                'to_email'          => $consultant_email,
-                'company_name'      => $company_name,
-                'from_email'        => $preferred_from,
-                'reply_to_email'    => $consultant_email,
-                'content_type'      => 'text/html',
-                'notification_type' => 'consultant-project-package',
-            ));
-
-            error_log( sprintf( '[BV 2.7.35] Sending email to %s with %d attachment(s)', $consultant_email, count( $attachments ) ) );
-            error_log( sprintf( '[BV 2.7.35] Attachment paths: %s', implode( ', ', $attachments ) ) );
-
-            BV_Settings::start_bv_email( BV_Settings::$last_resolved_from, $company_name );
-            $sent = wp_mail( $consultant_email, $subject, $body_html, $headers, $attachments );
-            BV_Settings::end_bv_email();
-
-            error_log( sprintf( '[BV 2.7.35] wp_mail result for project %d: %s', $project_id, $sent ? 'SUCCESS' : 'FAILED' ) );
-            if ( ! $sent ) {
-                global $phpmailer;
-                if ( $phpmailer && ! empty( $phpmailer->ErrorInfo ) ) {
-                    error_log( sprintf( '[BV 2.7.35] PHPMailer error: %s', $phpmailer->ErrorInfo ) );
-                }
-            }
-
-            // Clean up ZIP (but keep uploaded files — they belong to the project)
-            if ( $zip_path && file_exists( $zip_path ) ) {
-                @unlink( $zip_path );
-            }
-            $zip_path = null;
-
-            return $sent;
-
-        } catch ( Exception $e ) {
-            error_log( sprintf( '[BV 2.7.35] Exception in email_package for project %d: %s', $project_id, $e->getMessage() ) );
-            if ( $zip_path && file_exists( $zip_path ) ) {
-                @unlink( $zip_path );
-            }
-            return false;
+        // Logo or fallback text header (same as client reminder)
+        if ( ! empty( $logo_url ) ) {
+            $header_content = '<img src="' . esc_url( $logo_url ) . '" alt="' . esc_attr( $company_name ) . '" width="120" height="auto" style="display:block;" />';
+        } else {
+            $header_content = '<span style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.5px;">' . esc_html( $company_name ) . '</span>';
         }
+
+        $light_color = '#f9fafb';
+        $body_html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head><body style="margin:0;padding:0;background-color:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,\'Helvetica Neue\',Arial,sans-serif;">'
+            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6;min-height:100%;padding:32px 16px;">'
+            . '<tr><td align="center">'
+
+            // Header banner
+            . '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;margin:0 auto;">'
+            . '<tr><td bgcolor="' . esc_attr( $primary_color ) . '" style="background-color:' . esc_attr( $primary_color ) . ';padding:24px 32px;border-radius:12px 12px 0 0;text-align:center;">'
+            . $header_content
+            . '</td></tr>'
+
+            // Main content card
+            . '<tr><td style="background-color:#ffffff;padding:32px;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;">'
+
+            // Greeting
+            . '<p style="margin:0 0 6px;font-size:20px;font-weight:700;color:#111827;">Project Complete</p>'
+            . '<p style="margin:0 0 20px;font-size:15px;color:#6b7280;line-height:1.5;">Project <strong>' . esc_html( $project->project_number ) . '</strong> for <strong>' . esc_html( $project->client_name ) . '</strong> is now <strong>100% complete</strong>. All information has been submitted. Please review in the Consultant Dashboard.</p>'
+
+            // Project info card
+            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="' . esc_attr( $light_color ) . '" style="background-color:' . esc_attr( $light_color ) . ';border-radius:8px;margin-bottom:24px;overflow:hidden;">'
+            . '<tr><td style="padding:16px 20px;">'
+            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
+            . '<tr><td style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;padding-bottom:4px;">Project</td><td style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;padding-bottom:4px;text-align:right;">Client</td></tr>'
+            . '<tr><td style="font-size:18px;font-weight:700;color:#111827;">' . esc_html( $project->project_number ) . '</td><td style="font-size:14px;font-weight:600;color:' . esc_attr( $primary_color ) . ';text-align:right;">' . esc_html( $project->client_name ) . '</td></tr>'
+            . '</table></td></tr></table>'
+
+            // CTA button — bulletproof for Gmail: bgcolor on td + font color fallback
+            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">'
+            . '<tr><td align="center" style="padding:0;">'
+            . '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
+            . '<td bgcolor="' . esc_attr( $primary_color ) . '" style="background-color:' . esc_attr( $primary_color ) . ';border-radius:8px;">'
+            . '<a href="' . esc_url( $dashboard_url ) . '" target="_blank" style="display:inline-block;padding:15px 36px;font-size:15px;font-weight:600;text-decoration:none;"><font color="#ffffff" style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif;font-size:15px;font-weight:600;">Open in Consultant Dashboard</font></a>'
+            . '</td></tr></table>'
+            . '</td></tr>'
+            . '<tr><td align="center" style="padding:0;">'
+            . '<p style="margin:0;font-size:12px;color:#9ca3af;">If the button above doesn\'t work, copy and paste this link into your browser:<br><a href="' . esc_url( $dashboard_url ) . '" style="color:' . esc_attr( $primary_color ) . ';word-break:break-all;">' . esc_html( $dashboard_url ) . '</a></p>'
+            . '</td></tr>'
+            . '</table>'
+
+            . '</td></tr>' // End main content
+
+            // Footer
+            . '<tr><td bgcolor="#f9fafb" style="background-color:#f9fafb;padding:20px 32px;border-radius:0 0 12px 12px;border:1px solid #e5e7eb;border-top:none;text-align:center;">'
+            . '<p style="margin:0 0 4px;font-size:13px;color:#6b7280;">If you have any questions, feel free to reply to this email.</p>'
+            . '<p style="margin:0;font-size:13px;color:#9ca3af;">Best regards,<br><strong style="color:#374151;">' . esc_html( $company_name ) . '</strong></p>'
+            . '</td></tr>'
+
+            . '</table>' // End 600px wrapper
+            . '</td></tr></table>' // End outer
+            . '</body></html>';
+
+        $preferred_from = ! empty( $settings['email_address'] ) ? $settings['email_address'] : '';
+        $headers = BV_Settings::build_email_headers(array(
+            'to_email'          => $consultant_email,
+            'company_name'      => $company_name,
+            'from_email'        => $preferred_from,
+            'reply_to_email'    => $consultant_email,
+            'content_type'      => 'text/html',
+            'notification_type' => 'consultant-project-package',
+        ));
+
+        error_log( sprintf( '[BV] Sending email to %s (no attachments)', $consultant_email ) );
+
+        BV_Settings::start_bv_email( BV_Settings::$last_resolved_from, $company_name );
+        $sent = wp_mail( $consultant_email, $subject, $body_html, $headers );
+        BV_Settings::end_bv_email();
+
+        error_log( sprintf( '[BV] wp_mail result for project %d: %s', $project_id, $sent ? 'SUCCESS' : 'FAILED' ) );
+        if ( ! $sent ) {
+            global $phpmailer;
+            if ( $phpmailer && ! empty( $phpmailer->ErrorInfo ) ) {
+                error_log( sprintf( '[BV] PHPMailer error: %s', $phpmailer->ErrorInfo ) );
+            }
+        }
+
+        return $sent;
     }
 
     /**
