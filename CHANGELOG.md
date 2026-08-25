@@ -2,6 +2,10 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.66] - 2026-08-25
+### Changed
+- **[bv_login_page] is now brand-neutral** — title is simply "Sign In" (no company or site name), subtitle says "Access your client portal and courses." Works for both StudyVance and BusinessVance.
+
 ## [2.7.65] - 2026-08-25
 ### Changed
 - **[bv_login_page] is now a universal login** — uses WordPress site name (`get_bloginfo('name')`) instead of BV company name setting, so it shows "Welcome to StudyVance" instead of "Welcome to BusinessVance Consulting"

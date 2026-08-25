@@ -614,7 +614,6 @@ class BV_Shortcodes {
         ), $atts, 'bv_login_page' );
 
         $settings        = BV_Settings::get_settings();
-        $site_name       = get_bloginfo( 'name' );
         $primary_color   = $settings['primary_color'] ?? '#002B5C';
         $secondary_color = $settings['secondary_color'] ?? '#008080';
         $logo_url        = $settings['logo_url'] ?? '';
@@ -774,7 +773,7 @@ class BV_Shortcodes {
                 <div class="bv-pick-card">
                     <div class="bv-pick-header">
                         <?php if ( $logo_url ) : ?>
-                            <img src="<?php echo esc_url( $logo_url ); ?>" alt="<?php echo esc_attr( $site_name ); ?>" class="bv-pick-logo" />
+                            <img src="<?php echo esc_url( $logo_url ); ?>" alt="" class="bv-pick-logo" />
                         <?php endif; ?>
                         <h2><?php echo esc_html( $title ); ?></h2>
                         <p><?php esc_html_e( 'Where would you like to go?', 'businessvance-services-manager' ); ?></p>
@@ -815,8 +814,8 @@ class BV_Shortcodes {
         }
 
         // ---- Not logged in: show login form ----
-        $title    = $atts['title'] ?: sprintf( esc_html__( 'Welcome to %s', 'businessvance-services-manager' ), $site_name );
-        $subtitle = $atts['subtitle'] ?: esc_html__( 'Sign in to access your dashboard and courses.', 'businessvance-services-manager' );
+        $title    = $atts['title'] ?: esc_html__( 'Sign In', 'businessvance-services-manager' );
+        $subtitle = $atts['subtitle'] ?: esc_html__( 'Access your client portal and courses.', 'businessvance-services-manager' );
 
         // Login error handling
         $error_message = '';
@@ -953,7 +952,7 @@ class BV_Shortcodes {
             <div class="bv-login-card">
                 <div class="bv-login-header">
                     <?php if ( $logo_url ) : ?>
-                        <img src="<?php echo esc_url( $logo_url ); ?>" alt="<?php echo esc_attr( $site_name ); ?>" class="bv-login-logo" />
+                        <img src="<?php echo esc_url( $logo_url ); ?>" alt="" class="bv-login-logo" />
                     <?php endif; ?>
                     <h2><?php echo esc_html( $title ); ?></h2>
                     <p><?php echo esc_html( $subtitle ); ?></p>
