@@ -2,6 +2,10 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.69] - 2026-08-25
+### Fixed
+- **Client portal "log in" link now points to /bv-login/** instead of WordPress default login page. Resolves the BV login page permalink dynamically.
+
 ## [2.7.68] - 2026-08-25
 ### Added
 - **Logout URL for nav menus**: `https://yoursite.com/?bv_logout=1` — logs the user out and redirects to /bv-login/. Add as a custom link in Appearance > Menus.

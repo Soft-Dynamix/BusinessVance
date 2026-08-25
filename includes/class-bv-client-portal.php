@@ -551,7 +551,13 @@ class BV_Client_Portal {
 
     public function render_portal( $atts ) {
         if ( ! is_user_logged_in() ) {
-            $login_url = esc_url( wp_login_url( get_permalink() ) );
+            // Resolve BV login page URL
+            $login_url = '/bv-login/';
+            $bv_login_page = get_page_by_path( 'bv-login' );
+            if ( $bv_login_page ) {
+                $login_url = get_permalink( $bv_login_page->ID );
+            }
+            $login_url = esc_url( $login_url );
             $allowed   = array( 'a' => array( 'href' => array() ) );
             $message   = sprintf(
                 /* translators: %s: login URL */
