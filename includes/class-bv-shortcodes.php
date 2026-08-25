@@ -755,14 +755,31 @@ class BV_Shortcodes {
                 .bv-pick-footer {
                     text-align: center;
                     padding: 0 24px 24px;
+                    border-top: 1px solid #f3f4f6;
+                    padding-top: 20px;
+                    margin: 0 24px;
                 }
-                .bv-pick-footer a {
+                .bv-pick-logout {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
                     color: #6b7280;
                     text-decoration: none;
-                    font-size: 13px;
+                    font-size: 14px;
+                    font-weight: 500;
+                    padding: 8px 20px;
+                    border: 1.5px solid #e5e7eb;
+                    border-radius: 8px;
+                    transition: all 0.2s;
                 }
-                .bv-pick-footer a:hover {
-                    color: <?php echo esc_attr( $primary_color ); ?>;
+                .bv-pick-logout:hover {
+                    color: #dc2626;
+                    border-color: #fca5a5;
+                    background: #fef2f2;
+                }
+                .bv-pick-logout svg {
+                    width: 16px;
+                    height: 16px;
                 }
                 @media (max-width: 500px) {
                     .bv-pick-destinations { flex-direction: column; gap: 12px; }
@@ -805,7 +822,10 @@ class BV_Shortcodes {
 
                     <div class="bv-pick-footer">
                         <?php $logout_url = wp_logout_url( $current_page ); ?>
-                        <a href="<?php echo esc_url( $logout_url ); ?>"><?php esc_html_e( 'Not you? Log out', 'businessvance-services-manager' ); ?></a>
+                        <a href="<?php echo esc_url( $logout_url ); ?>" class="bv-pick-logout">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                            <?php esc_html_e( 'Log Out', 'businessvance-services-manager' ); ?>
+                        </a>
                     </div>
                 </div>
             </div>

@@ -2,6 +2,10 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.67] - 2026-08-25
+### Changed
+- **Logout button on destination picker** — replaced small "Not you? Log out" text link with a proper styled logout button (with door icon). Turns red on hover. Redirects back to the BV login page after logout.
+
 ## [2.7.66] - 2026-08-25
 ### Changed
 - **[bv_login_page] is now brand-neutral** — title is simply "Sign In" (no company or site name), subtitle says "Access your client portal and courses." Works for both StudyVance and BusinessVance.
