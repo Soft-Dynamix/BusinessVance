@@ -775,4 +775,45 @@
         $fileItem.fadeOut(200, function() { $(this).remove(); });
     });
 
+    // ============================================
+    // Reset Questionnaire — v2.7.58
+    // ============================================
+    $(document).on('click', '.bv-reset-questionnaire', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        $('#bv-q-reset-modal').fadeIn(150);
+    });
+    $(document).on('click', '.bv-reset-modal-cancel', function(e) {
+        e.preventDefault();
+        $('#bv-q-reset-modal').fadeOut(150);
+    });
+    $(document).on('click', '.bv-reset-modal-overlay', function(e) {
+        if (e.target === this) $(this).fadeOut(150);
+    });
+    $(document).on('click', '.bv-reset-modal-confirm', function(e) {
+        e.preventDefault();
+        var $btn = $(this);
+        var projectId = $('#bv-questionnaire-form').data('project-id');
+        $btn.prop('disabled', true).text('Resetting...');
+        $('.bv-reset-modal-cancel').prop('disabled', true);
+        $.post(bv_portal.ajax_url, {
+            action: 'bv_portal_reset_questionnaire',
+            nonce: bv_portal.nonce,
+            project_id: projectId
+        }, function(r) {
+            if (r.success) {
+                $('#bv-q-status').html('<span class="bv-q-saved">&#10003; ' + bvEscapeHtml(r.data || 'Reset complete') + '</span>');
+                setTimeout(function() { window.location.reload(); }, 800);
+            } else {
+                $('#bv-q-status').html('<span class="bv-q-error">' + bvEscapeHtml(r.data || 'Error resetting') + '</span>');
+                $btn.prop('disabled', false).text('Yes, Reset Everything');
+                $('.bv-reset-modal-cancel').prop('disabled', false);
+            }
+        }).fail(function() {
+            $('#bv-q-status').html('<span class="bv-q-error">Network error. Please try again.</span>');
+            $btn.prop('disabled', false).text('Yes, Reset Everything');
+            $('.bv-reset-modal-cancel').prop('disabled', false);
+        });
+    });
+
 })(jQuery);

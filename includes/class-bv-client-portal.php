@@ -29,6 +29,7 @@ class BV_Client_Portal {
         add_action( 'wp_ajax_bv_portal_send_message', array( $this, 'ajax_send_message' ) );
         add_action( 'wp_ajax_bv_portal_download_report', array( $this, 'ajax_download_report' ) );
         add_action( 'wp_ajax_bv_portal_upload_multifile', array( $this, 'ajax_upload_multifile' ) );
+        add_action( 'wp_ajax_bv_portal_reset_questionnaire', array( $this, 'ajax_reset_questionnaire' ) );
 
         // Ensure bv_project_documents has document_requirement_id column
         // Only runs on admin_init to avoid running on every frontend page load.
@@ -1618,9 +1619,24 @@ class BV_Client_Portal {
                 </div>
                 <?php endforeach; ?>
                 <div class="bv-q-actions">
-                    <button type="submit" class="bv-btn bv-btn-primary"><?php echo esc_html__( 'Save Questionnaire', 'businessvance-services-manager' ); ?></button>
-                    <button type="button" class="bv-btn bv-btn-outline bv-save-draft"><?php echo esc_html__( 'Save Draft & Continue Later', 'businessvance-services-manager' ); ?></button>
+                    <div class="bv-q-actions-main">
+                        <button type="submit" class="bv-btn bv-btn-primary">&#10003; <?php echo esc_html__( 'Save Questionnaire', 'businessvance-services-manager' ); ?></button>
+                        <button type="button" class="bv-btn bv-btn-outline bv-save-draft">&#128190; <?php echo esc_html__( 'Save Draft & Continue Later', 'businessvance-services-manager' ); ?></button>
+                    </div>
+                    <button type="button" class="bv-btn bv-btn-danger-outline bv-reset-questionnaire">&#128260; <?php echo esc_html__( 'Reset Questionnaire', 'businessvance-services-manager' ); ?></button>
                     <span id="bv-q-status"></span>
+                </div>
+                <!-- Reset Confirmation Modal -->
+                <div class="bv-q-reset-modal-overlay" id="bv-q-reset-modal" style="display:none;">
+                    <div class="bv-q-reset-modal">
+                        <div class="bv-q-reset-modal-icon">&#9888;</div>
+                        <h3><?php echo esc_html__( 'Reset Questionnaire?', 'businessvance-services-manager' ); ?></h3>
+                        <p><?php echo esc_html__( 'This will permanently delete all your saved answers and any draft. You will need to start over from scratch.', 'businessvance-services-manager' ); ?></p>
+                        <div class="bv-q-reset-modal-actions">
+                            <button type="button" class="bv-btn bv-btn-outline bv-reset-modal-cancel"><?php echo esc_html__( 'Cancel', 'businessvance-services-manager' ); ?></button>
+                            <button type="button" class="bv-btn bv-btn-danger bv-reset-modal-confirm"><?php echo esc_html__( 'Yes, Reset Everything', 'businessvance-services-manager' ); ?></button>
+                        </div>
+                    </div>
                 </div>
             </form>
             <?php endif; ?>
@@ -2213,6 +2229,32 @@ class BV_Client_Portal {
             do_action( 'bv_project_completion_email', $project_id );
         }
         wp_send_json_success( esc_html__( 'Questionnaire saved successfully', 'businessvance-services-manager' ) );
+    }
+
+    /**
+     * Reset questionnaire: delete all saved responses and draft for a project.
+     *
+     * @since 2.7.58
+     * @return void
+     */
+    public function ajax_reset_questionnaire() {
+        check_ajax_referer( 'bv_portal_action', 'nonce' );
+        if ( ! is_user_logged_in() ) wp_send_json_error( esc_html__( 'Not logged in', 'businessvance-services-manager' ) );
+
+        $project_id = absint( $_POST['project_id'] );
+        $project    = $this->verify_project_access( $project_id );
+        if ( ! $project ) wp_send_json_error( esc_html__( 'Project not found or access denied', 'businessvance-services-manager' ) );
+
+        global $wpdb;
+        $responses_table = $wpdb->prefix . 'bv_questionnaire_responses';
+
+        // Delete all saved responses for this project
+        $wpdb->delete( $responses_table, array( 'project_id' => $project_id ), array( '%d' ) );
+
+        // Delete draft if exists
+        delete_option( 'bv_q_draft_' . $project_id );
+
+        wp_send_json_success( esc_html__( 'Questionnaire has been reset. Reloading...', 'businessvance-services-manager' ) );
     }
 
     /**
