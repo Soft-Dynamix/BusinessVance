@@ -595,13 +595,13 @@ class BV_Shortcodes {
     /**
      * Branded login page shortcode [bv_login_page]
      *
-     * Renders a professional login form with role-based redirect:
-     *  - Consultants → Consultant Dashboard
-     *  - WooCommerce Clients → Client Portal
-     *  - TutorLMS Students → LMS Dashboard
-     *  - Others → My Account / Home
+     * Two-step flow:
+     *  1. Not logged in → shows a clean WooCommerce login form
+     *  2. After login → shows a destination picker with two cards:
+     *     - Client Portal (URL from admin settings: portal_url)
+     *     - LMS Dashboard (URL from admin settings: tutor_dashboard_url)
      *
-     * If the user is already logged in, they are redirected immediately.
+     * Consultant Dashboard is completely separate (wp-admin) and NOT shown here.
      *
      * @since 2.7.61
      * @return string HTML output
