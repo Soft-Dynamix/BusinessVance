@@ -1401,6 +1401,12 @@ class BV_Client_Portal {
                         $options = json_decode( $q->options, true );
                         // v2.7.55: Check draft responses first, then fall back to actual saved response
                         $val = isset( $bv_draft_data[ $q->id ] ) ? $bv_draft_data[ $q->id ] : ( $q->response_value ? $q->response_value : '' );
+                        // v2.7.58: Normalize $val — draft loading may produce PHP arrays for
+                        // checkbox/address/repeatable/multifile types. JSON-encode them so all
+                        // downstream json_decode() and esc_attr() calls work correctly on PHP 8+.
+                        if ( is_array( $val ) ) {
+                            $val = wp_json_encode( $val );
+                        }
                         $qid = esc_attr( $q->id );
                         $req = $q->is_required ? 'required' : '';
 
@@ -1443,7 +1449,7 @@ class BV_Client_Portal {
                             </div>
                         <?php elseif ( $q->type === 'checkbox' && is_array( $options ) ) : ?>
                             <div class="bv-q-checkbox-group">
-                                <?php $saved = json_decode( $val, true ) ?: array(); $has_other = false; foreach ( $options as $opt ) : $ov = is_array($opt) ? $opt['value'] ?? $opt[0] : $opt; if ( $ov === '__other__' ) { $has_other = true; continue; } ?>
+                                <?php $saved = is_array( $val ) ? $val : ( json_decode( $val, true ) ?: array() ); $has_other = false; foreach ( $options as $opt ) : $ov = is_array($opt) ? $opt['value'] ?? $opt[0] : $opt; if ( $ov === '__other__' ) { $has_other = true; continue; } ?>
                                 <label class="bv-q-checkbox"><input type="checkbox" id="q_<?php echo $qid; ?>_<?php echo esc_attr( $ov ); ?>" name="q_<?php echo $qid; ?>[]" value="<?php echo esc_attr( $ov ); ?>" <?php echo in_array( $ov, $saved ) ? 'checked' : ''; ?> /><span><?php echo esc_html( is_array($opt) ? $opt['label'] ?? $opt[1] : $opt ); ?></span></label>
                                 <?php endforeach; ?>
                                 <?php if ( $has_other ) : ?>
@@ -1455,7 +1461,7 @@ class BV_Client_Portal {
                             // Parse previously uploaded file data (JSON array)
                             $saved_file_data = $val;
                             $saved_file_name = '';
-                            $saved_file_arr = json_decode( $val, true );
+                            $saved_file_arr = is_array( $val ) ? $val : json_decode( $val, true );
                             if ( is_array( $saved_file_arr ) && isset( $saved_file_arr[0] ) ) {
                                 $saved_file_name = $saved_file_arr[0]['name'] ?? '';
                                 $saved_file_data = $val; // keep full JSON for hidden field
@@ -1494,14 +1500,14 @@ class BV_Client_Portal {
                                 <input type="hidden" id="q_<?php echo $qid; ?>" name="q_<?php echo $qid; ?>" value="<?php echo $rating_val; ?>" />
                             </div>
                         <?php elseif ( $q->type === 'address' ) : ?>
-                            <?php $addr = json_decode( $val, true ) ?: array(); ?>
+                            <?php $addr = is_array( $val ) ? $val : ( json_decode( $val, true ) ?: array() ); ?>
                             <div class="bv-q-address-wrap">
                                 <input type="text" name="q_<?php echo $qid; ?>[street]" value="<?php echo esc_attr( $addr['street'] ?? '' ); ?>" placeholder="<?php echo esc_attr__( 'Street Address', 'businessvance-services-manager' ); ?>" class="bv-q-addr-field" <?php echo $req; ?> />
                                 <div class="bv-q-addr-row"><input type="text" name="q_<?php echo $qid; ?>[city]" value="<?php echo esc_attr( $addr['city'] ?? '' ); ?>" placeholder="<?php echo esc_attr__( 'City', 'businessvance-services-manager' ); ?>" class="bv-q-addr-field" <?php echo $req; ?> /><input type="text" name="q_<?php echo $qid; ?>[state]" value="<?php echo esc_attr( $addr['state'] ?? '' ); ?>" placeholder="<?php echo esc_attr__( 'State/Province', 'businessvance-services-manager' ); ?>" class="bv-q-addr-field" <?php echo $req; ?> /></div>
                                 <div class="bv-q-addr-row"><input type="text" name="q_<?php echo $qid; ?>[zip]" value="<?php echo esc_attr( $addr['zip'] ?? '' ); ?>" placeholder="<?php echo esc_attr__( 'ZIP/Postal Code', 'businessvance-services-manager' ); ?>" class="bv-q-addr-field" <?php echo $req; ?> /><input type="text" name="q_<?php echo $qid; ?>[country]" value="<?php echo esc_attr( $addr['country'] ?? '' ); ?>" placeholder="<?php echo esc_attr__( 'Country', 'businessvance-services-manager' ); ?>" class="bv-q-addr-field" <?php echo $req; ?> /></div>
                             </div>
                         <?php elseif ( $q->type === 'repeatable' ) : ?>
-                            <?php $rows = json_decode( $val, true ) ?: array(); $col_defs = array(); if ( is_array( $options ) ) { foreach ( $options as $col ) { $col_defs[] = array( 'name' => is_array($col) ? ($col['label'] ?? $col[1] ?? $col['value'] ?? $col[0]) : $col, 'type' => is_array($col) ? ($col['value'] ?? 'text') : 'text' ); } } ?>
+                            <?php $rows = is_array( $val ) ? $val : ( json_decode( $val, true ) ?: array() ); $col_defs = array(); if ( is_array( $options ) ) { foreach ( $options as $col ) { $col_defs[] = array( 'name' => is_array($col) ? ($col['label'] ?? $col[1] ?? $col['value'] ?? $col[0]) : $col, 'type' => is_array($col) ? ($col['value'] ?? 'text') : 'text' ); } } ?>
                             <div class="bv-q-repeatable-wrap" data-qid="<?php echo $qid; ?>">
                                 <div class="bv-q-rep-table"><table><thead><tr><?php foreach ( $col_defs as $col ) : ?><th><?php echo esc_html( $col['name'] ); ?></th><?php endforeach; ?><th style="width:32px;"></th></tr></thead><tbody>
                                 <?php foreach ( $rows as $ri => $row ) : ?>
@@ -1515,7 +1521,7 @@ class BV_Client_Portal {
                             </div>
                         <?php elseif ( $q->type === 'multifile' ) : ?>
                             <?php
-                            $saved_files = json_decode( $val, true ) ?: array();
+                            $saved_files = is_array( $val ) ? $val : ( json_decode( $val, true ) ?: array() );
                             $accept = '';
                             if ( is_array( $options ) && ! empty( $options[0] ) ) {
                                 $exts = is_array( $options[0] ) ? ( $options[0]['value'] ?? '' ) : $options[0];
