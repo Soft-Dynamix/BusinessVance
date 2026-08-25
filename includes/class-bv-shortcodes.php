@@ -614,7 +614,7 @@ class BV_Shortcodes {
         ), $atts, 'bv_login_page' );
 
         $settings        = BV_Settings::get_settings();
-        $company_name    = $settings['company_name'] ?? 'BusinessVance';
+        $site_name       = get_bloginfo( 'name' );
         $primary_color   = $settings['primary_color'] ?? '#002B5C';
         $secondary_color = $settings['secondary_color'] ?? '#008080';
         $logo_url        = $settings['logo_url'] ?? '';
@@ -658,7 +658,7 @@ class BV_Shortcodes {
         // ---- Already logged in? Show destination picker ----
         if ( is_user_logged_in() ) {
             $user    = wp_get_current_user();
-            $title   = $atts['title'] ?: sprintf( esc_html__( 'Welcome back, %s', 'businessvance-services-manager' ), $user->display_name );
+            $title   = $atts['title'] ?: sprintf( esc_html__( 'Welcome back, %s', 'businessvance-services-manager' ), $user->first_name ?: $user->display_name );
             $current_page = $_SERVER['REQUEST_URI'] ?? '';
 
             ob_start();
@@ -774,7 +774,7 @@ class BV_Shortcodes {
                 <div class="bv-pick-card">
                     <div class="bv-pick-header">
                         <?php if ( $logo_url ) : ?>
-                            <img src="<?php echo esc_url( $logo_url ); ?>" alt="<?php echo esc_attr( $company_name ); ?>" class="bv-pick-logo" />
+                            <img src="<?php echo esc_url( $logo_url ); ?>" alt="<?php echo esc_attr( $site_name ); ?>" class="bv-pick-logo" />
                         <?php endif; ?>
                         <h2><?php echo esc_html( $title ); ?></h2>
                         <p><?php esc_html_e( 'Where would you like to go?', 'businessvance-services-manager' ); ?></p>
@@ -815,7 +815,7 @@ class BV_Shortcodes {
         }
 
         // ---- Not logged in: show login form ----
-        $title    = $atts['title'] ?: sprintf( esc_html__( 'Welcome to %s', 'businessvance-services-manager' ), $company_name );
+        $title    = $atts['title'] ?: sprintf( esc_html__( 'Welcome to %s', 'businessvance-services-manager' ), $site_name );
         $subtitle = $atts['subtitle'] ?: esc_html__( 'Sign in to access your dashboard and courses.', 'businessvance-services-manager' );
 
         // Login error handling
@@ -953,7 +953,7 @@ class BV_Shortcodes {
             <div class="bv-login-card">
                 <div class="bv-login-header">
                     <?php if ( $logo_url ) : ?>
-                        <img src="<?php echo esc_url( $logo_url ); ?>" alt="<?php echo esc_attr( $company_name ); ?>" class="bv-login-logo" />
+                        <img src="<?php echo esc_url( $logo_url ); ?>" alt="<?php echo esc_attr( $site_name ); ?>" class="bv-login-logo" />
                     <?php endif; ?>
                     <h2><?php echo esc_html( $title ); ?></h2>
                     <p><?php echo esc_html( $subtitle ); ?></p>
