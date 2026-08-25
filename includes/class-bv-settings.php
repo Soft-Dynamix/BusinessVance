@@ -347,10 +347,10 @@ class BV_Settings {
             $headers[] = 'Reply-To: ' . $args['reply_to_email'];
         }
 
-        // Anti-spam headers (RFC 3834 / RFC 2076)
+        // RFC 3834: signal that this is an automated message (prevents
+        // out-of-office auto-replies, but without the aggressive 'bulk'
+        // precedence that major spam filters use to classify as spam).
         $headers[] = 'Auto-Submitted: auto-generated';
-        $headers[] = 'Precedence: bulk';
-        $headers[] = 'X-Auto-Response-Suppress: NRN, OOF, DR, RN, NFN';
 
         // Identification header
         $headers[] = 'X-BV-Notification-Type: ' . sanitize_text_field( $args['notification_type'] );

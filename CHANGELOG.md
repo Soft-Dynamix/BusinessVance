@@ -2,6 +2,12 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.70] - 2026-08-25
+### Fixed
+- **Emails going to spam**: Removed `Precedence: bulk` and `X-Auto-Response-Suppress` headers from all outgoing emails. `Precedence: bulk` is a major spam trigger used by Gmail and Outlook to classify automated emails as bulk/marketing spam. Kept only `Auto-Submitted: auto-generated` (RFC 3834 compliant, prevents out-of-office replies without triggering spam).
+### Note
+- **Server-side DNS is also required**: Make sure SPF, DKIM, and DMARC records are properly configured for `studyvance.co.za` on your hosting. This is the #1 cause of spam classification and must be done in your domain's DNS settings (not in the plugin).
+
 ## [2.7.69] - 2026-08-25
 ### Fixed
 - **Client portal "log in" link now points to /bv-login/** instead of WordPress default login page. Resolves the BV login page permalink dynamically.
