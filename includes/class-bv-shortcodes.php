@@ -2,7 +2,8 @@
 /**
  * Shortcodes for BusinessVance Services Manager
  *
- * Provides [businessvance_services], [businessvance_onceoff], [businessvance_subscriptions]
+ * Provides [businessvance_services], [businessvance_onceoff], [businessvance_subscriptions],
+ * [bv_login_page]
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -20,8 +21,13 @@ class BV_Shortcodes {
         add_shortcode( 'businessvance_services', array( $this, 'render_full_page' ) );
         add_shortcode( 'businessvance_onceoff', array( $this, 'render_services_section' ) );
         add_shortcode( 'businessvance_subscriptions', array( $this, 'render_plans_section' ) );
+        add_shortcode( 'bv_login_page', array( $this, 'render_login_page' ) );
 
         add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_frontend_assets' ) );
+
+        // Role-based login redirect (priority 100 — consultant filter at 99999 overrides for consultants)
+        add_filter( 'woocommerce_login_redirect', array( $this, 'bv_login_redirect' ), 100, 2 );
+        add_filter( 'login_redirect', array( $this, 'bv_login_redirect' ), 100, 2 );
     }
 
     /**
@@ -584,5 +590,400 @@ class BV_Shortcodes {
         </section>
         <?php
         return ob_get_clean();
+    }
+
+    /**
+     * Branded login page shortcode [bv_login_page]
+     *
+     * Renders a professional login form with role-based redirect:
+     *  - Consultants → Consultant Dashboard
+     *  - WooCommerce Clients → Client Portal
+     *  - TutorLMS Students → LMS Dashboard
+     *  - Others → My Account / Home
+     *
+     * If the user is already logged in, they are redirected immediately.
+     *
+     * @since 2.7.61
+     * @return string HTML output
+     */
+    public function render_login_page( $atts ) {
+        // If already logged in, redirect based on role
+        if ( is_user_logged_in() ) {
+            $redirect = $this->get_redirect_for_user( wp_get_current_user() );
+            if ( $redirect ) {
+                echo '<script>window.location.href=' . json_encode( $redirect ) . ';</script>';
+                return '<noscript><meta http-equiv="refresh" content="0;url=' . esc_url( $redirect ) . '"></noscript>';
+            }
+        }
+
+        $atts = shortcode_atts( array(
+            'title'       => '',
+            'subtitle'    => '',
+            'redirect'    => '',
+            'register_url' => '',
+        ), $atts, 'bv_login_page' );
+
+        $settings      = BV_Settings::get_settings();
+        $company_name  = $settings['company_name'] ?? 'BusinessVance';
+        $primary_color = $settings['primary_color'] ?? '#002B5C';
+        $secondary_color = $settings['secondary_color'] ?? '#008080';
+        $logo_url      = $settings['logo_url'] ?? '';
+        $title         = $atts['title'] ?: sprintf( esc_html__( 'Welcome to %s', 'businessvance-services-manager' ), $company_name );
+        $subtitle      = $atts['subtitle'] ?: esc_html__( 'Sign in to access your dashboard, portal, or courses.', 'businessvance-services-manager' );
+        $register_url  = $atts['register_url'];
+
+        // Auto-detect registration URL (WooCommerce My Account)
+        if ( empty( $register_url ) && function_exists( 'wc_get_page_permalink' ) ) {
+            $my_account = wc_get_page_permalink( 'myaccount' );
+            if ( $my_account ) {
+                $register_url = $my_account;
+            }
+        }
+
+        // Login error handling
+        $error_message = '';
+        if ( isset( $_GET['bv_login'] ) && $_GET['bv_login'] === 'failed' ) {
+            $error_message = esc_html__( 'Invalid username or password. Please try again.', 'businessvance-services-manager' );
+        }
+
+        ob_start();
+        ?>
+        <style>
+            .bv-login-wrap {
+                max-width: 440px;
+                margin: 40px auto;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            }
+            .bv-login-card {
+                background: #fff;
+                border-radius: 16px;
+                box-shadow: 0 4px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+                overflow: hidden;
+            }
+            .bv-login-header {
+                background: linear-gradient(135deg, <?php echo esc_attr( $primary_color ); ?> 0%, <?php echo esc_attr( $secondary_color ); ?> 100%);
+                padding: 32px 28px 28px;
+                text-align: center;
+            }
+            .bv-login-logo {
+                max-height: 60px;
+                max-width: 200px;
+                margin-bottom: 16px;
+                border-radius: 4px;
+            }
+            .bv-login-header h2 {
+                margin: 0;
+                font-size: 22px;
+                font-weight: 700;
+                color: #fff;
+            }
+            .bv-login-header p {
+                margin: 8px 0 0;
+                font-size: 14px;
+                color: rgba(255,255,255,0.85);
+            }
+            .bv-login-body {
+                padding: 32px 28px;
+            }
+            .bv-login-form .bv-login-field {
+                margin-bottom: 20px;
+            }
+            .bv-login-form .bv-login-field label {
+                display: block;
+                margin-bottom: 6px;
+                font-size: 13px;
+                font-weight: 600;
+                color: #374151;
+            }
+            .bv-login-form .bv-login-field input {
+                width: 100%;
+                padding: 12px 14px;
+                border: 1.5px solid #d1d5db;
+                border-radius: 8px;
+                font-size: 15px;
+                transition: border-color 0.2s, box-shadow 0.2s;
+                box-sizing: border-box;
+                outline: none;
+            }
+            .bv-login-form .bv-login-field input:focus {
+                border-color: <?php echo esc_attr( $primary_color ); ?>;
+                box-shadow: 0 0 0 3px rgba(0,43,92,0.1);
+            }
+            .bv-login-remember {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 24px;
+                font-size: 13px;
+                color: #6b7280;
+            }
+            .bv-login-remember input[type="checkbox"] {
+                width: 16px;
+                height: 16px;
+                accent-color: <?php echo esc_attr( $primary_color ); ?>;
+            }
+            .bv-login-submit {
+                width: 100%;
+                padding: 13px;
+                background: linear-gradient(135deg, <?php echo esc_attr( $primary_color ); ?> 0%, <?php echo esc_attr( $secondary_color ); ?> 100%);
+                color: #fff;
+                border: none;
+                border-radius: 8px;
+                font-size: 15px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: opacity 0.2s, transform 0.1s;
+            }
+            .bv-login-submit:hover {
+                opacity: 0.9;
+            }
+            .bv-login-submit:active {
+                transform: scale(0.98);
+            }
+            .bv-login-footer {
+                text-align: center;
+                padding: 0 28px 28px;
+            }
+            .bv-login-footer a {
+                color: <?php echo esc_attr( $primary_color ); ?>;
+                text-decoration: none;
+                font-size: 14px;
+                font-weight: 500;
+            }
+            .bv-login-footer a:hover {
+                text-decoration: underline;
+            }
+            .bv-login-footer .bv-login-separator {
+                color: #d1d5db;
+                margin: 0 12px;
+            }
+            .bv-login-error {
+                background: #fef2f2;
+                border: 1px solid #fecaca;
+                color: #dc2626;
+                padding: 12px 16px;
+                border-radius: 8px;
+                margin-bottom: 20px;
+                font-size: 14px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+        </style>
+
+        <div class="bv-login-wrap">
+            <div class="bv-login-card">
+                <div class="bv-login-header">
+                    <?php if ( $logo_url ) : ?>
+                        <img src="<?php echo esc_url( $logo_url ); ?>" alt="<?php echo esc_attr( $company_name ); ?>" class="bv-login-logo" />
+                    <?php endif; ?>
+                    <h2><?php echo $title; ?></h2>
+                    <p><?php echo $subtitle; ?></p>
+                </div>
+
+                <div class="bv-login-body">
+                    <?php if ( $error_message ) : ?>
+                        <div class="bv-login-error">
+                            <span>&#9888;</span> <?php echo $error_message; ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <form method="post" class="bv-login-form" novalidate>
+                        <?php wp_nonce_field( 'woocommerce-login', 'woocommerce-login-nonce' ); ?>
+
+                        <div class="bv-login-field">
+                            <label for="bv_username"><?php esc_html_e( 'Username or email', 'businessvance-services-manager' ); ?></label>
+                            <input type="text" name="username" id="bv_username" autocomplete="username" required />
+                        </div>
+
+                        <div class="bv-login-field">
+                            <label for="bv_password"><?php esc_html_e( 'Password', 'businessvance-services-manager' ); ?></label>
+                            <input type="password" name="password" id="bv_password" autocomplete="current-password" required />
+                        </div>
+
+                        <div class="bv-login-remember">
+                            <input type="checkbox" name="rememberme" id="bv_rememberme" value="forever" />
+                            <label for="bv_rememberme"><?php esc_html_e( 'Remember me', 'businessvance-services-manager' ); ?></label>
+                        </div>
+
+                        <button type="submit" name="login" value="<?php esc_attr_e( 'Login', 'businessvance-services-manager' ); ?>" class="bv-login-submit">
+                            <?php esc_html_e( 'Sign In', 'businessvance-services-manager' ); ?>
+                        </button>
+
+                        <input type="hidden" name="redirect_to" value="<?php echo esc_url( $atts['redirect'] ?: $_SERVER['REQUEST_URI'] ?? '' ); ?>" />
+                    </form>
+                </div>
+
+                <div class="bv-login-footer">
+                    <a href="<?php echo esc_url( wp_lostpassword_url() ); ?>"><?php esc_html_e( 'Lost your password?', 'businessvance-services-manager' ); ?></a>
+                    <?php if ( $register_url ) : ?>
+                        <span class="bv-login-separator">|</span>
+                        <a href="<?php echo esc_url( $register_url ); ?>"><?php esc_html_e( 'Create an account', 'businessvance-services-manager' ); ?></a>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+        <?php
+        return ob_get_clean();
+    }
+
+    /**
+     * Role-based login redirect handler.
+     *
+     * Runs at priority 100 (before the consultant dashboard filter at 99999).
+     * Priority order: this filter (100) → consultant filter (99999).
+     * The consultant filter will override our redirect for consultant users.
+     *
+     * Redirect logic:
+     *  1. Admins → pass through (default WooCommerce behavior)
+     *  2. Consultants → pass through (handled by consultant filter at 99999)
+     *  3. TutorLMS Students → LMS Dashboard URL from settings
+     *  4. WooCommerce Customers (with BV projects) → Client Portal
+     *  5. Others → My Account page or home
+     *
+     * @since 2.7.61
+     * @param string   $redirect Default redirect URL.
+     * @param WP_User  $user     Authenticated user object.
+     * @return string  Redirect URL.
+     */
+    public function bv_login_redirect( $redirect, $user ) {
+        if ( ! is_a( $user, 'WP_User' ) ) return $redirect;
+
+        // Admins — pass through to default
+        if ( $user->has_cap( 'manage_options' ) ) return $redirect;
+
+        // Consultants — let the consultant dashboard filter (priority 99999) handle this
+        if ( $user->has_cap( 'bv_access_consultant_dashboard' ) ) return $redirect;
+
+        $settings = BV_Settings::get_settings();
+
+        // TutorLMS Student — redirect to LMS Dashboard
+        // Check for common TutorLMS roles/capabilities
+        $tutor_roles = array( 'tutor_student', 'student' );
+        $is_student = false;
+        foreach ( $user->roles as $role ) {
+            if ( in_array( $role, $tutor_roles, true ) ) {
+                $is_student = true;
+                break;
+            }
+        }
+        // Also check if user is enrolled in any TutorLMS course
+        if ( ! $is_student && function_exists( 'tutor_utils' ) ) {
+            $enrolled_courses = tutor_utils()->get_enrolled_courses_by_user( $user->ID );
+            if ( ! empty( $enrolled_courses ) ) {
+                $is_student = true;
+            }
+        }
+        if ( $is_student ) {
+            $tutor_url = ! empty( $settings['tutor_dashboard_url'] ) ? $settings['tutor_dashboard_url'] : '';
+            if ( empty( $tutor_url ) && function_exists( 'tutor_utils' ) ) {
+                $tutor_dashboard_page_id = tutor_utils()->get_tutor_dashboard_page_id();
+                if ( $tutor_dashboard_page_id ) {
+                    $tutor_url = get_permalink( $tutor_dashboard_page_id );
+                }
+            }
+            if ( ! empty( $tutor_url ) ) {
+                return $tutor_url;
+            }
+        }
+
+        // WooCommerce Customer with BV projects → Client Portal
+        if ( in_array( 'customer', $user->roles, true ) ) {
+            global $wpdb;
+            $has_projects = $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_projects WHERE client_email = %s LIMIT 1",
+                $user->user_email
+            ) );
+            if ( $has_projects ) {
+                // Resolve portal URL: use setting, then auto-detect, then site_url
+                $portal_url = '';
+                if ( ! empty( $settings['portal_url'] ) ) {
+                    $portal_url = $settings['portal_url'];
+                } else {
+                    $portal_page = get_posts( array(
+                        'post_type'      => 'page',
+                        'posts_per_page' => 1,
+                        'post_status'    => 'publish',
+                        's'              => '[businessvance_client_portal]',
+                    ) );
+                    if ( ! empty( $portal_page ) ) {
+                        $portal_url = get_permalink( $portal_page[0]->ID );
+                    } else {
+                        $portal_url = site_url();
+                    }
+                }
+                return $portal_url;
+            }
+        }
+
+        // Default — pass through
+        return $redirect;
+    }
+
+    /**
+     * Determine the redirect URL for a given user (used for already-logged-in redirect).
+     *
+     * @since 2.7.61
+     * @param WP_User $user
+     * @return string
+     */
+    private function get_redirect_for_user( $user ) {
+        if ( ! is_a( $user, 'WP_User' ) ) return '';
+
+        // Admin → WordPress admin
+        if ( $user->has_cap( 'manage_options' ) ) return admin_url();
+
+        // Consultant → Consultant Dashboard
+        if ( $user->has_cap( 'bv_access_consultant_dashboard' ) ) {
+            return admin_url( 'admin.php?page=bv-consultant-dashboard', 'admin' );
+        }
+
+        $settings = BV_Settings::get_settings();
+
+        // TutorLMS Student → LMS Dashboard
+        $tutor_roles = array( 'tutor_student', 'student' );
+        foreach ( $user->roles as $role ) {
+            if ( in_array( $role, $tutor_roles, true ) ) {
+                $tutor_url = ! empty( $settings['tutor_dashboard_url'] ) ? $settings['tutor_dashboard_url'] : '';
+                if ( empty( $tutor_url ) && function_exists( 'tutor_utils' ) ) {
+                    $tutor_dashboard_page_id = tutor_utils()->get_tutor_dashboard_page_id();
+                    if ( $tutor_dashboard_page_id ) {
+                        $tutor_url = get_permalink( $tutor_dashboard_page_id );
+                    }
+                }
+                return $tutor_url ?: ( function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : home_url() );
+            }
+        }
+
+        // Customer with projects → Client Portal
+        if ( in_array( 'customer', $user->roles, true ) ) {
+            global $wpdb;
+            $has_projects = $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}bv_projects WHERE client_email = %s LIMIT 1",
+                $user->user_email
+            ) );
+            if ( $has_projects ) {
+                $portal_url = '';
+                if ( ! empty( $settings['portal_url'] ) ) {
+                    $portal_url = $settings['portal_url'];
+                } else {
+                    $portal_page = get_posts( array(
+                        'post_type'      => 'page',
+                        'posts_per_page' => 1,
+                        'post_status'    => 'publish',
+                        's'              => '[businessvance_client_portal]',
+                    ) );
+                    if ( ! empty( $portal_page ) ) {
+                        $portal_url = get_permalink( $portal_page[0]->ID );
+                    } else {
+                        $portal_url = site_url();
+                    }
+                }
+                return $portal_url;
+            }
+        }
+
+        // Default → My Account or Home
+        return function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : home_url();
     }
 }
