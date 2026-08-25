@@ -308,7 +308,7 @@ class BV_Settings {
     private static $bv_from_email      = '';
     private static $bv_from_name       = '';
     /** @var string Resolved From email stored by build_email_headers() for use by callers */
-    private static $last_resolved_from = '';
+    public static $last_resolved_from = '';
 
     /**
      * Activate BV email context for the next wp_mail() call.
@@ -326,6 +326,10 @@ class BV_Settings {
      * @param string $from_name   The From display name used in the headers.
      */
     public static function start_bv_email( $from_email, $from_name ) {
+        // Fallback: if caller passes empty string, use WordPress admin email
+        if ( empty( $from_email ) ) {
+            $from_email = get_option( 'admin_email' );
+        }
         self::$bv_email_active = true;
         self::$bv_from_email  = $from_email;
         self::$bv_from_name   = $from_name;

@@ -15,6 +15,7 @@ All notable changes to the BusinessVance Services Manager plugin.
   - Fixed **2 emails that bypassed `build_email_headers()`** entirely (client reminder email + client message notification). Both now use the centralized header builder with full anti-spam protection.
   - Wrapped **all 6 user-facing `wp_mail()` calls** with `start_bv_email()`/`end_bv_email()`.
   - **Removed emoji HTML entities** (`&#128065;`, `&#128172;`, `&#128640;`) from email CTA buttons. Some spam filters flag emoji in email content.
+- **Fatal error when saving questionnaire at 100% progress** — `BV_Settings::$last_resolved_from` was declared `private static` but accessed from outside the class. PHP fatal error caused HTTP 500 → jQuery showed "Network error". Changed to `public static`. Also added admin_email fallback in `start_bv_email()`.
 ### Note
 - **Server-side DNS is also required**: Make sure SPF, DKIM, and DMARC records are properly configured for `studyvance.co.za` on your hosting. This is the most impactful factor for spam classification and must be done in your domain's DNS settings (not in the plugin). Without SPF/DKIM, even perfectly formatted emails may still go to spam.
 
