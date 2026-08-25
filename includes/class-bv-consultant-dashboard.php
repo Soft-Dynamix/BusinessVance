@@ -924,6 +924,42 @@ class BV_Consultant_Dashboard {
         }
         $has_multiple_services = count( $responses_by_service ) > 1;
 
+        // v2.7.60: Extract all questionnaire file uploads into a dedicated list
+        // so consultants can easily find and download client-uploaded files.
+        $questionnaire_files = array();
+        $qfile_nonce = wp_create_nonce( 'bv_consultant_dashboard' );
+        foreach ( $responses_raw as $r ) {
+            $val = $r->response_value;
+            if ( empty( $val ) || $val === '[]' ) continue;
+
+            // Check for file/multifile JSON (array of objects with 'file' or 'url' keys)
+            $is_file_type = in_array( $r->type, array( 'file', 'multifile' ), true );
+            $json_val = is_string( $val ) ? json_decode( $val, true ) : ( is_array( $val ) ? $val : null );
+
+            if ( $json_val && is_array( $json_val ) && isset( $json_val[0] ) && is_array( $json_val[0] ) &&
+                 ( isset( $json_val[0]['file'] ) || isset( $json_val[0]['url'] ) ) ) {
+                foreach ( $json_val as $fi => $f ) {
+                    $dl_url = '';
+                    if ( ! empty( $f['file'] ) ) {
+                        $dl_url = admin_url( 'admin-ajax.php?action=bv_cd_download_qfile&nonce=' . $qfile_nonce . '&project_id=' . $project_id . '&file=' . rawurlencode( $f['file'] ) );
+                    } elseif ( ! empty( $f['url'] ) ) {
+                        $dl_url = $f['url'];
+                    }
+                    if ( $dl_url ) {
+                        $questionnaire_files[] = array(
+                            'name'     => $f['name'] ?? ( 'File ' . ( $fi + 1 ) ),
+                            'size'     => $f['size'] ?? '',
+                            'url'      => $dl_url,
+                            'is_local' => ! empty( $f['file'] ),
+                            'question' => $r->label,
+                            'section'  => $r->section_title,
+                            'service'  => $r->service_name,
+                        );
+                    }
+                }
+            }
+        }
+
         // v2.7.43: Client avatar
         $avatar_colors = array( '#e74c3c','#e67e22','#f1c40f','#2ecc71','#1abc9c','#3498db','#9b59b6','#e84393','#00b894','#6c5ce7' );
         $name_parts = preg_split( '/[\s]+/', trim( $project->client_name ), 2 );
@@ -1166,6 +1202,48 @@ class BV_Consultant_Dashboard {
                 <button type="button" class="button button-secondary" onclick="bv_cd_download_questionnaire(<?php echo $project_id; ?>)">⬇ <?php echo esc_html__( 'Download Data (CSV)', 'businessvance-services-manager' ); ?></button>
             </div>
             <?php endif; ?>
+
+            <?php
+            // v2.7.60: Prominent uploaded files section
+            if ( ! empty( $questionnaire_files ) ) :
+            ?>
+            <div class="bv-cd-card" style="margin-bottom:16px; border-left:4px solid #002B5C;">
+                <h4 style="margin:0 0 12px; color:#002B5C;">&#128206; Questionnaire Uploaded Files (<?php echo count( $questionnaire_files ); ?>)</h4>
+                <p style="margin:0 0 12px; font-size:12px; color:#666;">Files uploaded by the client within the questionnaire. These are separate from required documents.</p>
+                <table class="widefat striped bv-cd-table" style="margin:0;">
+                    <thead><tr>
+                        <th>File</th>
+                        <th>Question</th>
+                        <?php if ( $has_multiple_services ) : ?><th>Service</th><?php endif; ?>
+                        <th>Size</th>
+                        <th>Action</th>
+                    </tr></thead>
+                    <tbody>
+                    <?php foreach ( $questionnaire_files as $qf ) : ?>
+                    <tr>
+                        <td>
+                            <strong><?php echo esc_html( $qf['name'] ); ?></strong>
+                        </td>
+                        <td>
+                            <small><?php echo esc_html( $qf['question'] ); ?></small>
+                            <?php if ( $qf['section'] ) : ?><br><small style="color:#888;"><?php echo esc_html( $qf['section'] ); ?></small><?php endif; ?>
+                        </td>
+                        <?php if ( $has_multiple_services ) : ?><td><small><?php echo esc_html( $qf['service'] ); ?></small></td><?php endif; ?>
+                        <td><small><?php echo esc_html( $qf['size'] ); ?></small></td>
+                        <td>
+                            <?php if ( $qf['is_local'] ) : ?>
+                            <a href="<?php echo esc_url( $qf['url'] ); ?>" class="button button-small">&#11015; Download</a>
+                            <?php else : ?>
+                            <a href="<?php echo esc_url( $qf['url'] ); ?>" target="_blank" class="button button-small">&#128279; Open</a>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php endif; ?>
+
             <?php if ( empty( $responses_by_service ) ) : ?>
             <div class="bv-cd-card"><p><?php echo esc_html__( 'No questionnaire responses submitted yet.', 'businessvance-services-manager' ); ?></p></div>
             <?php else : ?>
@@ -1195,9 +1273,9 @@ class BV_Consultant_Dashboard {
                         if ( preg_match( '/^data:image/', $val ) ) {
                             $display_val = '✍️ [Signature provided]';
                         }
-                        // Check multifile JSON with URLs — BEFORE repeatable table check
-                        // (multifile is also an array of arrays, but has 'url' key)
-                        elseif ( $json_val && isset( $json_val[0] ) && isset( $json_val[0]['url'] ) ) {
+                        // File upload JSON (has 'url' or 'file' key — check BEFORE repeatable check)
+                        // (multifile is also an array of arrays, but has 'url' or 'file' key)
+                        elseif ( $json_val && isset( $json_val[0] ) && is_array( $json_val[0] ) && ( isset( $json_val[0]['url'] ) || isset( $json_val[0]['file'] ) ) ) {
                             $display_val = '';
                             $is_html = true;
                             $nonce = wp_create_nonce( 'bv_consultant_dashboard' );
@@ -1470,15 +1548,47 @@ class BV_Consultant_Dashboard {
              WHERE r.project_id = %d
              ORDER BY COALESCE(s.name, 'zzz'), qs.display_order, q.display_order", $pid ) );
 
+        // v2.7.60: Extract questionnaire file uploads for AJAX view
+        $q_files = array();
+        $qf_nonce = wp_create_nonce( 'bv_consultant_dashboard' );
+        foreach ( $responses as $qr ) {
+            $qr_val = $qr->response_value;
+            if ( empty( $qr_val ) || $qr_val === '[]' ) continue;
+            $qr_json = is_string( $qr_val ) ? json_decode( $qr_val, true ) : ( is_array( $qr_val ) ? $qr_val : null );
+            if ( $qr_json && is_array( $qr_json ) && isset( $qr_json[0] ) && is_array( $qr_json[0] ) &&
+                 ( isset( $qr_json[0]['file'] ) || isset( $qr_json[0]['url'] ) ) ) {
+                foreach ( $qr_json as $qfi => $qf ) {
+                    $dl = '';
+                    if ( ! empty( $qf['file'] ) ) {
+                        $dl = admin_url( 'admin-ajax.php?action=bv_cd_download_qfile&nonce=' . $qf_nonce . '&project_id=' . $pid . '&file=' . rawurlencode( $qf['file'] ) );
+                    } elseif ( ! empty( $qf['url'] ) ) {
+                        $dl = $qf['url'];
+                    }
+                    if ( $dl ) {
+                        $q_files[] = array(
+                            'name'     => $qf['name'] ?? 'File ' . ( $qfi + 1 ),
+                            'size'     => $qf['size'] ?? '',
+                            'url'      => $dl,
+                            'is_local' => ! empty( $qf['file'] ),
+                            'question' => $qr->label,
+                            'section'  => $qr->section_title,
+                            'service'  => $qr->service_name,
+                        );
+                    }
+                }
+            }
+        }
+
         wp_send_json_success( array(
-            'project'   => $project,
-            'services'  => $services,
-            'agreement' => $agreement,
-            'documents' => $documents,
-            'reports'   => $reports,
-            'messages'  => $messages,
-            'notes'     => $notes,
-            'responses' => $responses,
+            'project'            => $project,
+            'services'           => $services,
+            'agreement'          => $agreement,
+            'documents'          => $documents,
+            'reports'            => $reports,
+            'messages'           => $messages,
+            'notes'              => $notes,
+            'responses'          => $responses,
+            'questionnaire_files' => $q_files,
         ) );
     }
 
@@ -2270,7 +2380,7 @@ foreach ( $service_questions as $q ) :
         ?>
             <img src="<?php echo esc_attr( $qval ); ?>" alt="Client Signature" class="sig-img" />
         <?php
-        // Multifile JSON with URLs (check BEFORE repeatable table)
+        // File upload JSON (has .url. or .file. key — check BEFORE repeatable table)
         elseif ( $qjson && isset( $qjson[0] ) && isset( $qjson[0]['url'] ) ) :
         ?>
             <div class="mf-list"><?php foreach ( $qjson as $f ) : ?>
@@ -2862,32 +2972,56 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
                 $file_listing_html = '<p style="color:#e67e22;font-weight:600;">⚠ No uploaded files, required documents, or signed agreement were found for this project. Only the questionnaire HTML report is included.</p>';
             }
 
-            $body_html = '<div style="font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;max-width:680px;margin:0 auto;color:#1a1a2e;line-height:1.6;">'
-                . '<div style="background:#002B5C;color:#fff;padding:24px 28px;border-radius:8px 8px 0 0;">'
-                . '<h1 style="margin:0;font-size:20px;">Project Complete: ' . esc_html( $project->project_number ) . '</h1>'
+            // Build HTML email body with proper document wrapper (consistent with
+            // other consultant notifications — helps avoid spam-classification).
+            $body_html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+                . '</head><body style="margin:0;padding:0;background:#f0f2f5;font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;">'
+                . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:32px 16px;">'
+                . '<tr><td align="center">'
+                . '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">'
+
+                // Header banner
+                . '<tr><td style="background:linear-gradient(135deg,#002B5C 0%,#004080 100%);color:#fff;padding:28px 32px;border-radius:12px 12px 0 0;">'
+                . '<h1 style="margin:0;font-size:20px;font-weight:700;">Project Complete: ' . esc_html( $project->project_number ) . '</h1>'
                 . '<p style="margin:6px 0 0;opacity:0.85;font-size:14px;">All client information has been submitted</p>'
-                . '</div>'
-                . '<div style="background:#fff;padding:28px;border:1px solid #e2e8f0;border-top:none;">'
-                . '<p style="margin:0 0 16px;">Project <strong>' . esc_html( $project->project_number ) . '</strong> for client <strong>' . esc_html( $project->client_name ) . '</strong> (' . esc_html( $project->client_email ) . ') is now 100% complete.</p>'
-                . '<h3 style="color:#002B5C;margin:20px 0 8px;">Package Contents</h3>'
-                . '<ul style="margin:0 0 12px;padding-left:20px;">'
+                . '</td></tr>'
+
+                // Body
+                . '<tr><td style="background:#fff;padding:28px 32px;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;">'
+                . '<p style="margin:0 0 16px;font-size:15px;color:#374151;">Project <strong>' . esc_html( $project->project_number ) . '</strong> for client <strong>' . esc_html( $project->client_name ) . '</strong> (<span style="color:#6b7280;">' . esc_html( $project->client_email ) . '</span>) is now <strong>100% complete</strong>.</p>'
+
+                // Package contents card
+                . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:20px;">'
+                . '<tr><td style="padding:16px 20px;">'
+                . '<p style="margin:0 0 8px;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Package Contents</p>'
+                . '<ul style="margin:0;padding-left:20px;font-size:14px;color:#374151;line-height:1.8;">'
                 . '<li>Complete Project Report (HTML) — questionnaire responses, required documents, and signed agreement</li>'
                 . ( ! empty( $agreement_html ) ? '<li>Signed Service Agreement (HTML)</li>' : '' )
                 . ( ! empty( $multifile_paths ) ? '<li>' . count( $multifile_paths ) . ' file(s) uploaded via questionnaire</li>' : '' )
                 . ( ! empty( $doc_paths ) ? '<li>' . count( $doc_paths ) . ' required document(s)</li>' : '' )
                 . '</ul>'
                 . $file_listing_html
+                . '</td></tr></table>'
+
+                // Info box
                 . '<div style="background:#f8f9fb;border:1px solid #e2e8f0;border-radius:6px;padding:14px 18px;margin-top:20px;">'
                 . '<p style="margin:0 0 6px;font-size:13px;color:#666;">All files are attached to this email individually AND as a ZIP package for your convenience.</p>'
-                . '<p style="margin:0;font-size:13px;"><a href="' . esc_url( $dashboard_url ) . '" style="color:#002B5C;font-weight:600;">Open in Consultant Dashboard →</a></p>'
+                . '<p style="margin:0;font-size:13px;"><a href="' . esc_url( $dashboard_url ) . '" style="color:#002B5C;font-weight:600;">Open in Consultant Dashboard &rarr;</a></p>'
                 . '</div>'
-                . '</div>'
-                . '<div style="background:#f8f9fb;padding:16px 28px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;font-size:12px;color:#999;text-align:center;">'
-                . esc_html( $company_name ) . ' System · ' . date( 'd F Y H:i' )
-                . '</div>'
-                . '</div>';
 
-            // Also build a plain text fallback body
+                . '</td></tr>'
+
+                // Footer
+                . '<tr><td style="background:#f8fafc;padding:16px 32px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;text-align:center;">'
+                . '<p style="margin:0;font-size:12px;color:#9ca3af;">This is an automated notification from <strong>' . esc_html( $company_name ) . '</strong>.<br>Please do not reply to this email.</p>'
+                . '</td></tr>'
+
+                . '</table>'
+                . '</td></tr></table>'
+                . '</body></html>';
+
+            // Also build a plain text fallback body (used for logging / debugging only;
+            // wp_mail sends the HTML version above).
             $body_text  = "Project {$project->project_number} for {$project->client_name} ({$project->client_email}) is 100% complete.\n\n";
             $body_text .= "Package Contents:\n";
             $body_text .= "- questionnaire-report.html (Complete report: responses, documents, agreement)\n";
@@ -2897,11 +3031,15 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
             $body_text .= "\nAll files are attached to this email.\n";
             $body_text .= "Dashboard: {$dashboard_url}\n";
 
-            $from_email = ! empty( $settings['email_address'] ) ? $settings['email_address'] : $consultant_email;
-            $headers    = array(
-                'Content-Type: text/html; charset=UTF-8',
-                'From: ' . $company_name . ' <' . $from_email . '>',
-            );
+            $preferred_from = ! empty( $settings['email_address'] ) ? $settings['email_address'] : '';
+            $headers = BV_Settings::build_email_headers(array(
+                'to_email'          => $consultant_email,
+                'company_name'      => $company_name,
+                'from_email'        => $preferred_from,
+                'reply_to_email'    => $consultant_email,
+                'content_type'      => 'text/html',
+                'notification_type' => 'consultant-project-package',
+            ));
 
             error_log( sprintf( '[BV 2.7.35] Sending email to %s with %d attachment(s)', $consultant_email, count( $attachments ) ) );
             error_log( sprintf( '[BV 2.7.35] Attachment paths: %s', implode( ', ', $attachments ) ) );

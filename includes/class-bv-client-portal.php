@@ -891,7 +891,17 @@ class BV_Client_Portal {
 
         $body .= esc_html__( 'Best regards,', 'businessvance-services-manager' ) . "\n" . $company_name;
 
-        wp_mail( $project->client_email, $subject, $body );
+        $from_email = ! empty( $settings['email_address'] ) ? $settings['email_address'] : ( ! empty( $consultant_email ) ? $consultant_email : '' );
+        $headers = BV_Settings::build_email_headers(array(
+            'to_email'          => $project->client_email,
+            'company_name'      => $company_name,
+            'from_email'        => $from_email,
+            'reply_to_email'    => $consultant_email,
+            'content_type'      => 'text/plain',
+            'notification_type' => 'client-completion',
+        ));
+
+        wp_mail( $project->client_email, $subject, $body, $headers );
     }
 
     private function render_overview_tab( $project, $services ) {
@@ -2509,6 +2519,9 @@ class BV_Client_Portal {
         // Build body — use custom template or sensible default.
         $body_template = $settings['email_consultant_action_body'] ?? '';
         if ( empty( $body_template ) ) {
+            // Default: plain-text template stored in settings (backward compat).
+            // We build HTML below regardless; this fallback only fires if settings
+            // have a custom text template.
             $body_template = "Dear Consultant,\n\n"
                 . "A client has completed an action on project {project_number}:\n\n"
                 . "Action: {action}\n"
@@ -2518,16 +2531,74 @@ class BV_Client_Portal {
                 . "{dashboard_url}\n\n"
                 . "Best regards,\n{company_name} System";
         }
-        $body = str_replace( array_keys( $tokens ), array_values( $tokens ), $body_template );
+        $body_text = str_replace( array_keys( $tokens ), array_values( $tokens ), $body_template );
+
+        // Build HTML email body (used unless a custom HTML template is saved in settings)
+        $has_custom_html = ! empty( $settings['email_consultant_action_body'] ) && strpos( $settings['email_consultant_action_body'], '<' ) !== false;
+        if ( ! $has_custom_html ) {
+            $body_html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+                . '</head><body style="margin:0;padding:0;background:#f0f2f5;font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;">'
+                . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:32px 16px;">'
+                . '<tr><td align="center">'
+                . '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">'
+
+                // Header banner
+                . '<tr><td style="background:linear-gradient(135deg,#002B5C 0%,#004080 100%);color:#fff;padding:28px 32px;border-radius:12px 12px 0 0;">'
+                . '<h1 style="margin:0;font-size:22px;font-weight:700;">' . esc_html( $company_name ) . '</h1>'
+                . '<p style="margin:8px 0 0;font-size:14px;opacity:0.9;">Project Update Notification</p>'
+                . '</td></tr>'
+
+                // Body
+                . '<tr><td style="background:#fff;padding:28px 32px;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;">'
+                . '<p style="margin:0 0 20px;font-size:15px;color:#374151;">A client has completed an action that requires your attention.</p>'
+
+                // Project info card
+                . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:20px;">'
+                . '<tr><td style="padding:16px 20px;">'
+                . '<p style="margin:0 0 4px;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Project</p>'
+                . '<p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#002B5C;">' . esc_html( $project->project_number ) . '</p>'
+                . '<p style="margin:0 0 4px;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Action</p>'
+                . '<p style="margin:0 0 12px;font-size:15px;color:#111827;font-weight:600;">' . esc_html( $action ) . '</p>'
+                . '<p style="margin:0 0 4px;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Details</p>'
+                . '<p style="margin:0 0 12px;font-size:14px;color:#374151;">' . nl2br( esc_html( $description ) ) . '</p>'
+                . '<p style="margin:0 0 4px;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Client</p>'
+                . '<p style="margin:0;font-size:14px;color:#374151;">' . esc_html( $project->client_name ) . ' <span style="color:#9ca3af;">&lt;' . esc_html( $project->client_email ) . '&gt;</span></p>'
+                . '</td></tr></table>'
+
+                // CTA button
+                . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px;">'
+                . '<tr><td align="center">'
+                . '<a href="' . esc_url( $dashboard_url ) . '" style="display:inline-block;background:#002B5C;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:15px;font-weight:600;">&#128065; Open in Consultant Dashboard</a>'
+                . '</td></tr></table>'
+
+                . '</td></tr>'
+
+                // Footer
+                . '<tr><td style="background:#f8fafc;padding:16px 32px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;text-align:center;">'
+                . '<p style="margin:0;font-size:12px;color:#9ca3af;">This is an automated notification from <strong>' . esc_html( $company_name ) . '</strong>.<br>Please do not reply to this email.</p>'
+                . '</td></tr>'
+
+                . '</table>'
+                . '</td></tr></table>'
+                . '</body></html>';
+        } else {
+            // Custom HTML template from settings
+            $body_html = str_replace( array_keys( $tokens ), array_values( $tokens ), $settings['email_consultant_action_body'] );
+        }
 
         // Use the company's email address as the From header (not the consultant's own address).
-        $from_email = ! empty( $settings['email_address'] ) ? $settings['email_address'] : $consultant_email;
-        $headers    = array(
-            'Content-Type: text/plain; charset=UTF-8',
-            'From: ' . $company_name . ' <' . $from_email . '>',
-        );
+        // BV_Settings::build_email_headers() also guarantees From != To.
+        $preferred_from = ! empty( $settings['email_address'] ) ? $settings['email_address'] : '';
+        $headers = BV_Settings::build_email_headers(array(
+            'to_email'          => $consultant_email,
+            'company_name'      => $company_name,
+            'from_email'        => $preferred_from,
+            'reply_to_email'    => $consultant_email,
+            'content_type'      => 'text/html',
+            'notification_type' => 'consultant-client-action',
+        ));
 
-        wp_mail( $consultant_email, $subject, $body, $headers );
+        wp_mail( $consultant_email, $subject, $body_html, $headers );
 
     }
 
@@ -2566,14 +2637,68 @@ class BV_Client_Portal {
 
         // Build body
         $body = $settings['email_message_to_consultant_body'] ?? '';
-        $body = str_replace(
-            array( '{sender_name}', '{project_number}', '{message}', '{dashboard_url}', '{company_name}' ),
-            array( $sender_name, $project->project_number, $message, $dashboard_url, $company_name ),
-            $body
-        );
+        $has_custom_html = ! empty( $body ) && strpos( $body, '<' ) !== false;
+        if ( ! $has_custom_html ) {
+            // Default HTML template (consistent with other consultant notifications)
+            $safe_message = nl2br( esc_html( $message ) );
+            $body = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+                . '</head><body style="margin:0;padding:0;background:#f0f2f5;font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;">'
+                . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:32px 16px;">'
+                . '<tr><td align="center">'
+                . '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">'
 
-        $from_email = ! empty( $settings['email_address'] ) ? $settings['email_address'] : $consultant_email;
-        $headers    = array( 'Content-Type: text/plain; charset=UTF-8', 'From: ' . $company_name . ' <' . $from_email . '>' );
+                // Header banner
+                . '<tr><td style="background:linear-gradient(135deg,#002B5C 0%,#004080 100%);color:#fff;padding:28px 32px;border-radius:12px 12px 0 0;">'
+                . '<h1 style="margin:0;font-size:22px;font-weight:700;">' . esc_html( $company_name ) . '</h1>'
+                . '<p style="margin:8px 0 0;font-size:14px;opacity:0.9;">New Client Message</p>'
+                . '</td></tr>'
+
+                // Body
+                . '<tr><td style="background:#fff;padding:28px 32px;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;">'
+                . '<p style="margin:0 0 20px;font-size:15px;color:#374151;"><strong>' . esc_html( $sender_name ) . '</strong> sent a message that requires your attention.</p>'
+
+                // Project info card
+                . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:20px;">'
+                . '<tr><td style="padding:16px 20px;">'
+                . '<p style="margin:0 0 4px;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Project</p>'
+                . '<p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#002B5C;">' . esc_html( $project->project_number ) . '</p>'
+                . '<p style="margin:0 0 4px;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Message</p>'
+                . '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:14px 18px;margin-top:4px;font-size:14px;color:#374151;line-height:1.6;">' . $safe_message . '</div>'
+                . '</td></tr></table>'
+
+                // CTA button
+                . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px;">'
+                . '<tr><td align="center">'
+                . '<a href="' . esc_url( $dashboard_url ) . '" style="display:inline-block;background:#002B5C;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:15px;font-weight:600;">&#128172; Open in Consultant Dashboard</a>'
+                . '</td></tr></table>'
+
+                . '</td></tr>'
+
+                // Footer
+                . '<tr><td style="background:#f8fafc;padding:16px 32px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;text-align:center;">'
+                . '<p style="margin:0;font-size:12px;color:#9ca3af;">This is an automated notification from <strong>' . esc_html( $company_name ) . '</strong>.<br>Please do not reply to this email.</p>'
+                . '</td></tr>'
+
+                . '</table>'
+                . '</td></tr></table>'
+                . '</body></html>';
+        } else {
+            $body = str_replace(
+                array( '{sender_name}', '{project_number}', '{message}', '{dashboard_url}', '{company_name}' ),
+                array( $sender_name, $project->project_number, $message, $dashboard_url, $company_name ),
+                $body
+            );
+        }
+
+        $preferred_from = ! empty( $settings['email_address'] ) ? $settings['email_address'] : '';
+        $headers = BV_Settings::build_email_headers(array(
+            'to_email'          => $consultant_email,
+            'company_name'      => $company_name,
+            'from_email'        => $preferred_from,
+            'reply_to_email'    => $consultant_email,
+            'content_type'      => 'text/html',
+            'notification_type' => 'consultant-new-message',
+        ));
         wp_mail( $consultant_email, $subject, $body, $headers );
 
         // Also log activity

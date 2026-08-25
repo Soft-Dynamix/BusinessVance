@@ -293,6 +293,72 @@ class BV_Settings {
     }
 
     /**
+     * Build email headers optimised for spam-filter deliverability.
+     *
+     * Ensures:
+     *  • Content-Type is always set.
+     *  • From header uses the company email_address when available, otherwise
+     *    falls back to the WordPress admin email (never the recipient's own
+     *    address — a common spam trigger when From == To).
+     *  • Reply-To is set when provided.
+     *  • Auto-Submitted and Precedence headers signal automated mail to
+     *    spam filters (RFC 3834 / RFC 2076).
+     *  • X-BV-Notification-Type helps with identification & threading.
+     *
+     * @since 2.7.50
+     * @param array $args {
+     *     @type string $to_email           Recipient email (used to prevent From==To).
+     *     @type string $company_name       Company / sender display name.
+     *     @type string $from_email         Preferred From email address.
+     *     @type string $reply_to_email     Optional Reply-To email address.
+     *     @type string $content_type       'text/html' or 'text/plain' (default 'text/html').
+     *     @type string $notification_type  Descriptive label for X-BV-Notification-Type.
+     * }
+     * @return array Headers ready for wp_mail().
+     */
+    public static function build_email_headers( $args = array() ) {
+        $args = wp_parse_args( $args, array(
+            'to_email'          => '',
+            'company_name'      => 'BusinessVance',
+            'from_email'        => '',
+            'reply_to_email'    => '',
+            'content_type'      => 'text/html',
+            'notification_type' => 'notification',
+        ) );
+
+        // Prevent From == To (major spam trigger). If the resolved from_email
+        // matches the recipient, fall back to the WordPress admin email.
+        $resolved_from = ! empty( $args['from_email'] ) ? $args['from_email'] : get_option( 'admin_email' );
+        if ( ! empty( $args['to_email'] ) && strtolower( $resolved_from ) === strtolower( $args['to_email'] ) ) {
+            $resolved_from = get_option( 'admin_email' );
+            // Edge-case: admin_email is also the same — use noreply as last resort.
+            if ( strtolower( $resolved_from ) === strtolower( $args['to_email'] ) ) {
+                $site = parse_url( home_url(), PHP_URL_HOST );
+                $resolved_from = 'noreply@' . ( $site ?: 'localhost' );
+            }
+        }
+
+        $headers = array(
+            'Content-Type: ' . $args['content_type'] . '; charset=UTF-8',
+            'From: ' . $args['company_name'] . ' <' . $resolved_from . '>',
+        );
+
+        if ( ! empty( $args['reply_to_email'] ) ) {
+            $headers[] = 'Reply-To: ' . $args['reply_to_email'];
+        }
+
+        // Anti-spam headers (RFC 3834 / RFC 2076)
+        $headers[] = 'Auto-Submitted: auto-generated';
+        $headers[] = 'Precedence: bulk';
+        $headers[] = 'X-Auto-Response-Suppress: NRN, OOF, DR, RN, NFN';
+
+        // Identification header
+        $headers[] = 'X-BV-Notification-Type: ' . sanitize_text_field( $args['notification_type'] );
+
+        return $headers;
+    }
+
+    /**
      * Render the main settings page
      */
     public function render_settings_page() {
