@@ -5,6 +5,7 @@
  * @since 2.7.20 Moved inline handlers here for reliability, added rating hover, fixed all field types
  * @since 2.7.22 Rewrote signature pad: one-time init, mobile fix, clear & re-sign from saved image
  * @since 2.7.55 Fixed single file upload, added Save Draft & Continue Later, file change feedback
+ * @since 2.7.71 Fixed multifile upload: files now upload immediately on select/drop instead of on form submit
  */
 (function($) {
     'use strict';
@@ -448,43 +449,9 @@
             singleFilePromises.push(promise);
         });
 
-        // Handle multifile uploads via AJAX
-        var multifilePromises = [];
-        $form.find('.bv-q-multifile-input').each(function() {
-            var $input = $(this);
-            var qid = $input.data('qid');
-            if (!qid || !$input[0].files.length) return;
-
-            var fd = new FormData();
-            for (var i = 0; i < $input[0].files.length; i++) {
-                fd.append('files[]', $input[0].files[i]);
-            }
-            fd.append('action', 'bv_portal_upload_multifile');
-            fd.append('nonce', bv_portal.nonce);
-            fd.append('project_id', projectId);
-            fd.append('question_id', qid);
-
-            var promise = new Promise(function(resolve, reject) {
-                $.ajax({
-                    url: bv_portal.ajax_url,
-                    type: 'POST',
-                    data: fd,
-                    processData: false,
-                    contentType: false,
-                    success: function(r) {
-                        if (r.success) {
-                            resolve({ qid: qid, data: r.data });
-                        } else {
-                            reject(r.data || 'File upload failed');
-                        }
-                    },
-                    error: function() { reject('Network error during file upload.'); }
-                });
-            });
-            multifilePromises.push(promise);
-        });
-
-        var allPromises = singleFilePromises.concat(multifilePromises);
+        // v2.7.71: Multifile uploads now happen immediately on file select/drop.
+        // No need to upload on submit — hidden data input already has server file metadata.
+        var allPromises = singleFilePromises;
         var $status = $('#bv-q-status');
         var $btns = $form.find('.bv-btn');
         var origTexts = $btns.map(function() { return $(this).data('bv-orig-text') || $(this).text(); }).get();
@@ -712,32 +679,86 @@
 
     // ============================================
     // Multifile: Dropzone click-to-browse + drag-and-drop
+    // v2.7.71: Files upload IMMEDIATELY on select/drop (not on form submit).
     // ============================================
     $(document).on('click', '.bv-q-multifile-dropzone', function() {
         var qid = $(this).data('qid');
         $(this).siblings('.bv-q-multifile-input').data('qid', qid).trigger('click');
     });
 
-    $(document).on('change', '.bv-q-multifile-input', function() {
-        var $input = $(this);
+    // v2.7.71: Upload multifile immediately on file selection
+    function bvUploadMultifileNow($input, files) {
         var $wrap = $input.closest('.bv-q-multifile-wrap');
         var qid = $input.data('qid');
         var $list = $wrap.find('.bv-q-multifile-list');
+        var projectId = $input.closest('#bv-questionnaire-form').data('project-id');
 
-        // Build file items for display
-        for (var i = 0; i < this.files.length; i++) {
-            var f = this.files[i];
-            var sizeStr = (f.size / 1024).toFixed(1);
-            sizeStr = sizeStr > 1024 ? (sizeStr / 1024).toFixed(1) + ' MB' : sizeStr + ' KB';
-            var html = '<div class="bv-q-mf-file" data-filename="' + bvEscapeHtml(f.name) + '">'
-                + '<span class="bv-q-mf-file-icon">&#128196;</span>'
-                + '<span class="bv-q-mf-file-name">' + bvEscapeHtml(f.name) + '</span>'
-                + '<span class="bv-q-mf-file-size">' + sizeStr + '</span>'
-                + '</div>';
-            $list.append(html);
+        for (var i = 0; i < files.length; i++) {
+            (function(file) {
+                var sizeStr = (file.size / 1024).toFixed(1);
+                sizeStr = sizeStr > 1024 ? (sizeStr / 1024).toFixed(1) + ' MB' : sizeStr + ' KB';
+
+                // Add file item with uploading status
+                var $item = $('<div class="bv-q-mf-file" data-filename="' + bvEscapeHtml(file.name) + '">'
+                    + '<span class="bv-q-mf-file-icon">&#128196;</span>'
+                    + '<span class="bv-q-mf-file-name">' + bvEscapeHtml(file.name) + '</span>'
+                    + '<span class="bv-q-mf-file-size bv-mf-uploading">' + sizeStr + ' &mdash; uploading...</span>'
+                    + '</div>');
+                $list.append($item);
+
+                // Upload immediately via AJAX
+                var fd = new FormData();
+                fd.append('files[]', file);
+                fd.append('action', 'bv_portal_upload_multifile');
+                fd.append('nonce', bv_portal.nonce);
+                fd.append('project_id', projectId);
+                fd.append('question_id', qid);
+
+                $.ajax({
+                    url: bv_portal.ajax_url,
+                    type: 'POST',
+                    data: fd,
+                    processData: false,
+                    contentType: false,
+                    success: function(r) {
+                        if (r.success && r.data) {
+                            // Merge uploaded file metadata into hidden data input
+                            var $hidden = $wrap.find('input.bv-q-multifile-data');
+                            var existing = [];
+                            try { existing = JSON.parse($hidden.val() || '[]'); } catch(e) {}
+                            // r.data is an array of uploaded file objects
+                            var newData = Array.isArray(r.data) ? r.data : [r.data];
+                            var merged = existing.concat(newData);
+                            $hidden.val(JSON.stringify(merged));
+
+                            // Update UI: show success status + remove button
+                            $item.find('.bv-q-mf-file-size').removeClass('bv-mf-uploading')
+                                .html(sizeStr + ' <span style="color:#27AE60;">&#10003;</span>');
+                            $item.append('<button type="button" class="bv-q-mf-remove" title="Remove">&times;</button>');
+                        } else {
+                            // Show error
+                            var errMsg = (r.data && typeof r.data === 'string') ? r.data : 'Upload failed';
+                            $item.find('.bv-q-mf-file-size').removeClass('bv-mf-uploading')
+                                .html('<span style="color:#e74c3c;">' + bvEscapeHtml(errMsg) + '</span>');
+                            $item.append('<button type="button" class="bv-q-mf-remove" title="Remove">&times;</button>');
+                        }
+                    },
+                    error: function() {
+                        $item.find('.bv-q-mf-file-size').removeClass('bv-mf-uploading')
+                            .html('<span style="color:#e74c3c;">Network error</span>');
+                        $item.append('<button type="button" class="bv-q-mf-remove" title="Remove">&times;</button>');
+                    }
+                });
+            })(files[i]);
         }
-        // Reset so same file can be re-selected
-        $input.val('');
+    }
+
+    $(document).on('change', '.bv-q-multifile-input', function() {
+        if (this.files.length > 0) {
+            bvUploadMultifileNow($(this), this.files);
+            // Reset so same file can be re-selected
+            $(this).val('');
+        }
     });
 
     // Drag and drop for multifile
@@ -754,8 +775,7 @@
     $(document).on('drop', '.bv-q-multifile-dropzone', function(e) {
         var $input = $(this).siblings('.bv-q-multifile-input');
         if (e.originalEvent && e.originalEvent.dataTransfer && e.originalEvent.dataTransfer.files.length) {
-            $input[0].files = e.originalEvent.dataTransfer.files;
-            $input.trigger('change');
+            bvUploadMultifileNow($input, e.originalEvent.dataTransfer.files);
         }
     });
 

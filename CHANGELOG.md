@@ -2,6 +2,14 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.72] - 2026-08-27
+### Fixed
+- **Questionnaire multifile attachments not downloadable in consultant dashboard** — Files selected in multifile questions were never actually uploaded to the server. The JS `change` handler cleared the file input after showing a visual preview, so on form submit the upload code found 0 files and skipped. Root cause: multifile upload was deferred to submit time but the input was already empty.
+  - **Fix**: Files now upload **immediately** when selected or drag-and-dropped, not on form submit. Each file shows upload status ("uploading..." → "✓" or error). File metadata is written to the hidden data input right away.
+  - Removed deferred multifile upload from `bvPrepareAndSubmit()` (files are already on server by then)
+  - Added remove button (×) to previously saved multifile files in the client portal
+  - Drop handler now calls upload function directly instead of setting input files (more reliable)
+
 ## [2.7.71] - 2026-08-26
 ### Fixed
 - **Consultant emails still going to spam — template rewrite to match working client reminder format**:

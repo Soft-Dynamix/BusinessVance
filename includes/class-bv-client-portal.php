@@ -1565,8 +1565,9 @@ class BV_Client_Portal {
                                         <a href="<?php echo esc_url( $sf['url'] ); ?>" target="_blank" class="bv-q-mf-file-icon" title="Download">&#128279;</a>
                                         <?php endif; ?>
                                         <?php if ( is_array($sf) && ! empty( $sf['size'] ) ) : ?>
-                                        <span class="bv-q-mf-file-size"><?php echo esc_html( $sf['size'] ); ?></span>
+                                        <span class="bv-q-mf-file-size"><?php echo esc_html( $sf['size'] ); ?> <span style="color:#27AE60;">&#10003;</span></span>
                                         <?php endif; ?>
+                                        <button type="button" class="bv-q-mf-remove" title="Remove">&times;</button>
                                     </div>
                                 <?php endforeach; ?>
                                 </div>
