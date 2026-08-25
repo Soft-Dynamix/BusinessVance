@@ -2,6 +2,10 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.68] - 2026-08-25
+### Added
+- **Logout URL for nav menus**: `https://yoursite.com/?bv_logout=1` — logs the user out and redirects to /bv-login/. Add as a custom link in Appearance > Menus.
+
 ## [2.7.67] - 2026-08-25
 ### Changed
 - **Logout button on destination picker** — replaced small "Not you? Log out" text link with a proper styled logout button (with door icon). Turns red on hover. Redirects back to the BV login page after logout.

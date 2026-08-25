@@ -25,9 +25,34 @@ class BV_Shortcodes {
 
         add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_frontend_assets' ) );
 
+        // Logout endpoint: ?bv_logout=1 — for use in nav menus
+        add_action( 'init', array( $this, 'handle_logout_endpoint' ) );
+
         // Role-based login redirect (priority 100 — consultant filter at 99999 overrides for consultants)
         add_filter( 'woocommerce_login_redirect', array( $this, 'bv_login_redirect' ), 100, 2 );
         add_filter( 'login_redirect', array( $this, 'bv_login_redirect' ), 100, 2 );
+    }
+
+    /**
+     * Handle logout from nav menu link.
+     *
+     * Usage: Add `https://yoursite.com/?bv_logout=1` as a custom link in
+     * Appearance > Menus. Logs the user out and redirects to /bv-login/.
+     *
+     * @since 2.7.68
+     */
+    public function handle_logout_endpoint() {
+        if ( isset( $_GET['bv_logout'] ) && $_GET['bv_logout'] === '1' ) {
+            // Resolve the BV login page URL (same as render_login_page uses)
+            $login_url = '/bv-login/';
+            $page = get_page_by_path( 'bv-login' );
+            if ( $page ) {
+                $login_url = get_permalink( $page->ID );
+            }
+            wp_logout();
+            wp_safe_redirect( $login_url );
+            exit;
+        }
     }
 
     /**
