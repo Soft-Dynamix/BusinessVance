@@ -2,6 +2,13 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.62] - 2026-08-25
+### Fixed
+- Client portal "Please log in" message was rendering raw HTML `<a>` tag instead of a clickable link (root cause: `esc_html__()` was escaping the `<a>` inside the translatable string)
+### Changed
+- `[bv_login_page]` now shows dual destination cards above the login form: **Client Portal** and **LMS Dashboard**, so users can see both access options
+- Login card widened from 440px to 620px to accommodate side-by-side cards; stacks vertically on mobile
+
 ## [2.7.61] - 2026-08-25
 ### Added
 - `[bv_login_page]` shortcode — branded login form with gradient header, logo, username/password fields, remember me, error display
