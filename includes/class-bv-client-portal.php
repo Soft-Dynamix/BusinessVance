@@ -551,11 +551,14 @@ class BV_Client_Portal {
 
     public function render_portal( $atts ) {
         if ( ! is_user_logged_in() ) {
-            return '<div class="bv-portal-login-message"><p>' . sprintf(
+            $login_url = esc_url( wp_login_url( get_permalink() ) );
+            $allowed   = array( 'a' => array( 'href' => array() ) );
+            $message   = sprintf(
                 /* translators: %s: login URL */
-                esc_html__( 'Please <a href="%s">log in</a> to access your client portal.', 'businessvance-services-manager' ),
-                esc_url( wp_login_url( get_permalink() ) )
-            ) . '</p></div>';
+                __( 'Please <a href="%s">log in</a> to access your client portal.', 'businessvance-services-manager' ),
+                $login_url
+            );
+            return '<div class="bv-portal-login-message"><p>' . wp_kses( $message, $allowed ) . '</p></div>';
         }
 
         global $wpdb;

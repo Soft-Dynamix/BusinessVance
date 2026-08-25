@@ -623,14 +623,41 @@ class BV_Shortcodes {
             'register_url' => '',
         ), $atts, 'bv_login_page' );
 
-        $settings      = BV_Settings::get_settings();
-        $company_name  = $settings['company_name'] ?? 'BusinessVance';
-        $primary_color = $settings['primary_color'] ?? '#002B5C';
+        $settings        = BV_Settings::get_settings();
+        $company_name    = $settings['company_name'] ?? 'BusinessVance';
+        $primary_color   = $settings['primary_color'] ?? '#002B5C';
         $secondary_color = $settings['secondary_color'] ?? '#008080';
-        $logo_url      = $settings['logo_url'] ?? '';
-        $title         = $atts['title'] ?: sprintf( esc_html__( 'Welcome to %s', 'businessvance-services-manager' ), $company_name );
-        $subtitle      = $atts['subtitle'] ?: esc_html__( 'Sign in to access your dashboard, portal, or courses.', 'businessvance-services-manager' );
-        $register_url  = $atts['register_url'];
+        $logo_url        = $settings['logo_url'] ?? '';
+        $title           = $atts['title'] ?: sprintf( esc_html__( 'Welcome to %s', 'businessvance-services-manager' ), $company_name );
+        $subtitle        = $atts['subtitle'] ?: esc_html__( 'Sign in to access your dashboard, portal, or courses.', 'businessvance-services-manager' );
+        $register_url    = $atts['register_url'];
+
+        // Resolve portal URL
+        $portal_url = '';
+        if ( ! empty( $settings['portal_url'] ) ) {
+            $portal_url = $settings['portal_url'];
+        } else {
+            $portal_page = get_posts( array(
+                'post_type'      => 'page',
+                'posts_per_page' => 1,
+                'post_status'    => 'publish',
+                's'              => '[businessvance_client_portal]',
+            ) );
+            if ( ! empty( $portal_page ) ) {
+                $portal_url = get_permalink( $portal_page[0]->ID );
+            }
+        }
+
+        // Resolve TutorLMS dashboard URL
+        $tutor_url = '';
+        if ( ! empty( $settings['tutor_dashboard_url'] ) ) {
+            $tutor_url = $settings['tutor_dashboard_url'];
+        } elseif ( function_exists( 'tutor_utils' ) ) {
+            $tutor_dashboard_page_id = tutor_utils()->get_tutor_dashboard_page_id();
+            if ( $tutor_dashboard_page_id ) {
+                $tutor_url = get_permalink( $tutor_dashboard_page_id );
+            }
+        }
 
         // Auto-detect registration URL (WooCommerce My Account)
         if ( empty( $register_url ) && function_exists( 'wc_get_page_permalink' ) ) {
@@ -650,7 +677,7 @@ class BV_Shortcodes {
         ?>
         <style>
             .bv-login-wrap {
-                max-width: 440px;
+                max-width: 620px;
                 margin: 40px auto;
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             }
@@ -682,8 +709,69 @@ class BV_Shortcodes {
                 font-size: 14px;
                 color: rgba(255,255,255,0.85);
             }
+
+            /* Destination cards */
+            .bv-login-destinations {
+                display: flex;
+                gap: 16px;
+                padding: 24px 24px 0;
+            }
+            .bv-login-dest-card {
+                flex: 1;
+                border: 2px solid #e5e7eb;
+                border-radius: 12px;
+                padding: 20px 16px;
+                text-align: center;
+                cursor: default;
+                transition: border-color 0.2s, box-shadow 0.2s;
+            }
+            .bv-login-dest-card:hover {
+                border-color: <?php echo esc_attr( $primary_color ); ?>;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            }
+            .bv-login-dest-icon {
+                width: 48px;
+                height: 48px;
+                border-radius: 12px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0 auto 12px;
+                font-size: 22px;
+            }
+            .bv-login-dest-card.bv-dest-portal .bv-login-dest-icon {
+                background: <?php echo esc_attr( $primary_color ); ?>15;
+                color: <?php echo esc_attr( $primary_color ); ?>;
+            }
+            .bv-login-dest-card.bv-dest-lms .bv-login-dest-icon {
+                background: #f59e0b15;
+                color: #b45309;
+            }
+            .bv-login-dest-card h3 {
+                margin: 0 0 6px;
+                font-size: 15px;
+                font-weight: 700;
+                color: #111827;
+            }
+            .bv-login-dest-card p {
+                margin: 0;
+                font-size: 12.5px;
+                color: #6b7280;
+                line-height: 1.5;
+            }
+            .bv-login-dest-card.bv-dest-portal h3 { color: <?php echo esc_attr( $primary_color ); ?>; }
+            .bv-login-dest-card.bv-dest-lms h3 { color: #b45309; }
+
+            @media (max-width: 500px) {
+                .bv-login-destinations {
+                    flex-direction: column;
+                    gap: 12px;
+                }
+            }
+
+            /* Form */
             .bv-login-body {
-                padding: 32px 28px;
+                padding: 24px 28px 8px;
             }
             .bv-login-form .bv-login-field {
                 margin-bottom: 20px;
@@ -779,6 +867,24 @@ class BV_Shortcodes {
                     <?php endif; ?>
                     <h2><?php echo $title; ?></h2>
                     <p><?php echo $subtitle; ?></p>
+                </div>
+
+                <!-- Destination cards: Client Portal + LMS Dashboard -->
+                <div class="bv-login-destinations">
+                    <div class="bv-login-dest-card bv-dest-portal">
+                        <div class="bv-login-dest-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        </div>
+                        <h3><?php esc_html_e( 'Client Portal', 'businessvance-services-manager' ); ?></h3>
+                        <p><?php esc_html_e( 'View projects, upload documents, and track your service progress.', 'businessvance-services-manager' ); ?></p>
+                    </div>
+                    <div class="bv-login-dest-card bv-dest-lms">
+                        <div class="bv-login-dest-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                        </div>
+                        <h3><?php esc_html_e( 'LMS Dashboard', 'businessvance-services-manager' ); ?></h3>
+                        <p><?php esc_html_e( 'Access your courses, lessons, quizzes, and learning materials.', 'businessvance-services-manager' ); ?></p>
+                    </div>
                 </div>
 
                 <div class="bv-login-body">
