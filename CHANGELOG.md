@@ -2,6 +2,16 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.73] - 2026-08-27
+### Changed
+- **Restored consultant email visual format to match the working screenshot**: All 4 HTML emails (consultant project complete, consultant client action, consultant new message, client reminder) now use the exact same visual style as the email that was confirmed to deliver to inbox:
+  - **CTA button**: Changed from filled navy/primary-color button to **outlined black button** (white bg, 2px solid #111 border, black bold text, full-width, 6px border-radius) — matching the working email exactly
+  - **Header**: Removed rounded corners (was `border-radius:12px 12px 0 0`) — now sharp rectangular header
+  - **Content area**: Removed side borders (`border-left/right:1px solid`) — now clean white
+  - **Footer**: Changed from gray `bgcolor` background with border to simple white with top border separator
+  - **Typography**: Heading size increased to 24px, body color adjusted to #555555, data labels use 11px uppercase #888888, data values use #111111 — matching the working email
+  - **Fallback URL**: Changed link color to standard blue (#2563EB) with underline
+
 ## [2.7.72] - 2026-08-27
 ### Fixed
 - **Questionnaire multifile attachments not downloadable in consultant dashboard** — Files selected in multifile questions were never actually uploaded to the server. The JS `change` handler cleared the file input after showing a visual preview, so on form submit the upload code found 0 files and skipped. Root cause: multifile upload was deferred to submit time but the input was already empty.
