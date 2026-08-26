@@ -313,15 +313,15 @@ class BV_Settings {
     /**
      * Activate BV email context for the next wp_mail() call.
      *
-     * Sets up filters that configure PHPMailer with:
-     *  - Sender (envelope From / Return-Path) aligned with the From header
-     *    — critical for SPF pass.
-     *  - X-Mailer overridden to a generic value instead of "WordPress".
-     *  - X-Priority set to 3 (normal) explicitly.
+     * Only aligns PHPMailer's internal From address with the header From.
+     * We intentionally do NOT override Sender/envelope-From (causes SPF
+     * fail without proper DKIM), X-Mailer (non-standard values look
+     * suspicious), or add extra anti-spam headers.
      *
      * MUST be followed by BV_Settings::end_bv_email() after wp_mail().
      *
      * @since 2.7.70
+     * @since 2.7.74 Removed phpmailer_init action (Sender/X-Mailer overrides caused spam).
      * @param string $from_email  The From email address used in the headers.
      * @param string $from_name   The From display name used in the headers.
      */
@@ -335,7 +335,6 @@ class BV_Settings {
         self::$bv_from_name   = $from_name;
         add_filter( 'wp_mail_from',      array( __CLASS__, 'filter_bv_mail_from' ) );
         add_filter( 'wp_mail_from_name',  array( __CLASS__, 'filter_bv_mail_from_name' ) );
-        add_action( 'phpmailer_init',     array( __CLASS__, 'configure_bv_phpmailer' ) );
     }
 
     /**
@@ -349,7 +348,6 @@ class BV_Settings {
         self::$bv_from_name   = '';
         remove_filter( 'wp_mail_from',      array( __CLASS__, 'filter_bv_mail_from' ) );
         remove_filter( 'wp_mail_from_name',  array( __CLASS__, 'filter_bv_mail_from_name' ) );
-        remove_action( 'phpmailer_init',     array( __CLASS__, 'configure_bv_phpmailer' ) );
     }
 
     /**
@@ -383,56 +381,38 @@ class BV_Settings {
     }
 
     /**
-     * phpmailer_init action callback — configures PHPMailer for BV emails.
+     * phpmailer_init action callback — intentionally empty.
      *
-     * - Sets $phpmailer->Sender (envelope From / Return-Path) to match the
-     *   From address. This is CRITICAL for SPF alignment. Without this,
-     *   PHPMailer defaults to wordpress@hostname, causing SPF fail.
-     * - Overrides X-Mailer to a generic string ("WordPress" is a known
-     *   spam-filter signal).
-     * - Sets X-Priority to 3 (normal) explicitly.
+     * Previously overrode Sender (envelope-From), X-Mailer, and Priority.
+     * Those changes INCREASED spam scoring: Sender override caused SPF
+     * failures without proper DKIM; fake X-Mailer looked suspicious.
+     * Method kept for API compatibility.
      *
      * @since 2.7.70
+     * @since 2.7.74 Emptied — overrides were causing spam classification.
      * @param PHPMailer $phpmailer
      */
     public static function configure_bv_phpmailer( &$phpmailer ) {
-        if ( ! self::$bv_email_active ) {
-            return;
-        }
-        // Envelope sender (Return-Path) — must match From for SPF pass.
-        if ( ! empty( self::$bv_from_email ) ) {
-            $phpmailer->Sender = self::$bv_from_email;
-        }
-        // Override X-Mailer — "WordPress" is a known spam signal.
-        $phpmailer->XMailer = 'Mail v1.0';
-        // Normal priority — prevents accidental "high priority" spam scoring.
-        $phpmailer->Priority = 3;
+        return;
     }
 
     /**
-     * Build email headers optimised for spam-filter deliverability.
+     * Build minimal email headers.
      *
-     * Ensures:
-     *  • Content-Type is always set.
-     *  • From header uses the company email_address when available, otherwise
-     *    falls back to the WordPress admin email (never the recipient's own
-     *    address — a common spam trigger when From == To).
-     *  • Reply-To is set when provided.
-     *  • Auto-Submitted, List-Unsubscribe, and X-Auto-Response-Suppress
-     *    headers signal automated / transactional mail to spam filters
-     *    (RFC 3834 / RFC 8058).
-     *  • X-BV-Notification-Type helps with identification & threading.
+     * Only sets the essential headers: Content-Type, From, and optionally
+     * Reply-To. Previous versions added Auto-Submitted, List-Unsubscribe,
+     * X-Auto-Response-Suppress, and X-BV-Notification-Type — all of which
+     * INCREASED spam scoring.
      *
      * @since 2.7.50
-     * @since 2.7.70 Added List-Unsubscribe, X-Auto-Response-Suppress,
-     *               removed emoji from CTA text guidance.
+     * @since 2.7.74 Stripped to minimum headers to fix spam classification.
      * @param array $args {
      *     @type string $to_email           Recipient email (used to prevent From==To).
      *     @type string $company_name       Company / sender display name.
      *     @type string $from_email         Preferred From email address.
      *     @type string $reply_to_email     Optional Reply-To email address.
      *     @type string $content_type       'text/html' or 'text/plain' (default 'text/html').
-     *     @type string $notification_type  Descriptive label for X-BV-Notification-Type.
+     *     @type string $notification_type  Kept for API compat; no longer added to headers.
      * }
      * @return array Headers ready for wp_mail().
      */
@@ -466,23 +446,6 @@ class BV_Settings {
         if ( ! empty( $args['reply_to_email'] ) ) {
             $headers[] = 'Reply-To: ' . $args['reply_to_email'];
         }
-
-        // RFC 3834: signal that this is an automated message (prevents
-        // out-of-office auto-replies, but without the aggressive 'bulk'
-        // precedence that major spam filters use to classify as spam).
-        $headers[] = 'Auto-Submitted: auto-generated';
-
-        // RFC 8058: List-Unsubscribe header.  Gmail, Outlook and Yahoo use
-        // this to classify transactional mail.  A mailto: link is the safest
-        // universal format and does not require a web endpoint.
-        $unsubscribe_addr = ! empty( $args['from_email'] ) ? $args['from_email'] : get_option( 'admin_email' );
-        $headers[] = 'List-Unsubscribe: <mailto:' . $unsubscribe_addr . '?subject=Unsubscribe>';
-
-        // Suppress all auto-responses (NDR, OOO, etc.)
-        $headers[] = 'X-Auto-Response-Suppress: All';
-
-        // Identification header
-        $headers[] = 'X-BV-Notification-Type: ' . sanitize_text_field( $args['notification_type'] );
 
         // Store the resolved From for use by the caller when wrapping wp_mail().
         self::$last_resolved_from = $resolved_from;

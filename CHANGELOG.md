@@ -2,6 +2,18 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.74] - 2026-08-28
+### Fixed
+- **Consultant emails still going to spam — removed all custom anti-spam headers that were paradoxically causing spam**:
+  - **Root cause**: In v2.7.70 we added 4 custom headers (Auto-Submitted, List-Unsubscribe, X-Auto-Response-Suppress, X-BV-Notification-Type) and 3 PHPMailer overrides (Sender/envelope-From, X-Mailer, Priority). These were intended to improve deliverability but actually INCREASED spam scoring because:
+    - `List-Unsubscribe` is a mailing-list header — using it on one-to-one transactional emails tells spam filters "this is bulk mail"
+    - `X-Auto-Response-Suppress: All` is a known spam trigger (was removed in first v2.7.70 fix, then re-added by mistake)
+    - `$phpmailer->Sender` override forces the envelope sender to a specific domain; without proper SPF/DKIM records this causes SPF hard fail
+    - `X-Mailer: Mail v1.0` is a non-standard, suspicious value that spam filters flag more than WordPress's default
+    - The combination of 4+ non-standard headers creates a pattern that looks like a spammer trying to game the system
+  - **Fix**: Stripped `build_email_headers()` to only Content-Type, From, Reply-To (the same headers a standard WordPress email uses). Emptied `configure_bv_phpmailer()` so it no longer overrides Sender/X-Mailer/Priority. Kept only the `wp_mail_from` and `wp_mail_from_name` filters (benign From address alignment).
+  - **Philosophy**: LESS IS MORE for email headers. Standard WordPress emails with minimal headers deliver reliably.
+
 ## [2.7.73] - 2026-08-27
 ### Changed
 - **Restored consultant email visual format to match the working screenshot**: All 4 HTML emails (consultant project complete, consultant client action, consultant new message, client reminder) now use the exact same visual style as the email that was confirmed to deliver to inbox:
