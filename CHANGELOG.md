@@ -2,6 +2,11 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.76] - 2026-08-28
+### Fixed
+- **Removed duplicate consultant email at project completion** — When a project reached 100%, TWO emails were sent to the consultant: (1) `notify_consultant()` with subject "Client Action on... — All Client Information Received" and (2) `email_project_package_to_consultant()` with subject "Project ... Complete". The first was redundant (the package email already tells the consultant everything) and was the one going to spam. Removed the `notify_consultant()` call from all 3 completion triggers (document upload, questionnaire save, agreement sign). Now only 1 email goes to the consultant at completion — the one that actually delivers to inbox.
+- The `notify_consultant()` function is still used for **intermediate** actions (e.g. questionnaire saved at <100%, document uploaded before all steps complete) where the package email doesn't fire.
+
 ## [2.7.75] - 2026-08-28
 ### Fixed
 - **Consultant emails going to spam — reverted email sending to exact v2.7.69 code path**:

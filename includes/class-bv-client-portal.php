@@ -2029,11 +2029,6 @@ class BV_Client_Portal {
 
         $new_progress = $this->update_project_progress( $project_id, $services );
         if ( $new_progress >= 100 ) {
-            $this->notify_consultant( $project_id, esc_html__( 'All Client Information Received', 'businessvance-services-manager' ), sprintf(
-                /* translators: %s: project number */
-                esc_html__( 'Client has completed all required steps for project %s. All information has been submitted.', 'businessvance-services-manager' ),
-                $project->project_number
-            ) );
             $this->notify_client_completion( $project_id );
             /** @since 2.7.23 Fire ZIP-package email with all project data */
             do_action( 'bv_project_completion_email', $project_id );
@@ -2241,11 +2236,6 @@ class BV_Client_Portal {
         ) );
         $new_progress = $this->update_project_progress( $project_id, $services );
         if ( $new_progress >= 100 ) {
-            $this->notify_consultant( $project_id, esc_html__( 'All Client Information Received', 'businessvance-services-manager' ), sprintf(
-                /* translators: %s: project number */
-                esc_html__( 'Client has completed all required steps for project %s. All information has been submitted.', 'businessvance-services-manager' ),
-                $project->project_number
-            ) );
             $this->notify_client_completion( $project_id );
             /** @since 2.7.23 Fire ZIP-package email with all project data */
             do_action( 'bv_project_completion_email', $project_id );
@@ -2387,15 +2377,9 @@ class BV_Client_Portal {
             ), 'metadata' => '', 'user_id' => get_current_user_id(),
         ), array( '%d', '%s', '%d', '%s', '%s', '%s', '%d' ) );
 
-        // Update progress and notify consultant only if 100%
+        // Update progress and send completion emails if 100%
         $new_progress = $this->update_project_progress( $project_id, $services );
         if ( $new_progress >= 100 ) {
-            $this->notify_consultant( $project_id, esc_html__( 'All Client Information Received', 'businessvance-services-manager' ), sprintf(
-                /* translators: %1$s: client name, %2$s: project number */
-                esc_html__( 'Client %1$s signed the service agreement for project %2$s. All required information has been submitted.', 'businessvance-services-manager' ),
-                $full_name,
-                $project->project_number
-            ) );
             $this->notify_client_completion( $project_id );
             /** @since 2.7.23 Fire ZIP-package email with all project data */
             do_action( 'bv_project_completion_email', $project_id );
