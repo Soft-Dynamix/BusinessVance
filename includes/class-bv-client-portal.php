@@ -857,15 +857,34 @@ class BV_Client_Portal {
             return;
         }
 
-        $company_name     = $settings['company_name'] ?? 'BusinessVance';
-        $consultant_email = $settings['consultant_email'] ?? '';
-        $consultant_phone = $settings['phone_number'] ?? '';
-        $portal_url       = $settings['portal_url'] ?? '';
-        $site_name        = get_bloginfo( 'name' );
+        $company_name      = $settings['company_name'] ?? 'BusinessVance';
+        $consultant_email  = $settings['consultant_email'] ?? '';
+        $consultant_phone  = $settings['phone_number'] ?? '';
+        $consultant_address = $settings['physical_address'] ?? '';
+        $portal_url        = $settings['portal_url'] ?? '';
+        $site_name         = get_bloginfo( 'name' );
+        $primary_color     = $settings['primary_color'] ?? '#002B5C';
+        $logo_url          = $settings['logo_url'] ?? '';
+
+        // Resolve portal URL: use setting, then auto-detect the client portal page, then site_url
+        if ( empty( $portal_url ) ) {
+            $portal_page = get_posts( array(
+                'post_type'      => 'page',
+                'posts_per_page' => 1,
+                'post_status'    => 'publish',
+                's'              => '[businessvance_client_portal]',
+            ) );
+            if ( ! empty( $portal_page ) ) {
+                $portal_url = get_permalink( $portal_page[0]->ID );
+            } else {
+                $portal_url = site_url();
+            }
+        }
+        $portal_url = add_query_arg( 'project_id', $project_id, $portal_url );
 
         // Build contact info block for {contact_info} placeholder
         $contact_info = '';
-        if ( $consultant_email || $consultant_phone ) {
+        if ( $consultant_email || $consultant_phone || $consultant_address ) {
             $contact_info = esc_html__( 'If you have any questions, you can reach us:', 'businessvance-services-manager' ) . "\n";
             if ( $consultant_email ) {
                 $contact_info .= '  • ' . esc_html__( 'Email: ', 'businessvance-services-manager' ) . $consultant_email . "\n";
@@ -873,26 +892,115 @@ class BV_Client_Portal {
             if ( $consultant_phone ) {
                 $contact_info .= '  • ' . esc_html__( 'Phone: ', 'businessvance-services-manager' ) . $consultant_phone . "\n";
             }
+            if ( $consultant_address ) {
+                $contact_info .= '  • ' . esc_html__( 'Address: ', 'businessvance-services-manager' ) . $consultant_address . "\n";
+            }
         }
 
         // Token map for template replacement.
         $tokens = array(
-            '{client_name}'     => $project->client_name,
-            '{project_number}'  => $project->project_number,
-            '{company_name}'    => $company_name,
-            '{portal_url}'      => $portal_url,
-            '{contact_info}'    => $contact_info,
+            '{client_name}'      => $project->client_name,
+            '{project_number}'   => $project->project_number,
+            '{company_name}'     => $company_name,
+            '{portal_url}'       => $portal_url,
+            '{contact_info}'     => $contact_info,
             '{consultant_email}' => $consultant_email,
             '{consultant_phone}' => $consultant_phone,
-            '{site_name}'       => $site_name,
+            '{site_name}'        => $site_name,
         );
 
-        $defaults  = BV_Settings::get_defaults();
+        $defaults         = BV_Settings::get_defaults();
         $subject_template = $settings['email_client_completion_subject'] ?? $defaults['email_client_completion_subject'];
         $body_template    = $settings['email_client_completion_body'] ?? $defaults['email_client_completion_body'];
 
         $subject = str_replace( array_keys( $tokens ), array_values( $tokens ), $subject_template );
-        $body    = str_replace( array_keys( $tokens ), array_values( $tokens ), $body_template );
+
+        // Determine if admin has set a custom HTML body.
+        $custom_body_raw = $settings['email_client_completion_body'] ?? '';
+        $has_custom_html = ! empty( $custom_body_raw ) && strpos( $custom_body_raw, '<' ) !== false;
+
+        if ( $has_custom_html ) {
+            $body_html = str_replace( array_keys( $tokens ), array_values( $tokens ), $custom_body_raw );
+        } else {
+            // Build standard HTML email (same design system as all other emails).
+            if ( ! empty( $logo_url ) ) {
+                $header_content = '<img src="' . esc_url( $logo_url ) . '" alt="' . esc_attr( $company_name ) . '" width="120" height="auto" style="display:block;" />';
+            } else {
+                $header_content = '<span style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.5px;">' . esc_html( $company_name ) . '</span>';
+            }
+
+            // Build contact info HTML block for the footer
+            $contact_html = '';
+            if ( $consultant_email || $consultant_phone || $consultant_address ) {
+                $contact_items = array();
+                if ( $consultant_email ) {
+                    $contact_items[] = '<a href="mailto:' . esc_attr( $consultant_email ) . '" style="color:#374151;text-decoration:none;">' . esc_html( $consultant_email ) . '</a>';
+                }
+                if ( $consultant_phone ) {
+                    $contact_items[] = '<a href="tel:' . esc_attr( $consultant_phone ) . '" style="color:#374151;text-decoration:none;">' . esc_html( $consultant_phone ) . '</a>';
+                }
+                if ( $consultant_address ) {
+                    $contact_items[] = esc_html( $consultant_address );
+                }
+                $contact_html = '<p style="margin:0;font-size:13px;color:#6b7280;">' . implode( ' &nbsp;·&nbsp; ', $contact_items ) . '</p>';
+            }
+
+            $light_color = '#f9fafb';
+            $body_html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head><body style="margin:0;padding:0;background-color:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,\'Helvetica Neue\',Arial,sans-serif;">'
+                . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6;min-height:100%;padding:32px 16px;">'
+                . '<tr><td align="center">'
+
+                // Header banner
+                . '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;margin:0 auto;">'
+                . '<tr><td bgcolor="' . esc_attr( $primary_color ) . '" style="background-color:' . esc_attr( $primary_color ) . ';padding:28px 32px;text-align:center;">'
+                . $header_content
+                . '</td></tr>'
+
+                // Main content card
+                . '<tr><td style="background-color:#ffffff;padding:40px 32px;">'
+
+                // Greeting
+                . '<p style="margin:0 0 6px;font-size:24px;font-weight:700;color:#1a1a1a;">All Information Submitted</p>'
+                . '<p style="margin:0 0 24px;font-size:15px;color:#555555;line-height:1.6;">Thank you <strong style="color:#1a1a1a;">' . esc_html( $project->client_name ) . '</strong>! All required steps for project <strong style="color:#1a1a1a;">' . esc_html( $project->project_number ) . '</strong> are now complete. Your consultant will review your information and begin working on your report.</p>'
+
+                // Project info card
+                . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="' . esc_attr( $light_color ) . '" style="background-color:' . esc_attr( $light_color ) . ';border-radius:6px;margin-bottom:28px;overflow:hidden;">'
+                . '<tr><td style="padding:20px 24px;">'
+                . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
+                . '<tr><td style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888888;padding-bottom:6px;">Project</td><td style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888888;padding-bottom:6px;text-align:right;">Status</td></tr>'
+                . '<tr><td style="font-size:18px;font-weight:700;color:#111111;">' . esc_html( $project->project_number ) . '</td><td style="font-size:14px;font-weight:600;color:#16a34a;text-align:right;">100% Complete</td></tr>'
+                . '</table></td></tr></table>'
+
+                // Info message card
+                . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="' . esc_attr( $light_color ) . '" style="background-color:' . esc_attr( $light_color ) . ';border-radius:6px;margin-bottom:28px;overflow:hidden;border-left:4px solid #16a34a;">'
+                . '<tr><td style="padding:16px 20px;font-size:14px;color:#374151;line-height:1.6;">No further action is needed from your side at this time. Your consultant at <strong>' . esc_html( $company_name ) . '</strong> will be in touch if anything else is needed.</td></tr>'
+                . '</table>'
+
+                // CTA button
+                . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">'
+                . '<tr><td align="center" style="padding:0;">'
+                . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+                . '<tr><td style="background-color:#ffffff;border:2px solid #111111;border-radius:6px;padding:0;">'
+                . '<a href="' . esc_url( $portal_url ) . '" target="_blank" style="display:block;padding:14px 24px;font-size:15px;font-weight:700;color:#000000;text-decoration:none;text-align:center;"><font color="#000000" style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif;font-size:15px;font-weight:700;">Go to My Project Portal</font></a>'
+                . '</td></tr></table>'
+                . '</td></tr>'
+                . '<tr><td align="center" style="padding:0;">'
+                . '<p style="margin:0;font-size:12px;color:#999999;">If the button above doesn\'t work, copy and paste this link into your browser:<br><a href="' . esc_url( $portal_url ) . '" style="color:#2563EB;word-break:break-all;text-decoration:underline;">' . esc_html( $portal_url ) . '</a></p>'
+                . '</td></tr>'
+                . '</table>'
+
+                . '</td></tr>' // End main content
+
+                // Footer
+                . '<tr><td style="background-color:#ffffff;padding:24px 32px 32px;border-top:1px solid #e5e7eb;text-align:center;">'
+                . ( ! empty( $contact_html ) ? '<p style="margin:0 0 8px;">' . $contact_html . '</p>' : '' )
+                . '<p style="margin:0;font-size:13px;color:#999999;">Best regards,<br><strong style="color:#555555;">' . esc_html( $company_name ) . '</strong></p>'
+                . '</td></tr>'
+
+                . '</table>' // End 600px wrapper
+                . '</td></tr></table>' // End outer
+                . '</body></html>';
+        }
 
         $from_email = ! empty( $settings['email_address'] ) ? $settings['email_address'] : ( ! empty( $consultant_email ) ? $consultant_email : '' );
         $headers = BV_Settings::build_email_headers(array(
@@ -900,12 +1008,12 @@ class BV_Client_Portal {
             'company_name'      => $company_name,
             'from_email'        => $from_email,
             'reply_to_email'    => $consultant_email,
-            'content_type'      => 'text/plain',
+            'content_type'      => 'text/html',
             'notification_type' => 'client-completion',
         ));
 
         BV_Settings::start_bv_email( BV_Settings::$last_resolved_from, $company_name );
-        wp_mail( $project->client_email, $subject, $body, $headers );
+        wp_mail( $project->client_email, $subject, $body_html, $headers );
         BV_Settings::end_bv_email();
     }
 

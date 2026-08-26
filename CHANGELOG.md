@@ -3,6 +3,8 @@
 All notable changes to the BusinessVance Services Manager plugin.
 
 ## [2.7.77] - 2026-08-28
+### Changed
+- **Client completion email upgraded from plain text to professional HTML** — now matches the same beautiful design system used by all other emails (consultant package, client reminder, consultant new message, consultant action notifications). Includes: company logo/color header, "All Information Submitted" heading, project info card with green "100% Complete" status, info card with green left-border accent, "Go to My Project Portal" CTA button, and footer with contact info (email, phone, address) and company signature. Auto-resolves portal URL if not set in settings. Supports custom HTML body override from admin settings (same pattern as consultant emails).
 ### Added
 - **5 new per-action email notification types with individual toggles and customizable subject/body**:
   - **Client Project Completion** (`email_client_completion`) — sent to client at 100% progress. Was hardcoded, now uses settings template with placeholders: {client_name}, {project_number}, {company_name}, {portal_url}, {contact_info}, {consultant_email}, {consultant_phone}, {site_name}
