@@ -397,22 +397,16 @@ class BV_Settings {
     }
 
     /**
-     * Build minimal email headers.
-     *
-     * Only sets the essential headers: Content-Type, From, and optionally
-     * Reply-To. Previous versions added Auto-Submitted, List-Unsubscribe,
-     * X-Auto-Response-Suppress, and X-BV-Notification-Type — all of which
-     * INCREASED spam scoring.
+     * Build email headers.
      *
      * @since 2.7.50
-     * @since 2.7.74 Stripped to minimum headers to fix spam classification.
      * @param array $args {
      *     @type string $to_email           Recipient email (used to prevent From==To).
      *     @type string $company_name       Company / sender display name.
      *     @type string $from_email         Preferred From email address.
      *     @type string $reply_to_email     Optional Reply-To email address.
      *     @type string $content_type       'text/html' or 'text/plain' (default 'text/html').
-     *     @type string $notification_type  Kept for API compat; no longer added to headers.
+     *     @type string $notification_type  Descriptive label for X-BV-Notification-Type.
      * }
      * @return array Headers ready for wp_mail().
      */
@@ -447,7 +441,15 @@ class BV_Settings {
             $headers[] = 'Reply-To: ' . $args['reply_to_email'];
         }
 
-        // Store the resolved From for use by the caller when wrapping wp_mail().
+        // Anti-spam headers (RFC 3834 / RFC 2076)
+        $headers[] = 'Auto-Submitted: auto-generated';
+        $headers[] = 'Precedence: bulk';
+        $headers[] = 'X-Auto-Response-Suppress: NRN, OOF, DR, RN, NFN';
+
+        // Identification header
+        $headers[] = 'X-BV-Notification-Type: ' . sanitize_text_field( $args['notification_type'] );
+
+        // Store the resolved From for use by callers.
         self::$last_resolved_from = $resolved_from;
 
         return $headers;

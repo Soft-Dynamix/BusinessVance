@@ -2820,9 +2820,7 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
 
         error_log( sprintf( '[BV] Sending email to %s (no attachments)', $consultant_email ) );
 
-        BV_Settings::start_bv_email( BV_Settings::$last_resolved_from, $company_name );
         $sent = wp_mail( $consultant_email, $subject, $body_html, $headers );
-        BV_Settings::end_bv_email();
 
         error_log( sprintf( '[BV] wp_mail result for project %d: %s', $project_id, $sent ? 'SUCCESS' : 'FAILED' ) );
         if ( ! $sent ) {

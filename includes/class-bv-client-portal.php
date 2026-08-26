@@ -2626,9 +2626,7 @@ class BV_Client_Portal {
             'notification_type' => 'consultant-client-action',
         ));
 
-        BV_Settings::start_bv_email( BV_Settings::$last_resolved_from, $company_name );
         wp_mail( $consultant_email, $subject, $body_html, $headers );
-        BV_Settings::end_bv_email();
 
     }
 
@@ -2751,9 +2749,7 @@ class BV_Client_Portal {
             'content_type'      => 'text/html',
             'notification_type' => 'consultant-new-message',
         ));
-        BV_Settings::start_bv_email( BV_Settings::$last_resolved_from, $company_name );
         wp_mail( $consultant_email, $subject, $body, $headers );
-        BV_Settings::end_bv_email();
 
         // Also log activity
         $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array(

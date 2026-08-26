@@ -2,6 +2,14 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.75] - 2026-08-28
+### Fixed
+- **Consultant emails going to spam — reverted email sending to exact v2.7.69 code path**:
+  - Restored `build_email_headers()` to the EXACT v2.7.69 version with all original headers (Auto-Submitted, Precedence: bulk, X-Auto-Response-Suppress, X-BV-Notification-Type). These headers were present when emails delivered to inbox.
+  - Removed `start_bv_email()`/`end_bv_email()` wrappers from all 3 consultant emails. These wrappers (added in v2.7.70) were the only remaining difference from the working v2.7.69 code. Client-facing emails (which work) keep the wrappers.
+  - Consultant emails now use the IDENTICAL sending path as v2.7.69: `build_email_headers()` → `wp_mail()` — no PHPMailer filters, no Sender override, no X-Mailer override.
+  - If emails still go to spam after this, the issue is external (server IP reputation, DNS/SPF/DKIM changes, or recipient server rule changes) — not plugin code.
+
 ## [2.7.74] - 2026-08-28
 ### Fixed
 - **Consultant emails still going to spam — removed all custom anti-spam headers that were paradoxically causing spam**:
