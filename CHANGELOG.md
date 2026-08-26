@@ -7,8 +7,8 @@ All notable changes to the BusinessVance Services Manager plugin.
 - **Report upload now shows clear error messages instead of generic "Request failed"** — Three layers of improvement:
   1. **Client-side file size check** — Validates file size against `wp_max_upload_size()` before uploading, showing "File is too large (X MB). Maximum upload size is Y MB." if exceeded
   2. **Server-side upload error handling** — PHP now checks `$_FILES['file']['error']` and returns specific messages for each PHP upload error code (INI_SIZE, FORM_SIZE, PARTIAL, NO_FILE, NO_TMP_DIR, CANT_WRITE, EXTENSION), including the actual `upload_max_filesize` and `post_max_size` values
-  3. **JS AJAX error handler improved** — Shows HTTP status code (413, 500, etc.) and specific messages like "This usually means the file exceeds PHP's upload size limit" instead of the generic "Request failed. Please try again."
-- **Added max file size display** below the file input in Reports tab (e.g. "Max file size: 8 MB")
+  3. **JS AJAX error handler improved** — Shows HTTP status code (403, 413, 500, etc.) and specific messages. 403 now explains it's a WAF/ModSecurity issue with GoDaddy-specific fix instructions.
+- **Added max file size display** below the file input in Reports tab (e.g. "Max file size: 64 MB")
 - **Passed `max_upload_size` and `max_upload_mb` to JavaScript** via `wp_localize_script` for client-side validation
 
 ## [2.7.77] - 2026-08-28

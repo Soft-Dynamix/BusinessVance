@@ -237,7 +237,11 @@
                 if (r.success) { alert('Report uploaded'); location.reload(); } else { alert(r.data || 'Error uploading'); }
             }, error: function(xhr, status, err) {
                 var msg = 'Request failed.';
-                if (xhr.status === 413) {
+                if (xhr.status === 403) {
+                    msg = 'Access denied (HTTP 403). Your hosting provider\'s security firewall (WAF/ModSecurity) is blocking the upload.\n\n' +
+                          'GoDaddy Fix: Go to your GoDaddy Hosting Dashboard \u2192 Security \u2192 Web Application Firewall \u2192 turn OFF or add a rule to allow admin-ajax.php uploads.\n\n' +
+                          'Alternative: Contact GoDaddy support and ask them to allow POST file uploads to wp-admin/admin-ajax.php for your domain.';
+                } else if (xhr.status === 413) {
                     msg = 'File too large. Your server limits uploads to ' + maxMb + ' MB. Contact your hosting provider to increase upload_max_filesize and post_max_size in PHP.';
                 } else if (xhr.status === 500) {
                     msg = 'Server error (500). This usually means the file exceeds PHP\'s upload size limit (' + maxMb + ' MB). Contact your hosting provider to increase upload_max_filesize and post_max_size.';
