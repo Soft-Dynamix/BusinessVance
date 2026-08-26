@@ -2,6 +2,21 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.77] - 2026-08-28
+### Added
+- **5 new per-action email notification types with individual toggles and customizable subject/body**:
+  - **Client Project Completion** (`email_client_completion`) — sent to client at 100% progress. Was hardcoded, now uses settings template with placeholders: {client_name}, {project_number}, {company_name}, {portal_url}, {contact_info}, {consultant_email}, {consultant_phone}, {site_name}
+  - **Consultant Project Complete** (`email_consultant_completion`) — sent to consultant at 100% progress (the package email). Was hardcoded, now uses settings. If admin provides HTML body, used as-is; otherwise standard HTML template is built. Placeholders: {project_number}, {client_name}, {client_email}, {company_name}, {dashboard_url}, {site_name}
+  - **Consultant Document Upload** (`email_consultant_document`) — sent when client uploads a document at <100% progress
+  - **Consultant Questionnaire Update** (`email_consultant_questionnaire`) — sent when client saves questionnaire at <100% progress
+  - **Consultant Agreement Signed** (`email_consultant_agreement`) — sent when client signs agreement at <100% progress
+- **Intermediate consultant notifications now fire** — When a client uploads a document, saves questionnaire, or signs agreement at <100% progress, the consultant receives a per-action email (previously these were no-ops)
+- **Email settings UI reorganized into two sections**: "Client Email Notifications" (5 types) and "Consultant Email Notifications" (5 types), each with enable toggle + subject + body fields
+### Removed
+- **`cd_auto_notify_consultant` master toggle** — replaced by individual per-action toggles. Removed from defaults and Portal Settings tab UI.
+- **`email_consultant_action_subject` / `email_consultant_action_body`** generic settings — replaced by per-action settings (e.g. `email_consultant_document_subject`)
+- **`email_project_package_subject`** setting — replaced by `email_consultant_completion_subject`
+
 ## [2.7.76] - 2026-08-28
 ### Fixed
 - **Removed duplicate consultant email at project completion** — When a project reached 100%, TWO emails were sent to the consultant: (1) `notify_consultant()` with subject "Client Action on... — All Client Information Received" and (2) `email_project_package_to_consultant()` with subject "Project ... Complete". The first was redundant (the package email already tells the consultant everything) and was the one going to spam. Removed the `notify_consultant()` call from all 3 completion triggers (document upload, questionnaire save, agreement sign). Now only 1 email goes to the consultant at completion — the one that actually delivers to inbox.

@@ -847,7 +847,7 @@ class BV_Client_Portal {
      */
     private function notify_client_completion( $project_id ) {
         $settings = BV_Settings::get_settings();
-        if ( ( $settings['email_report_ready'] ?? 'yes' ) !== 'yes' ) {
+        if ( ( $settings['email_client_completion'] ?? 'yes' ) !== 'yes' ) {
             return;
         }
 
@@ -857,48 +857,42 @@ class BV_Client_Portal {
             return;
         }
 
-        $company_name    = $settings['company_name'] ?? 'BusinessVance';
+        $company_name     = $settings['company_name'] ?? 'BusinessVance';
         $consultant_email = $settings['consultant_email'] ?? '';
         $consultant_phone = $settings['phone_number'] ?? '';
-        $portal_url      = $settings['portal_url'] ?? '';
+        $portal_url       = $settings['portal_url'] ?? '';
+        $site_name        = get_bloginfo( 'name' );
 
-        $subject = sprintf(
-            /* translators: %1$s: project number, %2$s: company name */
-            esc_html__( 'All Information Submitted for Project %1$s — %2$s', 'businessvance-services-manager' ),
-            $project->project_number,
-            $company_name
-        );
-
-        $body = sprintf(
-            /* translators: %1$s: client name, %2$s: project number, %3$s: company name */
-            esc_html__( 'Dear %1$s,', 'businessvance-services-manager' ) . "\n\n" .
-            esc_html__( 'Thank you for completing all the required steps for project %2$s.', 'businessvance-services-manager' ) . "\n\n" .
-            esc_html__( 'Your consultant at %3$s will now review your information and begin working on your report. No further action is needed from your side at this time.', 'businessvance-services-manager' ) . "\n\n",
-            $project->client_name,
-            $project->project_number,
-            $company_name
-        );
-
+        // Build contact info block for {contact_info} placeholder
+        $contact_info = '';
         if ( $consultant_email || $consultant_phone ) {
-            $body .= esc_html__( 'If you have any questions, you can reach us:', 'businessvance-services-manager' ) . "\n";
+            $contact_info = esc_html__( 'If you have any questions, you can reach us:', 'businessvance-services-manager' ) . "\n";
             if ( $consultant_email ) {
-                $body .= '  • ' . esc_html__( 'Email: ', 'businessvance-services-manager' ) . $consultant_email . "\n";
+                $contact_info .= '  • ' . esc_html__( 'Email: ', 'businessvance-services-manager' ) . $consultant_email . "\n";
             }
             if ( $consultant_phone ) {
-                $body .= '  • ' . esc_html__( 'Phone: ', 'businessvance-services-manager' ) . $consultant_phone . "\n";
+                $contact_info .= '  • ' . esc_html__( 'Phone: ', 'businessvance-services-manager' ) . $consultant_phone . "\n";
             }
-            $body .= "\n";
         }
 
-        if ( $portal_url ) {
-            $body .= sprintf(
-                /* translators: %s: portal URL */
-                esc_html__( 'You can check your project status anytime here: %s', 'businessvance-services-manager' ),
-                $portal_url
-            ) . "\n\n";
-        }
+        // Token map for template replacement.
+        $tokens = array(
+            '{client_name}'     => $project->client_name,
+            '{project_number}'  => $project->project_number,
+            '{company_name}'    => $company_name,
+            '{portal_url}'      => $portal_url,
+            '{contact_info}'    => $contact_info,
+            '{consultant_email}' => $consultant_email,
+            '{consultant_phone}' => $consultant_phone,
+            '{site_name}'       => $site_name,
+        );
 
-        $body .= esc_html__( 'Best regards,', 'businessvance-services-manager' ) . "\n" . $company_name;
+        $defaults  = BV_Settings::get_defaults();
+        $subject_template = $settings['email_client_completion_subject'] ?? $defaults['email_client_completion_subject'];
+        $body_template    = $settings['email_client_completion_body'] ?? $defaults['email_client_completion_body'];
+
+        $subject = str_replace( array_keys( $tokens ), array_values( $tokens ), $subject_template );
+        $body    = str_replace( array_keys( $tokens ), array_values( $tokens ), $body_template );
 
         $from_email = ! empty( $settings['email_address'] ) ? $settings['email_address'] : ( ! empty( $consultant_email ) ? $consultant_email : '' );
         $headers = BV_Settings::build_email_headers(array(
@@ -2032,6 +2026,13 @@ class BV_Client_Portal {
             $this->notify_client_completion( $project_id );
             /** @since 2.7.23 Fire ZIP-package email with all project data */
             do_action( 'bv_project_completion_email', $project_id );
+        } else {
+            $this->notify_consultant(
+                $project_id,
+                'Document Uploaded',
+                'Client uploaded a document for project ' . $project->project_number,
+                'consultant_document'
+            );
         }
 
         wp_send_json_success( esc_html__( 'Document uploaded successfully', 'businessvance-services-manager' ) );
@@ -2239,6 +2240,13 @@ class BV_Client_Portal {
             $this->notify_client_completion( $project_id );
             /** @since 2.7.23 Fire ZIP-package email with all project data */
             do_action( 'bv_project_completion_email', $project_id );
+        } else {
+            $this->notify_consultant(
+                $project_id,
+                'Questionnaire Updated',
+                'Client updated the questionnaire for project ' . $project->project_number,
+                'consultant_questionnaire'
+            );
         }
         wp_send_json_success( esc_html__( 'Questionnaire saved successfully', 'businessvance-services-manager' ) );
     }
@@ -2383,6 +2391,13 @@ class BV_Client_Portal {
             $this->notify_client_completion( $project_id );
             /** @since 2.7.23 Fire ZIP-package email with all project data */
             do_action( 'bv_project_completion_email', $project_id );
+        } else {
+            $this->notify_consultant(
+                $project_id,
+                'Agreement Signed',
+                'Client ' . $full_name . ' signed the agreement for project ' . $project->project_number,
+                'consultant_agreement'
+            );
         }
         wp_send_json_success( esc_html__( 'Agreement signed successfully', 'businessvance-services-manager' ) );
     }
@@ -2466,20 +2481,23 @@ class BV_Client_Portal {
     /**
      * Notify consultant of a client action (document uploaded, questionnaire submitted, agreement signed).
      *
-     * Respects the cd_auto_notify_consultant setting and uses customizable subject/body templates
-     * from settings. Falls back to sensible defaults if no custom template is configured.
+     * Uses per-action toggle and subject/body from settings (e.g. email_consultant_document,
+     * email_consultant_questionnaire, email_consultant_agreement).
      *
      * @since 2.6.0
-     * @param int    $project_id
-     * @param string $action      Human-readable action label (e.g. "Document Uploaded").
-     * @param string $description Action details.
+     * @since 2.7.77 Added $notification_key parameter for per-action settings.
+     * @param int    $project_id      The project ID.
+     * @param string $action          Human-readable action label, e.g. "Document Uploaded".
+     * @param string $description     Description of what happened, with placeholders like {number}.
+     * @param string $notification_key Per-action setting key suffix, e.g. 'consultant_document'.
      * @return void
      */
-    private function notify_consultant( $project_id, $action, $description ) {
+    private function notify_consultant( $project_id, $action, $description, $notification_key = 'consultant_action' ) {
         $settings = BV_Settings::get_settings();
 
-        // Respect the master "notify consultant" toggle.
-        if ( ( $settings['cd_auto_notify_consultant'] ?? 'yes' ) !== 'yes' ) {
+        // Check per-action toggle.
+        $toggle_key = 'email_' . $notification_key;
+        if ( ( $settings[ $toggle_key ] ?? 'yes' ) !== 'yes' ) {
             return;
         }
 
@@ -2498,6 +2516,7 @@ class BV_Client_Portal {
         $primary_color = $settings['primary_color'] ?? '#002B5C';
         $logo_url      = $settings['logo_url'] ?? '';
         $dashboard_url = admin_url( 'admin.php?page=bv-consultant-dashboard&project_id=' . $project_id );
+        $site_name     = get_bloginfo( 'name' );
 
         // Token map for template replacement.
         $tokens = array(
@@ -2508,33 +2527,27 @@ class BV_Client_Portal {
             '{client_email}'   => $project->client_email,
             '{dashboard_url}'  => $dashboard_url,
             '{company_name}'   => $company_name,
+            '{site_name}'      => $site_name,
         );
 
-        // Build subject — use custom template or sensible default.
-        $subject_template = $settings['email_consultant_action_subject'] ?? 'Client Action on {project_number} — {action}';
+        // Build subject from per-action settings.
+        $defaults        = BV_Settings::get_defaults();
+        $subject_key     = 'email_' . $notification_key . '_subject';
+        $body_key        = 'email_' . $notification_key . '_body';
+        $subject_template = $settings[ $subject_key ] ?? $defaults[ $subject_key ];
+        $body_template    = $settings[ $body_key ] ?? $defaults[ $body_key ];
+
         $subject = str_replace( array_keys( $tokens ), array_values( $tokens ), $subject_template );
 
-        // Build body — use custom template or sensible default.
-        $body_template = $settings['email_consultant_action_body'] ?? '';
-        if ( empty( $body_template ) ) {
-            // Default: plain-text template stored in settings (backward compat).
-            // We build HTML below regardless; this fallback only fires if settings
-            // have a custom text template.
-            $body_template = "Dear Consultant,\n\n"
-                . "A client has completed an action on project {project_number}:\n\n"
-                . "Action: {action}\n"
-                . "Details: {description}\n"
-                . "Client: {client_name} ({client_email})\n\n"
-                . "Please review and take necessary action in the Consultant Dashboard:\n"
-                . "{dashboard_url}\n\n"
-                . "Best regards,\n{company_name} System";
-        }
+        // Build body — use custom template from settings or default plain-text.
         $body_text = str_replace( array_keys( $tokens ), array_values( $tokens ), $body_template );
 
-        // Build HTML email body (used unless a custom HTML template is saved in settings)
-        $has_custom_html = ! empty( $settings['email_consultant_action_body'] ) && strpos( $settings['email_consultant_action_body'], '<' ) !== false;
+        // Determine if admin has set a custom HTML body.
+        $custom_body_raw = $settings[ $body_key ] ?? '';
+        $has_custom_html = ! empty( $custom_body_raw ) && strpos( $custom_body_raw, '<' ) !== false;
+
         if ( ! $has_custom_html ) {
-            // Logo or fallback text header
+            // Build HTML email from the styled template (same design as before).
             if ( ! empty( $logo_url ) ) {
                 $header_content = '<img src="' . esc_url( $logo_url ) . '" alt="' . esc_attr( $company_name ) . '" width="120" height="auto" style="display:block;" />';
             } else {
@@ -2546,13 +2559,13 @@ class BV_Client_Portal {
                 . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6;min-height:100%;padding:32px 16px;">'
                 . '<tr><td align="center">'
 
-                // Header banner — sharp corners to match working format
+                // Header banner
                 . '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;margin:0 auto;">'
                 . '<tr><td bgcolor="' . esc_attr( $primary_color ) . '" style="background-color:' . esc_attr( $primary_color ) . ';padding:28px 32px;text-align:center;">'
                 . $header_content
                 . '</td></tr>'
 
-                // Main content card — clean, no side borders
+                // Main content card
                 . '<tr><td style="background-color:#ffffff;padding:40px 32px;">'
 
                 // Greeting
@@ -2569,7 +2582,7 @@ class BV_Client_Portal {
                 . '<tr><td colspan="2" style="padding-top:8px;font-size:13px;color:#374151;"><strong>Details:</strong> ' . nl2br( esc_html( $description ) ) . '</td></tr>'
                 . '</table></td></tr></table>'
 
-                // CTA button — outlined black, full-width, matching the working email format
+                // CTA button
                 . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">'
                 . '<tr><td align="center" style="padding:0;">'
                 . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
@@ -2584,7 +2597,7 @@ class BV_Client_Portal {
 
                 . '</td></tr>' // End main content
 
-                // Footer — clean, simple
+                // Footer
                 . '<tr><td style="background-color:#ffffff;padding:24px 32px 32px;border-top:1px solid #e5e7eb;text-align:center;">'
                 . '<p style="margin:0 0 4px;font-size:13px;color:#777777;">If you have any questions, feel free to reply to this email.</p>'
                 . '<p style="margin:0;font-size:13px;color:#999999;">Best regards,<br><strong style="color:#555555;">' . esc_html( $company_name ) . '</strong></p>'
@@ -2595,11 +2608,9 @@ class BV_Client_Portal {
                 . '</body></html>';
         } else {
             // Custom HTML template from settings
-            $body_html = str_replace( array_keys( $tokens ), array_values( $tokens ), $settings['email_consultant_action_body'] );
+            $body_html = str_replace( array_keys( $tokens ), array_values( $tokens ), $custom_body_raw );
         }
 
-        // Use the company's email address as the From header (not the consultant's own address).
-        // BV_Settings::build_email_headers() also guarantees From != To.
         $preferred_from = ! empty( $settings['email_address'] ) ? $settings['email_address'] : '';
         $headers = BV_Settings::build_email_headers(array(
             'to_email'          => $consultant_email,

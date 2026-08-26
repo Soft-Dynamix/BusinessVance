@@ -2718,6 +2718,12 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
         global $wpdb;
 
         $settings = BV_Settings::get_settings();
+
+        // Check per-action toggle — skip everything (including heavy ZIP work) if disabled.
+        if ( ( $settings['email_consultant_completion'] ?? 'yes' ) !== 'yes' ) {
+            return false;
+        }
+
         $consultant_email = $settings['consultant_email'] ?? get_option( 'admin_email' );
         if ( empty( $consultant_email ) ) {
             error_log( sprintf( '[BV] email_package skipped project %d: no consultant email', $project_id ) );
@@ -2738,75 +2744,90 @@ if ( $agreement_rec && ! empty( $agreement_rec->template_content ) ) :
         $primary_color = $settings['primary_color'] ?? '#002B5C';
         $logo_url      = $settings['logo_url'] ?? '';
         $dashboard_url = admin_url( 'admin.php?page=bv-consultant-dashboard&project_id=' . $project_id );
+        $site_name     = get_bloginfo( 'name' );
 
-        // Subject
+        // Tokens for subject/body template replacement.
         $tokens = array(
             '{project_number}'  => $project->project_number,
             '{client_name}'     => $project->client_name,
             '{client_email}'    => $project->client_email,
             '{company_name}'    => $company_name,
             '{dashboard_url}'   => $dashboard_url,
+            '{site_name}'       => $site_name,
         );
-        $subject = $settings['email_project_package_subject'] ?? 'Project {project_number} Complete';
-        $subject = str_replace( array_keys( $tokens ), array_values( $tokens ), $subject );
 
-        // Logo or fallback text header (same as client reminder)
-        if ( ! empty( $logo_url ) ) {
-            $header_content = '<img src="' . esc_url( $logo_url ) . '" alt="' . esc_attr( $company_name ) . '" width="120" height="auto" style="display:block;" />';
+        // Build subject from per-action settings.
+        $defaults         = BV_Settings::get_defaults();
+        $subject_template = $settings['email_consultant_completion_subject'] ?? $defaults['email_consultant_completion_subject'];
+        $body_raw         = $settings['email_consultant_completion_body'] ?? $defaults['email_consultant_completion_body'];
+
+        $subject = str_replace( array_keys( $tokens ), array_values( $tokens ), $subject_template );
+
+        // If admin has set a custom HTML body (contains <), use it as-is.
+        // Otherwise, build the standard HTML template from the plain text template.
+        $has_custom_html = ! empty( $settings['email_consultant_completion_body'] ) && strpos( $settings['email_consultant_completion_body'], '<' ) !== false;
+
+        if ( $has_custom_html ) {
+            $body_html = str_replace( array_keys( $tokens ), array_values( $tokens ), $body_raw );
         } else {
-            $header_content = '<span style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.5px;">' . esc_html( $company_name ) . '</span>';
+            // Build standard HTML email (same design as other consultant emails).
+            if ( ! empty( $logo_url ) ) {
+                $header_content = '<img src="' . esc_url( $logo_url ) . '" alt="' . esc_attr( $company_name ) . '" width="120" height="auto" style="display:block;" />';
+            } else {
+                $header_content = '<span style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.5px;">' . esc_html( $company_name ) . '</span>';
+            }
+
+            $light_color = '#f9fafb';
+            $body_html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head><body style="margin:0;padding:0;background-color:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,\'Helvetica Neue\',Arial,sans-serif;">'
+                . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6;min-height:100%;padding:32px 16px;">'
+                . '<tr><td align="center">'
+
+                // Header banner
+                . '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;margin:0 auto;">'
+                . '<tr><td bgcolor="' . esc_attr( $primary_color ) . '" style="background-color:' . esc_attr( $primary_color ) . ';padding:28px 32px;text-align:center;">'
+                . $header_content
+                . '</td></tr>'
+
+                // Main content card
+                . '<tr><td style="background-color:#ffffff;padding:40px 32px;">'
+
+                // Greeting
+                . '<p style="margin:0 0 6px;font-size:24px;font-weight:700;color:#1a1a1a;">Project Complete</p>'
+                . '<p style="margin:0 0 24px;font-size:15px;color:#555555;line-height:1.6;">Project <strong style="color:#1a1a1a;">' . esc_html( $project->project_number ) . '</strong> for <strong style="color:#1a1a1a;">' . esc_html( $project->client_name ) . '</strong> is now <strong style="color:#1a1a1a;">100% complete</strong>. All information has been submitted. Please review in the Consultant Dashboard.</p>'
+
+                // Project info card
+                . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="' . esc_attr( $light_color ) . '" style="background-color:' . esc_attr( $light_color ) . ';border-radius:6px;margin-bottom:28px;overflow:hidden;">'
+                . '<tr><td style="padding:20px 24px;">'
+                . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
+                . '<tr><td style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888888;padding-bottom:6px;">Project</td><td style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888888;padding-bottom:6px;text-align:right;">Client</td></tr>'
+                . '<tr><td style="font-size:18px;font-weight:700;color:#111111;">' . esc_html( $project->project_number ) . '</td><td style="font-size:18px;font-weight:700;color:#111111;text-align:right;">' . esc_html( $project->client_name ) . '</td></tr>'
+                . '</table></td></tr></table>'
+
+                // CTA button
+                . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">'
+                . '<tr><td align="center" style="padding:0;">'
+                . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+                . '<tr><td style="background-color:#ffffff;border:2px solid #111111;border-radius:6px;padding:0;">'
+                . '<a href="' . esc_url( $dashboard_url ) . '" target="_blank" style="display:block;padding:14px 24px;font-size:15px;font-weight:700;color:#000000;text-decoration:none;text-align:center;"><font color="#000000" style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif;font-size:15px;font-weight:700;">Open in Consultant Dashboard</font></a>'
+                . '</td></tr></table>'
+                . '</td></tr>'
+                . '<tr><td align="center" style="padding:0;">'
+                . '<p style="margin:0;font-size:12px;color:#999999;">If the button above doesn\'t work, copy and paste this link into your browser:<br><a href="' . esc_url( $dashboard_url ) . '" style="color:#2563EB;word-break:break-all;text-decoration:underline;">' . esc_html( $dashboard_url ) . '</a></p>'
+                . '</td></tr>'
+                . '</table>'
+
+                . '</td></tr>' // End main content
+
+                // Footer
+                . '<tr><td style="background-color:#ffffff;padding:24px 32px 32px;border-top:1px solid #e5e7eb;text-align:center;">'
+                . '<p style="margin:0 0 4px;font-size:13px;color:#777777;">If you have any questions, feel free to reply to this email.</p>'
+                . '<p style="margin:0;font-size:13px;color:#999999;">Best regards,<br><strong style="color:#555555;">' . esc_html( $company_name ) . '</strong></p>'
+                . '</td></tr>'
+
+                . '</table>' // End 600px wrapper
+                . '</td></tr></table>' // End outer
+                . '</body></html>';
         }
-
-        $light_color = '#f9fafb';
-        $body_html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head><body style="margin:0;padding:0;background-color:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,\'Helvetica Neue\',Arial,sans-serif;">'
-            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6;min-height:100%;padding:32px 16px;">'
-            . '<tr><td align="center">'
-
-            // Header banner — sharp corners (no border-radius) to match working format
-            . '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;margin:0 auto;">'
-            . '<tr><td bgcolor="' . esc_attr( $primary_color ) . '" style="background-color:' . esc_attr( $primary_color ) . ';padding:28px 32px;text-align:center;">'
-            . $header_content
-            . '</td></tr>'
-
-            // Main content card — clean, no side borders
-            . '<tr><td style="background-color:#ffffff;padding:40px 32px;">'
-
-            // Greeting
-            . '<p style="margin:0 0 6px;font-size:24px;font-weight:700;color:#1a1a1a;">Project Complete</p>'
-            . '<p style="margin:0 0 24px;font-size:15px;color:#555555;line-height:1.6;">Project <strong style="color:#1a1a1a;">' . esc_html( $project->project_number ) . '</strong> for <strong style="color:#1a1a1a;">' . esc_html( $project->client_name ) . '</strong> is now <strong style="color:#1a1a1a;">100% complete</strong>. All information has been submitted. Please review in the Consultant Dashboard.</p>'
-
-            // Project info card
-            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="' . esc_attr( $light_color ) . '" style="background-color:' . esc_attr( $light_color ) . ';border-radius:6px;margin-bottom:28px;overflow:hidden;">'
-            . '<tr><td style="padding:20px 24px;">'
-            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
-            . '<tr><td style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888888;padding-bottom:6px;">Project</td><td style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888888;padding-bottom:6px;text-align:right;">Client</td></tr>'
-            . '<tr><td style="font-size:18px;font-weight:700;color:#111111;">' . esc_html( $project->project_number ) . '</td><td style="font-size:18px;font-weight:700;color:#111111;text-align:right;">' . esc_html( $project->client_name ) . '</td></tr>'
-            . '</table></td></tr></table>'
-
-            // CTA button — outlined black, full-width, matching the working email format
-            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">'
-            . '<tr><td align="center" style="padding:0;">'
-            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
-            . '<tr><td style="background-color:#ffffff;border:2px solid #111111;border-radius:6px;padding:0;">'
-            . '<a href="' . esc_url( $dashboard_url ) . '" target="_blank" style="display:block;padding:14px 24px;font-size:15px;font-weight:700;color:#000000;text-decoration:none;text-align:center;"><font color="#000000" style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif;font-size:15px;font-weight:700;">Open in Consultant Dashboard</font></a>'
-            . '</td></tr></table>'
-            . '</td></tr>'
-            . '<tr><td align="center" style="padding:0;">'
-            . '<p style="margin:0;font-size:12px;color:#999999;">If the button above doesn\'t work, copy and paste this link into your browser:<br><a href="' . esc_url( $dashboard_url ) . '" style="color:#2563EB;word-break:break-all;text-decoration:underline;">' . esc_html( $dashboard_url ) . '</a></p>'
-            . '</td></tr>'
-            . '</table>'
-
-            . '</td></tr>' // End main content
-
-            // Footer — clean, simple
-            . '<tr><td style="background-color:#ffffff;padding:24px 32px 32px;border-top:1px solid #e5e7eb;text-align:center;">'
-            . '<p style="margin:0 0 4px;font-size:13px;color:#777777;">If you have any questions, feel free to reply to this email.</p>'
-            . '<p style="margin:0;font-size:13px;color:#999999;">Best regards,<br><strong style="color:#555555;">' . esc_html( $company_name ) . '</strong></p>'
-            . '</td></tr>'
-
-            . '</table>' // End 600px wrapper
-            . '</td></tr></table>' // End outer
-            . '</body></html>';
 
         $preferred_from = ! empty( $settings['email_address'] ) ? $settings['email_address'] : '';
         $headers = BV_Settings::build_email_headers(array(
