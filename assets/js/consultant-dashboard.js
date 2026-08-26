@@ -219,6 +219,14 @@
             var fileInput = $('#bv-cd-report-file')[0];
             var title = $('#bv-cd-report-title').val();
             if (!fileInput.files.length || !title) return alert('Please enter title and select file');
+
+            // Client-side file size check
+            var maxBytes = parseInt(bv_cd.max_upload_size) || 0;
+            var maxMb = parseFloat(bv_cd.max_upload_mb) || 0;
+            if (maxBytes > 0 && fileInput.files[0].size > maxBytes) {
+                return alert('File is too large (' + (fileInput.files[0].size / 1048576).toFixed(1) + ' MB). Maximum upload size is ' + maxMb + ' MB. Contact your hosting provider to increase the upload limit if needed.');
+            }
+
             var fd = new FormData();
             fd.append('file', fileInput.files[0]);
             fd.append('action', 'bv_cd_upload_report');
@@ -227,7 +235,19 @@
             fd.append('title', title);
             $.ajax({ url: bv_cd.ajax_url, type: 'POST', data: fd, processData: false, contentType: false, dataType: 'json', success: function(r) {
                 if (r.success) { alert('Report uploaded'); location.reload(); } else { alert(r.data || 'Error uploading'); }
-            }, error: function() { alert('Request failed. Please try again.'); } });
+            }, error: function(xhr, status, err) {
+                var msg = 'Request failed.';
+                if (xhr.status === 413) {
+                    msg = 'File too large. Your server limits uploads to ' + maxMb + ' MB. Contact your hosting provider to increase upload_max_filesize and post_max_size in PHP.';
+                } else if (xhr.status === 500) {
+                    msg = 'Server error (500). This usually means the file exceeds PHP\'s upload size limit (' + maxMb + ' MB). Contact your hosting provider to increase upload_max_filesize and post_max_size.';
+                } else if (xhr.status > 0) {
+                    msg = 'Request failed (HTTP ' + xhr.status + '). ' + (err || status) + '.';
+                } else if (status === 'parsererror') {
+                    msg = 'Server returned an invalid response. This may be caused by a PHP error or the file exceeding the server\'s upload limit (' + maxMb + ' MB). Check the browser console (F12) for details.';
+                }
+                alert(msg);
+            } });
         });
 
         // Deliver report

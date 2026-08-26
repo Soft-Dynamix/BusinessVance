@@ -164,6 +164,8 @@ class BV_Consultant_Dashboard {
             'upload_url' => BV_PLUGIN_URL . 'uploads/',
             'current_user' => wp_get_current_user()->display_name,
             'current_time' => date( 'd M Y H:i' ),
+            'max_upload_size' => wp_max_upload_size(),
+            'max_upload_mb' => round( wp_max_upload_size() / 1048576, 1 ),
         ) );
     }
 
@@ -1406,7 +1408,7 @@ class BV_Consultant_Dashboard {
             <div class="bv-cd-card">
                 <h4>Upload Report</h4>
                 <p><input id="bv-cd-report-title" type="text" placeholder="Report title (e.g., Business Feasibility Report)" class="regular-text" /></p>
-                <p><input id="bv-cd-report-file" type="file" accept=".pdf,.doc,.docx" /></p>
+                <p><input id="bv-cd-report-file" type="file" accept=".pdf,.doc,.docx" /><br><small class="description">Max file size: <?php echo esc_html( round( wp_max_upload_size() / 1048576, 1 ) ); ?> MB (PDF, DOC, DOCX only)</small></p>
                 <p><button id="bv-cd-upload-report" class="button button-primary" data-project-id="<?php echo $project_id; ?>">Upload Report</button></p>
             </div>
             <?php if (!empty($reports)) : ?>
@@ -1843,7 +1845,26 @@ class BV_Consultant_Dashboard {
 
         $pid = absint( $_POST['project_id'] );
         $title = sanitize_text_field( $_POST['title'] );
-        if ( empty( $title ) || empty( $_FILES['file'] ) ) wp_send_json_error( 'Title and file required' );
+        if ( empty( $title ) ) wp_send_json_error( 'Title is required' );
+
+        // Check if file was uploaded — if not, provide a helpful error about why.
+        if ( empty( $_FILES['file'] ) || $_FILES['file']['error'] !== UPLOAD_ERR_OK ) {
+            $err_code = ! empty( $_FILES['file'] ) ? $_FILES['file']['error'] : UPLOAD_ERR_NO_FILE;
+            $max_mb = round( wp_max_upload_size() / 1048576, 1 );
+            $php_max = ini_get( 'upload_max_filesize' );
+            $php_post = ini_get( 'post_max_size' );
+            $errors = array(
+                UPLOAD_ERR_INI_SIZE   => 'File exceeds the server upload limit (' . $php_max . '). Contact your hosting provider to increase upload_max_filesize.',
+                UPLOAD_ERR_FORM_SIZE  => 'File exceeds the form MAX_FILE_SIZE directive.',
+                UPLOAD_ERR_PARTIAL    => 'File was only partially uploaded. Please try again.',
+                UPLOAD_ERR_NO_FILE    => 'No file was received. Please select a file and try again.',
+                UPLOAD_ERR_NO_TMP_DIR => 'Server is missing a temporary folder. Contact your hosting provider.',
+                UPLOAD_ERR_CANT_WRITE => 'Failed to write file to disk. Check server permissions.',
+                UPLOAD_ERR_EXTENSION  => 'A PHP extension blocked the upload. Contact your hosting provider.',
+            );
+            $msg = isset( $errors[ $err_code ] ) ? $errors[ $err_code ] : 'Upload failed (error code ' . $err_code . '). Server limits: upload_max_filesize=' . $php_max . ', post_max_size=' . $php_post . '. Contact your hosting provider to increase these limits.';
+            wp_send_json_error( $msg );
+        }
 
         $file = $_FILES['file'];
         $ext = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
@@ -1852,7 +1873,7 @@ class BV_Consultant_Dashboard {
 
         $filename = 'report_' . $pid . '_' . time() . '_' . sanitize_file_name( $file['name'] );
         $upload_path = BV_UPLOAD_DIR . '/' . $filename;
-        if ( ! move_uploaded_file( $file['tmp_name'], $upload_path ) ) wp_send_json_error( 'Upload failed' );
+        if ( ! move_uploaded_file( $file['tmp_name'], $upload_path ) ) wp_send_json_error( 'Upload failed — could not move file. Check that the upload directory (' . BV_UPLOAD_DIR . ') is writable.' );
 
         global $wpdb;
         $wpdb->insert( $wpdb->prefix . 'bv_project_reports', array(

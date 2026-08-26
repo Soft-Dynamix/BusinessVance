@@ -2,6 +2,15 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.78] - 2026-08-28
+### Fixed
+- **Report upload now shows clear error messages instead of generic "Request failed"** — Three layers of improvement:
+  1. **Client-side file size check** — Validates file size against `wp_max_upload_size()` before uploading, showing "File is too large (X MB). Maximum upload size is Y MB." if exceeded
+  2. **Server-side upload error handling** — PHP now checks `$_FILES['file']['error']` and returns specific messages for each PHP upload error code (INI_SIZE, FORM_SIZE, PARTIAL, NO_FILE, NO_TMP_DIR, CANT_WRITE, EXTENSION), including the actual `upload_max_filesize` and `post_max_size` values
+  3. **JS AJAX error handler improved** — Shows HTTP status code (413, 500, etc.) and specific messages like "This usually means the file exceeds PHP's upload size limit" instead of the generic "Request failed. Please try again."
+- **Added max file size display** below the file input in Reports tab (e.g. "Max file size: 8 MB")
+- **Passed `max_upload_size` and `max_upload_mb` to JavaScript** via `wp_localize_script` for client-side validation
+
 ## [2.7.77] - 2026-08-28
 ### Changed
 - **Client completion email upgraded from plain text to professional HTML** — now matches the same beautiful design system used by all other emails (consultant package, client reminder, consultant new message, consultant action notifications). Includes: company logo/color header, "All Information Submitted" heading, project info card with green "100% Complete" status, info card with green left-border accent, "Go to My Project Portal" CTA button, and footer with contact info (email, phone, address) and company signature. Auto-resolves portal URL if not set in settings. Supports custom HTML body override from admin settings (same pattern as consultant emails).
