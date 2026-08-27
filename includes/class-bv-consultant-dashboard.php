@@ -1495,9 +1495,16 @@ class BV_Consultant_Dashboard {
         <div id="bv-cd-panel-reports" class="bv-cd-panel" style="<?php echo $active_tab === 'reports' ? '' : 'display:none'; ?>">
             <div class="bv-cd-card">
                 <h4>Upload Report</h4>
-                <p><input id="bv-cd-report-title" type="text" placeholder="Report title (e.g., Business Feasibility Report)" class="regular-text" /></p>
-                <p><input id="bv-cd-report-file" type="file" accept=".pdf,.doc,.docx" /><br><small class="description">Max file size: <?php echo esc_html( round( wp_max_upload_size() / 1048576, 1 ) ); ?> MB (PDF, DOC, DOCX only)</small></p>
-                <p><button id="bv-cd-upload-report" class="button button-primary" data-project-id="<?php echo $project_id; ?>">Upload Report</button></p>
+                <p style="margin-bottom:4px;font-weight:600;">1. Enter report title:</p>
+                <p><input id="bv-cd-report-title" type="text" placeholder="e.g., Business Feasibility Report" class="regular-text" style="width:100%;" /></p>
+                <p style="margin-bottom:4px;font-weight:600;">2. Select file:</p>
+                <p>
+                    <input id="bv-cd-report-file" type="file" accept=".pdf,.doc,.docx" />
+                    <span id="bv-cd-file-info" style="display:none;margin-left:8px;color:#27AE60;font-weight:600;"></span>
+                    <br><small class="description">Max file size: <?php echo esc_html( round( wp_max_upload_size() / 1048576, 1 ) ); ?> MB (PDF, DOC, DOCX only)</small>
+                </p>
+                <p style="margin-top:8px;"><button type="button" id="bv-cd-upload-report" class="button button-primary" data-project-id="<?php echo $project_id; ?>">Upload Report</button>
+                <span id="bv-cd-upload-status" style="margin-left:8px;"></span></p>
             </div>
             <?php if (!empty($reports)) : ?>
             <table class="widefat striped bv-cd-table" style="margin-top:16px;">

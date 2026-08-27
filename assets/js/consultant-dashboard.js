@@ -213,65 +213,129 @@
             }, error: function() { alert('Request failed. Please try again.'); } });
         });
 
-        // Report upload — uses REST API to bypass WAF/ModSecurity 403 blocks on admin-ajax.php.
-        // Falls back to admin-ajax.php if REST API returns 404 (REST API disabled).
-        $('#bv-cd-upload-report').on('click', function() {
-            var pid = $(this).data('project-id');
-            var fileInput = $('#bv-cd-report-file')[0];
-            var title = $('#bv-cd-report-title').val();
-            if (!fileInput.files.length || !title) return alert('Please enter title and select file');
-
-            // Client-side file size check
-            var maxBytes = parseInt(bv_cd.max_upload_size) || 0;
-            var maxMb = parseFloat(bv_cd.max_upload_mb) || 0;
-            if (maxBytes > 0 && fileInput.files[0].size > maxBytes) {
-                return alert('File is too large (' + (fileInput.files[0].size / 1048576).toFixed(1) + ' MB). Maximum upload size is ' + maxMb + ' MB. Contact your hosting provider to increase the upload limit if needed.');
+        // File selection feedback — shows filename and size when a file is chosen
+        $(document).on('change', '#bv-cd-report-file', function() {
+            var $info = $('#bv-cd-file-info');
+            if (!this.files || !this.files.length) {
+                $info.hide();
+                return;
             }
+            var f = this.files[0];
+            var sizeKB = (f.size / 1024).toFixed(0);
+            var sizeStr = sizeKB > 1024 ? (f.size / 1048576).toFixed(1) + ' MB' : sizeKB + ' KB';
+            $info.text('✓ ' + f.name + ' (' + sizeStr + ')').show();
+        });
 
-            var fd = new FormData();
-            fd.append('file', fileInput.files[0]);
-            fd.append('project_id', pid);
-            fd.append('title', title);
+        // Report upload — delegated binding for reliability.
+        // Uses REST API to bypass WAF/ModSecurity 403 blocks on admin-ajax.php.
+        $(document).on('click', '#bv-cd-upload-report', function(e) {
+            e.preventDefault();
+            try {
+                var $btn = $(this);
+                var pid = $btn.data('project-id');
+                var fileInput = document.getElementById('bv-cd-report-file');
+                var titleEl = document.getElementById('bv-cd-report-title');
+                var statusEl = document.getElementById('bv-cd-upload-status');
 
-            // Build REST API request — /wp-json/bv/v1/upload-report
-            var uploadViaAjax = function(url, useRestApi) {
-                var headers = {};
-                if (useRestApi) {
-                    headers['X-WP-Nonce'] = bv_cd.rest_nonce;
-                } else {
-                    fd.append('action', 'bv_cd_upload_report');
-                    fd.append('nonce', bv_cd.nonce);
+                if (!fileInput || !titleEl) {
+                    console.error('[BV Upload] Missing file input or title field');
+                    return;
                 }
-                $.ajax({
-                    url: url,
-                    type: 'POST',
-                    data: fd,
-                    processData: false,
-                    contentType: false,
-                    headers: headers,
-                    dataType: 'json',
-                    success: function(r) {
-                        if (r.success) { alert('Report uploaded'); location.reload(); } else { alert(r.data || 'Error uploading'); }
-                    },
-                    error: function(xhr, status, err) {
-                        // If REST API returns 404, fall back to admin-ajax.php
-                        if (useRestApi && xhr.status === 404) {
-                            console.log('[BV Upload] REST API not available, falling back to admin-ajax.php');
-                            fd.delete('project_id'); fd.delete('title');
-                            fd.append('project_id', pid);
-                            fd.append('title', title);
-                            uploadViaAjax(bv_cd.ajax_url, false);
-                            return;
-                        }
-                        var body = (xhr.responseText || '').substring(0, 500);
-                        console.log('[BV Upload Debug] HTTP ' + xhr.status + ' | status: ' + status + ' | body: ' + body);
-                        alert('Upload failed (HTTP ' + xhr.status + ').\n\nServer response:\n' + body);
-                    }
-                });
-            };
 
-            // Try REST API first
-            uploadViaAjax(bv_cd.rest_url, true);
+                var title = titleEl.value.trim();
+                if (!fileInput.files || !fileInput.files.length) {
+                    alert('Please select a file to upload.');
+                    fileInput.focus();
+                    return;
+                }
+                if (!title) {
+                    alert('Please enter a report title first.');
+                    titleEl.focus();
+                    return;
+                }
+
+                // Client-side file size check
+                var maxBytes = parseInt(bv_cd.max_upload_size) || 0;
+                var maxMb = parseFloat(bv_cd.max_upload_mb) || 0;
+                if (maxBytes > 0 && fileInput.files[0].size > maxBytes) {
+                    return alert('File is too large (' + (fileInput.files[0].size / 1048576).toFixed(1) + ' MB). Maximum upload size is ' + maxMb + ' MB.');
+                }
+
+                // Show uploading state
+                $btn.prop('disabled', true).text('Uploading...');
+                if (statusEl) statusEl.text('Please wait...');
+
+                var fd = new FormData();
+                fd.append('file', fileInput.files[0]);
+                fd.append('project_id', pid);
+                fd.append('title', title);
+
+                var uploadDone = function(success, msg) {
+                    $btn.prop('disabled', false).text('Upload Report');
+                    if (statusEl) statusEl.text('');
+                    if (success) {
+                        alert('Report uploaded successfully!');
+                        location.reload();
+                    } else {
+                        alert('Upload failed: ' + (msg || 'Unknown error'));
+                    }
+                };
+
+                var doUpload = function(url, isRest) {
+                    var headers = {};
+                    if (isRest && bv_cd.rest_nonce) {
+                        headers['X-WP-Nonce'] = bv_cd.rest_nonce;
+                    }
+                    if (!isRest) {
+                        fd.append('action', 'bv_cd_upload_report');
+                        fd.append('nonce', bv_cd.nonce);
+                    }
+                    $.ajax({
+                        url: url,
+                        type: 'POST',
+                        data: fd,
+                        processData: false,
+                        contentType: false,
+                        headers: headers,
+                        dataType: 'json',
+                        success: function(r) {
+                            if (r && r.success) {
+                                uploadDone(true, r.data);
+                            } else {
+                                // REST API 404 — fall back to admin-ajax.php
+                                if (isRest && (!r || (r.code === 'rest_no_route'))) {
+                                    console.log('[BV Upload] REST not available, trying admin-ajax.php');
+                                    doUpload(bv_cd.ajax_url, false);
+                                } else {
+                                    uploadDone(false, (r && r.data) ? r.data : 'Server error');
+                                }
+                            }
+                        },
+                        error: function(xhr, status, err) {
+                            // REST API 404 — fall back to admin-ajax.php
+                            if (isRest && xhr.status === 404) {
+                                console.log('[BV Upload] REST 404, falling back to admin-ajax.php');
+                                doUpload(bv_cd.ajax_url, false);
+                                return;
+                            }
+                            var body = (xhr.responseText || '').substring(0, 500);
+                            console.log('[BV Upload Debug] HTTP ' + xhr.status + ' | ' + status + ' | ' + body);
+                            uploadDone(false, 'HTTP ' + xhr.status + (body ? ': ' + body.substring(0, 200) : ''));
+                        }
+                    });
+                };
+
+                // Try REST API first (bypasses WAF), fall back to admin-ajax.php
+                if (bv_cd.rest_url) {
+                    doUpload(bv_cd.rest_url, true);
+                } else {
+                    doUpload(bv_cd.ajax_url, false);
+                }
+
+            } catch(err) {
+                console.error('[BV Upload Error]', err);
+                alert('Upload error: ' + err.message);
+            }
         });
 
         // Deliver report
