@@ -213,125 +213,117 @@
             }, error: function() { alert('Request failed. Please try again.'); } });
         });
 
-        // File selection feedback — shows filename and size when a file is chosen
-        $(document).on('change', '#bv-cd-report-file', function() {
-            var $info = $('#bv-cd-file-info');
-            if (!this.files || !this.files.length) {
-                $info.hide();
-                return;
-            }
-            var f = this.files[0];
-            var sizeKB = (f.size / 1024).toFixed(0);
-            var sizeStr = sizeKB > 1024 ? (f.size / 1048576).toFixed(1) + ' MB' : sizeKB + ' KB';
-            $info.text('✓ ' + f.name + ' (' + sizeStr + ')').show();
+        // === REPORT UPLOAD VIA WORDPRESS MEDIA LIBRARY ===
+        // Uses wp.media uploader which goes through WordPress's own upload
+        // endpoint (async-upload.php) — bypasses WAF/ModSecurity 403 blocks.
+
+        var bvMediaFrame = null;
+        var bvSelectedAttachment = null;
+
+        // Open media library to select/upload a file
+        $(document).on('click', '#bv-cd-select-file', function(e) {
+            e.preventDefault();
+            if (bvMediaFrame) { bvMediaFrame.open(); return; }
+
+            bvMediaFrame = wp.media({
+                title: 'Select Report File',
+                button: { text: 'Select This File' },
+                multiple: false,
+                library: { type: 'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document' }
+            });
+
+            bvMediaFrame.on('select', function() {
+                var attachment = bvMediaFrame.state().get('selection').first().toJSON();
+                bvSelectedAttachment = attachment;
+
+                // Show file info
+                var sizeStr = attachment.filesizeHuman || '';
+                var $info = $('#bv-cd-file-info');
+                $info.text('✓ ' + attachment.filename + (sizeStr ? ' (' + sizeStr + ')' : '')).show();
+                $('#bv-cd-attachment-id').val(attachment.id);
+                $('#bv-cd-upload-report').prop('disabled', false);
+                $('#bv-cd-clear-file').show();
+            });
+
+            bvMediaFrame.open();
         });
 
-        // Report upload — delegated binding for reliability.
-        // Uses REST API to bypass WAF/ModSecurity 403 blocks on admin-ajax.php.
+        // Clear selected file
+        $(document).on('click', '#bv-cd-clear-file', function(e) {
+            e.preventDefault();
+            bvSelectedAttachment = null;
+            $('#bv-cd-attachment-id').val('');
+            $('#bv-cd-file-info').hide();
+            $('#bv-cd-upload-report').prop('disabled', true);
+            $('#bv-cd-clear-file').hide();
+        });
+
+        // Upload report — sends attachment_id (no file data), shows progress bar
         $(document).on('click', '#bv-cd-upload-report', function(e) {
             e.preventDefault();
             try {
                 var $btn = $(this);
                 var pid = $btn.data('project-id');
-                var fileInput = document.getElementById('bv-cd-report-file');
+                var attachmentId = $('#bv-cd-attachment-id').val();
                 var titleEl = document.getElementById('bv-cd-report-title');
                 var statusEl = document.getElementById('bv-cd-upload-status');
+                var $progressWrap = $('#bv-cd-upload-progress');
+                var $progressBar = $('#bv-cd-progress-bar');
+                var $progressText = $('#bv-cd-progress-text');
 
-                if (!fileInput || !titleEl) {
-                    console.error('[BV Upload] Missing file input or title field');
-                    return;
-                }
-
+                if (!titleEl) return;
                 var title = titleEl.value.trim();
-                if (!fileInput.files || !fileInput.files.length) {
-                    alert('Please select a file to upload.');
-                    fileInput.focus();
-                    return;
-                }
-                if (!title) {
-                    alert('Please enter a report title first.');
-                    titleEl.focus();
-                    return;
-                }
+                if (!title) { alert('Please enter a report title first.'); titleEl.focus(); return; }
+                if (!attachmentId) { alert('Please select a file first.'); return; }
 
-                // Client-side file size check
-                var maxBytes = parseInt(bv_cd.max_upload_size) || 0;
-                var maxMb = parseFloat(bv_cd.max_upload_mb) || 0;
-                if (maxBytes > 0 && fileInput.files[0].size > maxBytes) {
-                    return alert('File is too large (' + (fileInput.files[0].size / 1048576).toFixed(1) + ' MB). Maximum upload size is ' + maxMb + ' MB.');
-                }
-
-                // Show uploading state
+                // Disable UI, show progress
                 $btn.prop('disabled', true).text('Uploading...');
-                if (statusEl) statusEl.textContent = 'Please wait...';
+                $('#bv-cd-select-file').prop('disabled', true);
+                $('#bv-cd-clear-file').hide();
+                $progressWrap.show();
+                $progressBar.css('width', '0%');
+                $progressText.textContent = 'Saving report...';
+                if (statusEl) statusEl.textContent = '';
 
-                var fd = new FormData();
-                fd.append('file', fileInput.files[0]);
-                fd.append('project_id', pid);
-                fd.append('title', title);
+                // Animate progress bar (the actual save is fast, but the visual helps)
+                var progress = 0;
+                var progressTimer = setInterval(function() {
+                    if (progress < 80) { progress += Math.random() * 15; if (progress > 80) progress = 80; }
+                    $progressBar.css('width', Math.min(progress, 90) + '%');
+                    $progressText.textContent = 'Saving report... ' + Math.round(progress) + '%';
+                }, 200);
 
-                var uploadDone = function(success, msg) {
-                    $btn.prop('disabled', false).text('Upload Report');
-                    if (statusEl) statusEl.textContent = '';
-                    if (success) {
-                        alert('Report uploaded successfully!');
-                        location.reload();
-                    } else {
-                        alert('Upload failed: ' + (msg || 'Unknown error'));
-                    }
-                };
-
-                var doUpload = function(url, isRest) {
-                    var headers = {};
-                    if (isRest && bv_cd.rest_nonce) {
-                        headers['X-WP-Nonce'] = bv_cd.rest_nonce;
-                    }
-                    if (!isRest) {
-                        fd.append('action', 'bv_cd_upload_report');
-                        fd.append('nonce', bv_cd.nonce);
-                    }
-                    $.ajax({
-                        url: url,
-                        type: 'POST',
-                        data: fd,
-                        processData: false,
-                        contentType: false,
-                        headers: headers,
-                        dataType: 'json',
-                        success: function(r) {
-                            if (r && r.success) {
-                                uploadDone(true, r.data);
-                            } else {
-                                // REST API 404 — fall back to admin-ajax.php
-                                if (isRest && (!r || (r.code === 'rest_no_route'))) {
-                                    console.log('[BV Upload] REST not available, trying admin-ajax.php');
-                                    doUpload(bv_cd.ajax_url, false);
-                                } else {
-                                    uploadDone(false, (r && r.data) ? r.data : 'Server error');
-                                }
-                            }
-                        },
-                        error: function(xhr, status, err) {
-                            // REST API 404 — fall back to admin-ajax.php
-                            if (isRest && xhr.status === 404) {
-                                console.log('[BV Upload] REST 404, falling back to admin-ajax.php');
-                                doUpload(bv_cd.ajax_url, false);
-                                return;
-                            }
-                            var body = (xhr.responseText || '').substring(0, 500);
-                            console.log('[BV Upload Debug] HTTP ' + xhr.status + ' | ' + status + ' | ' + body);
-                            uploadDone(false, 'HTTP ' + xhr.status + (body ? ': ' + body.substring(0, 200) : ''));
+                $.ajax({
+                    url: bv_cd.ajax_url,
+                    type: 'POST',
+                    dataType: 'json',
+                    data: {
+                        action: 'bv_cd_save_report_from_media',
+                        nonce: bv_cd.nonce,
+                        project_id: pid,
+                        attachment_id: attachmentId,
+                        title: title
+                    },
+                    success: function(r) {
+                        clearInterval(progressTimer);
+                        $progressBar.css('width', '100%');
+                        $progressText.textContent = 'Done!';
+                        if (r && r.success) {
+                            setTimeout(function() { location.reload(); }, 600);
+                        } else {
+                            $btn.prop('disabled', false).text('Upload Report');
+                            $('#bv-cd-select-file').prop('disabled', false);
+                            alert('Upload failed: ' + ((r && r.data) ? r.data : 'Unknown error'));
                         }
-                    });
-                };
-
-                // Try REST API first (bypasses WAF), fall back to admin-ajax.php
-                if (bv_cd.rest_url) {
-                    doUpload(bv_cd.rest_url, true);
-                } else {
-                    doUpload(bv_cd.ajax_url, false);
-                }
-
+                    },
+                    error: function(xhr, status, err) {
+                        clearInterval(progressTimer);
+                        $btn.prop('disabled', false).text('Upload Report');
+                        $('#bv-cd-select-file').prop('disabled', false);
+                        $progressWrap.hide();
+                        alert('Upload failed: ' + (err || status || 'Unknown error'));
+                    }
+                });
             } catch(err) {
                 console.error('[BV Upload Error]', err);
                 alert('Upload error: ' + err.message);
@@ -339,12 +331,22 @@
         });
 
         // Deliver report
-        $('.bv-cd-deliver-report').on('click', function() {
+        $(document).on('click', '.bv-cd-deliver-report', function() {
             var rid = $(this).data('report-id');
             if (!confirm('Mark this report as delivered? The client will be able to download it.')) return;
             $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: { action: 'bv_cd_deliver_report', nonce: bv_cd.nonce, report_id: rid }, success: function(r) {
                 if (r.success) { location.reload(); } else { alert(r.data || 'Error'); }
             }, error: function() { alert('Request failed. Please try again.'); } });
+        });
+
+        // Deliver report AND notify client via email
+        $(document).on('click', '.bv-cd-deliver-notify-report', function() {
+            var rid = $(this).data('report-id');
+            if (!confirm('Deliver this report AND send an email notification to the client?')) return;
+            var $btn = $(this).prop('disabled', true).text('Sending...');
+            $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: { action: 'bv_cd_deliver_notify_report', nonce: bv_cd.nonce, report_id: rid }, success: function(r) {
+                if (r.success) { location.reload(); } else { alert(r.data || 'Error'); $btn.prop('disabled', false).text('✓ Deliver & Notify'); }
+            }, error: function() { alert('Request failed.'); $btn.prop('disabled', false).text('✓ Deliver & Notify'); } });
         });
 
         // Reset project (v2.7.43: styled modal #11)

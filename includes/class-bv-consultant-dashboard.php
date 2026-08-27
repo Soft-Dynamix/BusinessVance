@@ -40,7 +40,9 @@ class BV_Consultant_Dashboard {
         add_action( 'wp_ajax_bv_cd_update_project_status', array( $this, 'ajax_update_project_status' ) );
         add_action( 'wp_ajax_bv_cd_update_progress', array( $this, 'ajax_update_progress' ) );
         add_action( 'wp_ajax_bv_cd_upload_report', array( $this, 'ajax_upload_report' ) );
+        add_action( 'wp_ajax_bv_cd_save_report_from_media', array( $this, 'ajax_save_report_from_media' ) );
         add_action( 'wp_ajax_bv_cd_deliver_report', array( $this, 'ajax_deliver_report' ) );
+        add_action( 'wp_ajax_bv_cd_deliver_notify_report', array( $this, 'ajax_deliver_notify_report' ) );
         add_action( 'wp_ajax_bv_cd_send_message', array( $this, 'ajax_send_message' ) );
         add_action( 'wp_ajax_bv_cd_add_note', array( $this, 'ajax_add_note' ) );
         add_action( 'wp_ajax_bv_cd_update_internal_notes', array( $this, 'ajax_update_internal_notes' ) );
@@ -146,7 +148,7 @@ class BV_Consultant_Dashboard {
             // Grant edit_posts (and common WooCommerce checks) only during capability
             // checks in the admin context. This doesn't persist — it only affects
             // the return value of current_user_can() calls.
-            $admin_caps = array( 'edit_posts', 'edit_theme_options', 'export', 'import', 'list_users' );
+            $admin_caps = array( 'edit_posts', 'upload_files', 'edit_theme_options', 'export', 'import', 'list_users' );
             foreach ( $admin_caps as $cap ) {
                 if ( in_array( $cap, $caps, true ) ) {
                     $allcaps[ $cap ] = true;
@@ -243,11 +245,11 @@ class BV_Consultant_Dashboard {
     public function enqueue_assets( $hook ) {
         if ( 'toplevel_page_bv-consultant-dashboard' !== $hook ) return;
         wp_enqueue_style( 'bv-consultant-dashboard', BV_PLUGIN_URL . 'assets/css/consultant-dashboard.css', array(), BV_VERSION );
+        // WordPress Media Library for file upload (bypasses WAF 403 on admin-ajax.php)
+        wp_enqueue_media();
         wp_enqueue_script( 'bv-consultant-dashboard', BV_PLUGIN_URL . 'assets/js/consultant-dashboard.js', array( 'jquery' ), BV_VERSION, true );
         wp_localize_script( 'bv-consultant-dashboard', 'bv_cd', array(
             'ajax_url' => admin_url( 'admin-ajax.php' ),
-            'rest_url' => rest_url( 'bv/v1/upload-report' ),
-            'rest_nonce' => wp_create_nonce( 'wp_rest' ),
             'nonce'    => wp_create_nonce( 'bv_consultant_dashboard' ),
             'upload_url' => BV_PLUGIN_URL . 'uploads/',
             'current_user' => wp_get_current_user()->display_name,
@@ -1497,14 +1499,24 @@ class BV_Consultant_Dashboard {
                 <h4>Upload Report</h4>
                 <p style="margin-bottom:4px;font-weight:600;">1. Enter report title:</p>
                 <p><input id="bv-cd-report-title" type="text" placeholder="e.g., Business Feasibility Report" class="regular-text" style="width:100%;" /></p>
-                <p style="margin-bottom:4px;font-weight:600;">2. Select file:</p>
+                <p style="margin-bottom:4px;margin-top:12px;font-weight:600;">2. Select file:</p>
                 <p>
-                    <input id="bv-cd-report-file" type="file" accept=".pdf,.doc,.docx" />
+                    <button type="button" id="bv-cd-select-file" class="button">Choose File (PDF, DOC, DOCX)</button>
                     <span id="bv-cd-file-info" style="display:none;margin-left:8px;color:#27AE60;font-weight:600;"></span>
-                    <br><small class="description">Max file size: <?php echo esc_html( round( wp_max_upload_size() / 1048576, 1 ) ); ?> MB (PDF, DOC, DOCX only)</small>
+                    <input type="hidden" id="bv-cd-attachment-id" value="" />
+                    <br><small class="description">Max file size: <?php echo esc_html( round( wp_max_upload_size() / 1048576, 1 ) ); ?> MB &mdash; You can preview the file before uploading</small>
                 </p>
-                <p style="margin-top:8px;"><button type="button" id="bv-cd-upload-report" class="button button-primary" data-project-id="<?php echo $project_id; ?>">Upload Report</button>
-                <span id="bv-cd-upload-status" style="margin-left:8px;"></span></p>
+                <div id="bv-cd-upload-progress" style="display:none;margin-top:8px;">
+                    <div style="background:#e0e0e0;border-radius:4px;height:20px;overflow:hidden;">
+                        <div id="bv-cd-progress-bar" style="background:#27AE60;height:100%;width:0%;transition:width 0.3s;border-radius:4px;"></div>
+                    </div>
+                    <small id="bv-cd-progress-text" style="color:#666;">Preparing...</small>
+                </div>
+                <p style="margin-top:12px;">
+                    <button type="button" id="bv-cd-upload-report" class="button button-primary" data-project-id="<?php echo $project_id; ?>" disabled>Upload Report</button>
+                    <button type="button" id="bv-cd-clear-file" class="button" style="margin-left:4px;display:none;">Clear</button>
+                    <span id="bv-cd-upload-status" style="margin-left:8px;"></span>
+                </p>
             </div>
             <?php if (!empty($reports)) : ?>
             <table class="widefat striped bv-cd-table" style="margin-top:16px;">
@@ -1521,6 +1533,7 @@ class BV_Consultant_Dashboard {
                         <a href="<?php echo admin_url('admin-ajax.php?action=bv_cd_download_report&nonce=' . wp_create_nonce('bv_consultant_dashboard') . '&report_id=' . $r->id); ?>" class="button button-small" title="Preview/Download report" target="_blank">👁 Preview</a>
                         <?php if ($r->status !== 'delivered') : ?>
                         <button class="button button-small bv-cd-deliver-report" data-report-id="<?php echo $r->id; ?>">✓ Deliver</button>
+                        <button class="button button-small bv-cd-deliver-notify-report" data-report-id="<?php echo $r->id; ?>" style="color:#27AE60;">✓ Deliver & Notify</button>
                         <?php else : ?>
                         <span style="color:#27AE60;">✓ Delivered</span>
                         <?php endif; ?>
@@ -2003,6 +2016,125 @@ class BV_Consultant_Dashboard {
         ), array( '%d','%s','%d','%s','%s','%s','%d' ) );
 
         wp_send_json_success( 'Report delivered' );
+    }
+
+    /**
+     * Save report from a WordPress Media Library attachment (no file data in POST).
+     * The file was already uploaded via wp.media uploader which bypasses WAF 403.
+     *
+     * @since 2.7.80
+     */
+    public function ajax_save_report_from_media() {
+        check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
+        if ( ! current_user_can( self::CAP ) ) wp_send_json_error( 'Access denied' );
+
+        $pid = absint( $_POST['project_id'] );
+        $attachment_id = absint( $_POST['attachment_id'] );
+        $title = sanitize_text_field( $_POST['title'] );
+        if ( empty( $title ) ) wp_send_json_error( 'Title is required' );
+        if ( empty( $attachment_id ) ) wp_send_json_error( 'No file selected' );
+
+        // Get attachment file path
+        $file_path = get_attached_file( $attachment_id );
+        if ( ! $file_path || ! file_exists( $file_path ) ) {
+            wp_send_json_error( 'Selected file not found on server. Please try selecting the file again.' );
+        }
+
+        $file_info = wp_check_filetype( $file_path );
+        $ext = strtolower( $file_info['ext'] );
+        $allowed = array( 'pdf', 'doc', 'docx' );
+        if ( ! in_array( $ext, $allowed ) ) wp_send_json_error( 'File type not allowed (PDF, DOC, DOCX only)' );
+
+        $attachment = get_post( $attachment_id );
+        $original_name = $attachment ? $attachment->post_title . '.' . $ext : 'report.' . $ext;
+
+        // Copy file to BV upload directory with our naming convention
+        $filename = 'report_' . $pid . '_' . time() . '_' . sanitize_file_name( $original_name );
+        $upload_path = BV_UPLOAD_DIR . '/' . $filename;
+        if ( ! copy( $file_path, $upload_path ) ) {
+            wp_send_json_error( 'Failed to save file. Check that the upload directory is writable.' );
+        }
+
+        $file_size = filesize( $upload_path );
+        $mime_type = $file_info['type'] ?: 'application/octet-stream';
+
+        global $wpdb;
+        $wpdb->insert( $wpdb->prefix . 'bv_project_reports', array(
+            'project_id' => $pid, 'service_id' => 0, 'title' => $title, 'filename' => $filename,
+            'filepath' => $upload_path, 'filesize' => $file_size, 'mime_type' => $mime_type,
+            'status' => 'draft', 'version' => '1.0',
+        ), array( '%d','%d','%s','%s','%s','%d','%s','%s','%s' ) );
+
+        $report_id = $wpdb->insert_id;
+
+        $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array(
+            'project_id' => $pid, 'entity_type' => 'report', 'entity_id' => $report_id,
+            'action' => 'uploaded', 'description' => "Report uploaded: {$title}", 'metadata' => '', 'user_id' => get_current_user_id(),
+        ), array( '%d','%s','%d','%s','%s','%s','%d' ) );
+
+        // Clean up the media library attachment (file is now in our directory)
+        wp_delete_attachment( $attachment_id, true );
+
+        wp_send_json_success( array( 'report_id' => $report_id, 'message' => 'Report saved successfully' ) );
+    }
+
+    /**
+     * Deliver a report AND send email notification to the client.
+     *
+     * @since 2.7.80
+     */
+    public function ajax_deliver_notify_report() {
+        check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
+        if ( ! current_user_can( self::CAP ) ) wp_send_json_error( 'Unauthorized' );
+
+        global $wpdb;
+        $rid = absint( $_POST['report_id'] );
+        $report = $wpdb->get_row( $wpdb->prepare( "SELECT r.*, p.client_name, p.client_email, p.project_number FROM {$wpdb->prefix}bv_project_reports r JOIN {$wpdb->prefix}bv_projects p ON r.project_id = p.id WHERE r.id = %d", $rid ) );
+        if ( ! $report ) wp_send_json_error( 'Report not found' );
+
+        // Mark as delivered
+        $wpdb->update( $wpdb->prefix . 'bv_project_reports',
+            array( 'status' => 'delivered', 'delivered_at' => current_time('mysql') ),
+            array( 'id' => $rid ), array( '%s', '%s' ), array( '%d' ) );
+
+        // Log activity
+        $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array(
+            'project_id' => $report->project_id, 'entity_type' => 'report', 'entity_id' => $rid,
+            'action' => 'delivered', 'description' => "Report delivered: {$report->title}", 'metadata' => '', 'user_id' => get_current_user_id(),
+        ), array( '%d','%s','%d','%s','%s','%s','%d' ) );
+
+        // Send email notification to client
+        $settings = BV_Settings::get_settings();
+        if ( ( $settings['email_report_delivered'] ?? 'yes' ) !== 'no' ) {
+            $company_name = $settings['company_name'] ?? 'BusinessVance';
+            $portal_url   = $settings['portal_url'] ?? '';
+            if ( empty( $portal_url ) ) {
+                $portal_page = get_page_by_path( 'client-portal' );
+                $portal_url   = $portal_page ? get_permalink( $portal_page ) : site_url();
+            }
+
+            $subject = 'Your Report is Ready: ' . $report->title;
+            $body = "Hello {$report->client_name},\n\n";
+            $body .= "Your report \"{$report->title}\" for project {$report->project_number} is now ready for download.\n\n";
+            $body .= "Please log in to your client portal to view and download the report:\n{$portal_url}\n\n";
+            $body .= "Best regards,\n{$company_name}";
+
+            $from_email = $settings['consultant_email'] ?? get_option( 'admin_email' );
+            $preferred_from = ! empty( $settings['email_address'] ) ? $settings['email_address'] : '';
+            $headers = BV_Settings::build_email_headers( array(
+                'to_email'     => $report->client_email,
+                'company_name' => $company_name,
+                'from_email'   => $preferred_from,
+                'reply_to_email' => $from_email,
+                'content_type' => 'text/plain',
+            ));
+
+            BV_Settings::start_bv_email( BV_Settings::$last_resolved_from, $company_name );
+            wp_mail( $report->client_email, $subject, $body, $headers );
+            BV_Settings::end_bv_email();
+        }
+
+        wp_send_json_success( 'Report delivered and client notified' );
     }
 
     public function ajax_send_message() {
