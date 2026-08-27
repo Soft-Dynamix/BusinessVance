@@ -236,21 +236,9 @@
             $.ajax({ url: bv_cd.ajax_url, type: 'POST', data: fd, processData: false, contentType: false, dataType: 'json', success: function(r) {
                 if (r.success) { alert('Report uploaded'); location.reload(); } else { alert(r.data || 'Error uploading'); }
             }, error: function(xhr, status, err) {
-                var msg = 'Request failed.';
-                if (xhr.status === 403) {
-                    msg = 'Access denied (HTTP 403). Your hosting provider\'s security firewall (WAF/ModSecurity) is blocking the upload.\n\n' +
-                          'GoDaddy Fix: Go to your GoDaddy Hosting Dashboard \u2192 Security \u2192 Web Application Firewall \u2192 turn OFF or add a rule to allow admin-ajax.php uploads.\n\n' +
-                          'Alternative: Contact GoDaddy support and ask them to allow POST file uploads to wp-admin/admin-ajax.php for your domain.';
-                } else if (xhr.status === 413) {
-                    msg = 'File too large. Your server limits uploads to ' + maxMb + ' MB. Contact your hosting provider to increase upload_max_filesize and post_max_size in PHP.';
-                } else if (xhr.status === 500) {
-                    msg = 'Server error (500). This usually means the file exceeds PHP\'s upload size limit (' + maxMb + ' MB). Contact your hosting provider to increase upload_max_filesize and post_max_size.';
-                } else if (xhr.status > 0) {
-                    msg = 'Request failed (HTTP ' + xhr.status + '). ' + (err || status) + '.';
-                } else if (status === 'parsererror') {
-                    msg = 'Server returned an invalid response. This may be caused by a PHP error or the file exceeding the server\'s upload limit (' + maxMb + ' MB). Check the browser console (F12) for details.';
-                }
-                alert(msg);
+                var body = (xhr.responseText || '').substring(0, 500);
+                console.log('[BV Upload Debug] HTTP ' + xhr.status + ' | status: ' + status + ' | body: ' + body);
+                alert('Upload failed (HTTP ' + xhr.status + ').\n\nServer response:\n' + body);
             } });
         });
 
