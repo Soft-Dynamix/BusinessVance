@@ -21,6 +21,8 @@ class BV_Consultant_Dashboard {
         add_action( 'admin_menu', array( $this, 'add_menu_page' ) );
         add_action( 'admin_menu', array( $this, 'restrict_admin_menu' ), 9999 );
         add_action( 'admin_init', array( $this, 'lock_admin_access' ) );
+        // REST API endpoint for file upload — bypasses WAF/ModSecurity 403 blocks on admin-ajax.php
+        add_action( 'rest_api_init', array( $this, 'register_rest_endpoints' ) );
         // Dynamic capability mapping — fires DURING current_user_can() checks.
         // 1. Admins always get bv_access_consultant_dashboard (menu visibility).
         // 2. Consultant users get edit_posts in admin context — this prevents
@@ -154,12 +156,98 @@ class BV_Consultant_Dashboard {
         return $allcaps;
     }
 
+    /**
+     * Register REST API endpoints.
+     *
+     * File uploads via admin-ajax.php can be blocked by server-level WAF/ModSecurity
+     * rules (HTTP 403 before WordPress processes the request). The REST API uses a
+     * different URL path (/wp-json/...) that typically bypasses such rules.
+     *
+     * @since 2.7.79
+     */
+    public function register_rest_endpoints() {
+        register_rest_route( 'bv/v1', '/upload-report', array(
+            'methods'             => 'POST',
+            'callback'            => array( $this, 'rest_upload_report' ),
+            'permission_callback' => function() {
+                return current_user_can( self::CAP );
+            },
+        ) );
+    }
+
+    /**
+     * REST API handler for report upload.
+     * Identical logic to ajax_upload_report() but accessible via /wp-json/bv/v1/upload-report
+     * to bypass server-level WAF/ModSecurity 403 blocks on admin-ajax.php.
+     *
+     * @since 2.7.79
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response
+     */
+    public function rest_upload_report( $request ) {
+        $pid   = absint( $request->get_param( 'project_id' ) );
+        $title = sanitize_text_field( $request->get_param( 'title' ) );
+
+        if ( empty( $title ) ) {
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'Title is required' ), 400 );
+        }
+
+        // Check file upload
+        $files = $request->get_file_params();
+        if ( empty( $files['file'] ) || $files['file']['error'] !== UPLOAD_ERR_OK ) {
+            $err_code = ! empty( $files['file'] ) ? $files['file']['error'] : UPLOAD_ERR_NO_FILE;
+            $max_mb   = round( wp_max_upload_size() / 1048576, 1 );
+            $php_max  = ini_get( 'upload_max_filesize' );
+            $php_post = ini_get( 'post_max_size' );
+            $errors   = array(
+                UPLOAD_ERR_INI_SIZE   => 'File exceeds the server upload limit (' . $php_max . '). Contact your hosting provider to increase upload_max_filesize.',
+                UPLOAD_ERR_FORM_SIZE  => 'File exceeds the form MAX_FILE_SIZE directive.',
+                UPLOAD_ERR_PARTIAL    => 'File was only partially uploaded. Please try again.',
+                UPLOAD_ERR_NO_FILE    => 'No file was received. Please select a file and try again.',
+                UPLOAD_ERR_NO_TMP_DIR => 'Server is missing a temporary folder. Contact your hosting provider.',
+                UPLOAD_ERR_CANT_WRITE => 'Failed to write file to disk. Check server permissions.',
+                UPLOAD_ERR_EXTENSION  => 'A PHP extension blocked the upload. Contact your hosting provider.',
+            );
+            $msg = isset( $errors[ $err_code ] ) ? $errors[ $err_code ] : 'Upload failed (error code ' . $err_code . '). Server limits: upload_max_filesize=' . $php_max . ', post_max_size=' . $php_post . '. Contact your hosting provider.';
+            return new WP_REST_Response( array( 'success' => false, 'data' => $msg ), 400 );
+        }
+
+        $file = $files['file'];
+        $ext  = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
+        $allowed = array( 'pdf', 'doc', 'docx' );
+        if ( ! in_array( $ext, $allowed ) ) {
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'File type not allowed (PDF, DOC, DOCX only)' ), 400 );
+        }
+
+        $filename    = 'report_' . $pid . '_' . time() . '_' . sanitize_file_name( $file['name'] );
+        $upload_path = BV_UPLOAD_DIR . '/' . $filename;
+        if ( ! move_uploaded_file( $file['tmp_name'], $upload_path ) ) {
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'Upload failed — could not move file. Check that the upload directory is writable.' ), 500 );
+        }
+
+        global $wpdb;
+        $wpdb->insert( $wpdb->prefix . 'bv_project_reports', array(
+            'project_id' => $pid, 'service_id' => 0, 'title' => $title, 'filename' => $filename,
+            'filepath' => $upload_path, 'filesize' => $file['size'], 'mime_type' => $file['type'],
+            'status' => 'draft', 'version' => '1.0',
+        ), array( '%d','%d','%s','%s','%s','%d','%s','%s','%s' ) );
+
+        $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array(
+            'project_id' => $pid, 'entity_type' => 'report', 'entity_id' => $wpdb->insert_id,
+            'action' => 'uploaded', 'description' => "Report uploaded: {$title}", 'metadata' => '', 'user_id' => get_current_user_id(),
+        ), array( '%d','%s','%d','%s','%s','%s','%d' ) );
+
+        return new WP_REST_Response( array( 'success' => true, 'data' => 'Report uploaded' ), 200 );
+    }
+
     public function enqueue_assets( $hook ) {
         if ( 'toplevel_page_bv-consultant-dashboard' !== $hook ) return;
         wp_enqueue_style( 'bv-consultant-dashboard', BV_PLUGIN_URL . 'assets/css/consultant-dashboard.css', array(), BV_VERSION );
         wp_enqueue_script( 'bv-consultant-dashboard', BV_PLUGIN_URL . 'assets/js/consultant-dashboard.js', array( 'jquery' ), BV_VERSION, true );
         wp_localize_script( 'bv-consultant-dashboard', 'bv_cd', array(
             'ajax_url' => admin_url( 'admin-ajax.php' ),
+            'rest_url' => rest_url( 'bv/v1/upload-report' ),
+            'rest_nonce' => wp_create_nonce( 'wp_rest' ),
             'nonce'    => wp_create_nonce( 'bv_consultant_dashboard' ),
             'upload_url' => BV_PLUGIN_URL . 'uploads/',
             'current_user' => wp_get_current_user()->display_name,

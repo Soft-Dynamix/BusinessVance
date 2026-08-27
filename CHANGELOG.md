@@ -2,6 +2,13 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.79] - 2026-08-28
+### Fixed
+- **Report upload 403 error resolved** — Server-level WAF/ModSecurity rules were blocking POST file uploads to `wp-admin/admin-ajax.php` (returning HTML 403 page before WordPress processes the request). Fixed by routing file uploads through the WordPress REST API (`/wp-json/bv/v1/upload-report`) which uses a different URL path that server security rules typically do not block. Includes automatic fallback to `admin-ajax.php` if REST API is disabled on the server.
+### Added
+- **REST API endpoint for report upload** (`bv/v1/upload-report`) — registered via `register_rest_route()` with cookie-based authentication. Handles the same file validation, type checking, and database operations as the original AJAX handler.
+- **`rest_url` and `rest_nonce`** passed to consultant dashboard JavaScript for REST API authentication.
+
 ## [2.7.78] - 2026-08-28
 ### Fixed
 - **Report upload now shows clear error messages instead of generic "Request failed"** — Three layers of improvement:
