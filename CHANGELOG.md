@@ -4,20 +4,18 @@ All notable changes to the BusinessVance Services Manager plugin.
 
 ## [2.7.80] - 2026-08-28
 ### Fixed
-- **Report upload 403 error — final fix using WordPress Media Library uploader** — Server-level WAF/ModSecurity blocks ALL file POST requests (both `admin-ajax.php` AND `/wp-json/...`) returning HTML 403 before WordPress processes them. Replaced the custom file upload with WordPress's built-in Media Library (`wp.media`) which uploads through `async-upload.php` — a WordPress core endpoint that server security rules whitelist. Our code now only sends the attachment ID (no file data) to save the report record.
+- **Report upload WAF 403 error — REST API approach with complete UX redesign** — The WordPress Media Library approach (`wp.media` / `async-upload.php`) ALSO gets blocked by the server WAF/ModSecurity. Reverted to direct file input + REST API (`/wp-json/bv/v1/upload-report`) which successfully bypasses the WAF. The previous JS bug (`statusEl.text is not a function`) is also eliminated.
 ### Changed
-- **Report upload UX completely redesigned**:
-  - "Choose File" button opens WordPress Media Library where user can upload AND preview the file before confirming
-  - File info (name, size) shown in green after selection with a "Clear" button to deselect
-  - "Upload Report" button disabled until a file is selected
-  - Animated progress bar shown during save
-  - File preview available in the media library modal before selecting
-- **Deliver report now has two options**: "Deliver" (just marks as delivered) and "Deliver & Notify" (delivers + sends email notification to client with portal link)
-- **Added `upload_files` capability** to consultant users so they can use the Media Library uploader
+- **Report upload UX completely redesigned as a two-step flow**:
+  - **Step 1:** Enter report title + select file using native `<input type="file">` → green preview card shows file icon, name, size, and MIME type for confirmation
+  - **Step 2:** Click "Complete Upload & Notify Client" → switches to upload view with **real XMLHttpRequest progress bar** showing percentage and bytes transferred
+  - On success: shows confirmation message, auto-sends email notification to client, reloads page
+  - On any error: returns to Step 1 with clear red error message (no more vague alerts)
+  - Client-side validation: file type (PDF/DOC/DOCX only) and size checked before upload
+- **Removed `wp_enqueue_media()` dependency** — no longer needed since we don't use the WordPress Media Library frame
 ### Added
-- **`ajax_save_report_from_media()`** — Saves a report from a WordPress media library attachment (copies file to BV directory, creates DB record, cleans up attachment)
-- **`ajax_deliver_notify_report()`** — Delivers a report AND sends email notification to the client with project number and portal link
-- **`wp_enqueue_media()`** loaded on consultant dashboard page for the media library frame
+- **Client notification on upload** — REST API endpoint now automatically sends an email to the client when a report is uploaded (same email template as "Deliver & Notify")
+- **`rest_url` and `rest_nonce`** in `wp_localize_script` for direct REST API calls from JavaScript
 
 ## [2.7.79] - 2026-08-28
 ### Fixed

@@ -234,24 +234,66 @@ class BV_Consultant_Dashboard {
             'status' => 'draft', 'version' => '1.0',
         ), array( '%d','%d','%s','%s','%s','%d','%s','%s','%s' ) );
 
+        $report_id = $wpdb->insert_id;
+
         $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array(
-            'project_id' => $pid, 'entity_type' => 'report', 'entity_id' => $wpdb->insert_id,
+            'project_id' => $pid, 'entity_type' => 'report', 'entity_id' => $report_id,
             'action' => 'uploaded', 'description' => "Report uploaded: {$title}", 'metadata' => '', 'user_id' => get_current_user_id(),
         ), array( '%d','%s','%d','%s','%s','%s','%d' ) );
 
-        return new WP_REST_Response( array( 'success' => true, 'data' => 'Report uploaded' ), 200 );
+        // Send email notification to client
+        $notified = false;
+        $settings = BV_Settings::get_settings();
+        if ( ( $settings['email_report_delivered'] ?? 'yes' ) !== 'no' ) {
+            $project = $wpdb->get_row( $wpdb->prepare( "SELECT client_name, client_email, project_number FROM {$wpdb->prefix}bv_projects WHERE id = %d", $pid ) );
+            if ( $project && ! empty( $project->client_email ) ) {
+                $company_name = $settings['company_name'] ?? 'BusinessVance';
+                $portal_url   = $settings['portal_url'] ?? '';
+                if ( empty( $portal_url ) ) {
+                    $portal_page = get_page_by_path( 'client-portal' );
+                    $portal_url   = $portal_page ? get_permalink( $portal_page ) : site_url();
+                }
+
+                $subject = 'New Report Uploaded: ' . $title;
+                $body = "Hello {$project->client_name},\n\n";
+                $body .= "A new report \"{$title}\" for project {$project->project_number} has been uploaded by your consultant and is now ready for download.\n\n";
+                $body .= "Please log in to your client portal to view and download the report:\n{$portal_url}\n\n";
+                $body .= "Best regards,\n{$company_name}";
+
+                $from_email = $settings['consultant_email'] ?? get_option( 'admin_email' );
+                $preferred_from = ! empty( $settings['email_address'] ) ? $settings['email_address'] : '';
+                $headers = BV_Settings::build_email_headers( array(
+                    'to_email'     => $project->client_email,
+                    'company_name' => $company_name,
+                    'from_email'   => $preferred_from,
+                    'reply_to_email' => $from_email,
+                    'content_type' => 'text/plain',
+                ));
+
+                BV_Settings::start_bv_email( BV_Settings::$last_resolved_from, $company_name );
+                $notified = wp_mail( $project->client_email, $subject, $body, $headers );
+                BV_Settings::end_bv_email();
+            }
+        }
+
+        return new WP_REST_Response( array(
+            'success'  => true,
+            'data'     => 'Report uploaded' . ( $notified ? ' and client notified' : '' ),
+            'report_id' => $report_id,
+        ), 200 );
     }
 
     public function enqueue_assets( $hook ) {
         if ( 'toplevel_page_bv-consultant-dashboard' !== $hook ) return;
         wp_enqueue_style( 'bv-consultant-dashboard', BV_PLUGIN_URL . 'assets/css/consultant-dashboard.css', array(), BV_VERSION );
-        // WordPress Media Library for file upload (bypasses WAF 403 on admin-ajax.php)
-        wp_enqueue_media();
+        // No wp_enqueue_media() — we use direct file input + REST API to bypass WAF blocks on async-upload.php
         wp_enqueue_script( 'bv-consultant-dashboard', BV_PLUGIN_URL . 'assets/js/consultant-dashboard.js', array( 'jquery' ), BV_VERSION, true );
         wp_localize_script( 'bv-consultant-dashboard', 'bv_cd', array(
-            'ajax_url' => admin_url( 'admin-ajax.php' ),
-            'nonce'    => wp_create_nonce( 'bv_consultant_dashboard' ),
+            'ajax_url'   => admin_url( 'admin-ajax.php' ),
+            'nonce'      => wp_create_nonce( 'bv_consultant_dashboard' ),
             'upload_url' => BV_PLUGIN_URL . 'uploads/',
+            'rest_url'   => rest_url( 'bv/v1/upload-report' ),
+            'rest_nonce' => wp_create_nonce( 'wp_rest' ),
             'current_user' => wp_get_current_user()->display_name,
             'current_time' => date( 'd M Y H:i' ),
             'max_upload_size' => wp_max_upload_size(),
@@ -1497,26 +1539,42 @@ class BV_Consultant_Dashboard {
         <div id="bv-cd-panel-reports" class="bv-cd-panel" style="<?php echo $active_tab === 'reports' ? '' : 'display:none'; ?>">
             <div class="bv-cd-card">
                 <h4>Upload Report</h4>
-                <p style="margin-bottom:4px;font-weight:600;">1. Enter report title:</p>
-                <p><input id="bv-cd-report-title" type="text" placeholder="e.g., Business Feasibility Report" class="regular-text" style="width:100%;" /></p>
-                <p style="margin-bottom:4px;margin-top:12px;font-weight:600;">2. Select file:</p>
-                <p>
-                    <button type="button" id="bv-cd-select-file" class="button">Choose File (PDF, DOC, DOCX)</button>
-                    <span id="bv-cd-file-info" style="display:none;margin-left:8px;color:#27AE60;font-weight:600;"></span>
-                    <input type="hidden" id="bv-cd-attachment-id" value="" />
-                    <br><small class="description">Max file size: <?php echo esc_html( round( wp_max_upload_size() / 1048576, 1 ) ); ?> MB &mdash; You can preview the file before uploading</small>
-                </p>
-                <div id="bv-cd-upload-progress" style="display:none;margin-top:8px;">
-                    <div style="background:#e0e0e0;border-radius:4px;height:20px;overflow:hidden;">
-                        <div id="bv-cd-progress-bar" style="background:#27AE60;height:100%;width:0%;transition:width 0.3s;border-radius:4px;"></div>
+                <!-- STEP 1: Enter title + select file -->
+                <div id="bv-cd-upload-step1">
+                    <p style="margin-bottom:4px;font-weight:600;">1. Enter report title:</p>
+                    <p><input id="bv-cd-report-title" type="text" placeholder="e.g., Business Feasibility Report" class="regular-text" style="width:100%;" /></p>
+                    <p style="margin-bottom:4px;margin-top:12px;font-weight:600;">2. Select file:</p>
+                    <p>
+                        <label for="bv-cd-report-file" class="button" style="cursor:pointer;display:inline-block;">Choose File (PDF, DOC, DOCX)</label>
+                        <input type="file" id="bv-cd-report-file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none;" />
+                        <small class="description" style="margin-left:8px;">Max: <?php echo esc_html( round( wp_max_upload_size() / 1048576, 1 ) ); ?> MB</small>
+                    </p>
+                    <!-- File preview card -->
+                    <div id="bv-cd-file-preview" style="display:none;margin-top:12px;padding:14px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;">
+                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                            <span id="bv-cd-preview-icon" style="font-size:28px;">📄</span>
+                            <div style="flex:1;min-width:200px;">
+                                <div id="bv-cd-preview-name" style="font-weight:600;color:#1e293b;word-break:break-all;"></div>
+                                <div id="bv-cd-preview-details" style="font-size:12px;color:#64748b;margin-top:2px;"></div>
+                            </div>
+                            <button type="button" id="bv-cd-clear-file" class="button" style="color:#dc2626;border-color:#fca5a5;">Remove</button>
+                        </div>
                     </div>
-                    <small id="bv-cd-progress-text" style="color:#666;">Preparing...</small>
+                    <p style="margin-top:12px;">
+                        <button type="button" id="bv-cd-upload-report" class="button button-primary" data-project-id="<?php echo $project_id; ?>" disabled>Complete Upload &amp; Notify Client</button>
+                        <span id="bv-cd-upload-status" style="margin-left:8px;font-size:13px;color:#666;"></span>
+                    </p>
                 </div>
-                <p style="margin-top:12px;">
-                    <button type="button" id="bv-cd-upload-report" class="button button-primary" data-project-id="<?php echo $project_id; ?>" disabled>Upload Report</button>
-                    <button type="button" id="bv-cd-clear-file" class="button" style="margin-left:4px;display:none;">Clear</button>
-                    <span id="bv-cd-upload-status" style="margin-left:8px;"></span>
-                </p>
+                <!-- STEP 2: Uploading with progress -->
+                <div id="bv-cd-upload-step2" style="display:none;margin-top:8px;">
+                    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px;">
+                        <p style="margin:0 0 10px;font-weight:600;color:#334155;">Uploading report...</p>
+                        <div style="background:#e2e8f0;border-radius:6px;height:22px;overflow:hidden;">
+                            <div id="bv-cd-progress-bar" style="background:linear-gradient(90deg,#22c55e,#16a34a);height:100%;width:0%;transition:width 0.3s ease;border-radius:6px;"></div>
+                        </div>
+                        <p id="bv-cd-progress-text" style="margin:6px 0 0;font-size:13px;color:#64748b;">Preparing...</p>
+                    </div>
+                </div>
             </div>
             <?php if (!empty($reports)) : ?>
             <table class="widefat striped bv-cd-table" style="margin-top:16px;">

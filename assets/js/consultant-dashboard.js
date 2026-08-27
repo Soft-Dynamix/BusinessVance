@@ -213,121 +213,166 @@
             }, error: function() { alert('Request failed. Please try again.'); } });
         });
 
-        // === REPORT UPLOAD VIA WORDPRESS MEDIA LIBRARY ===
-        // Uses wp.media uploader which goes through WordPress's own upload
-        // endpoint (async-upload.php) — bypasses WAF/ModSecurity 403 blocks.
+        // === TWO-STEP REPORT UPLOAD VIA REST API ===
+        // Step 1: Select file → preview it (confirm it's the right file)
+        // Step 2: Click "Complete Upload & Notify Client" → upload with real progress bar
+        // Uses /wp-json/bv/v1/upload-report which bypasses WAF/ModSecurity 403 blocks.
 
-        var bvMediaFrame = null;
-        var bvSelectedAttachment = null;
+        var bvSelectedFile = null;
 
-        // Open media library to select/upload a file
-        $(document).on('click', '#bv-cd-select-file', function(e) {
-            e.preventDefault();
-            if (bvMediaFrame) { bvMediaFrame.open(); return; }
+        // Format bytes to human readable
+        function bvFormatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            var k = 1024;
+            var sizes = ['B', 'KB', 'MB', 'GB'];
+            var i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
 
-            bvMediaFrame = wp.media({
-                title: 'Select Report File',
-                button: { text: 'Select This File' },
-                multiple: false,
-                library: { type: 'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document' }
-            });
+        // File icon based on extension
+        function bvFileIcon(name) {
+            var ext = (name || '').split('.').pop().toLowerCase();
+            if (ext === 'pdf') return '📕';
+            if (ext === 'doc' || ext === 'docx') return '📘';
+            return '📄';
+        }
 
-            bvMediaFrame.on('select', function() {
-                var attachment = bvMediaFrame.state().get('selection').first().toJSON();
-                bvSelectedAttachment = attachment;
+        // Step 1a: File selection — show preview
+        $(document).on('change', '#bv-cd-report-file', function() {
+            var fileInput = this;
+            var file = fileInput.files && fileInput.files[0];
+            if (!file) return;
 
-                // Show file info
-                var sizeStr = attachment.filesizeHuman || '';
-                var $info = $('#bv-cd-file-info');
-                $info.text('✓ ' + attachment.filename + (sizeStr ? ' (' + sizeStr + ')' : '')).show();
-                $('#bv-cd-attachment-id').val(attachment.id);
-                $('#bv-cd-upload-report').prop('disabled', false);
-                $('#bv-cd-clear-file').show();
-            });
+            // Validate file type
+            var ext = file.name.split('.').pop().toLowerCase();
+            var allowed = ['pdf', 'doc', 'docx'];
+            if (allowed.indexOf(ext) === -1) {
+                alert('Only PDF, DOC, and DOCX files are allowed.');
+                fileInput.value = '';
+                return;
+            }
 
-            bvMediaFrame.open();
+            // Validate file size
+            var maxSize = parseInt(bv_cd.max_upload_size) || 10485760;
+            if (file.size > maxSize) {
+                alert('File is too large (' + bvFormatBytes(file.size) + '). Maximum allowed: ' + bv_cd.max_upload_mb + ' MB.');
+                fileInput.value = '';
+                return;
+            }
+
+            bvSelectedFile = file;
+
+            // Show preview card
+            document.getElementById('bv-cd-preview-icon').textContent = bvFileIcon(file.name);
+            document.getElementById('bv-cd-preview-name').textContent = file.name;
+            document.getElementById('bv-cd-preview-details').textContent = bvFormatBytes(file.size) + ' — ' + (file.type || ext.toUpperCase());
+            document.getElementById('bv-cd-file-preview').style.display = 'block';
+
+            // Enable upload button
+            document.getElementById('bv-cd-upload-report').disabled = false;
         });
 
-        // Clear selected file
+        // Step 1b: Clear selected file
         $(document).on('click', '#bv-cd-clear-file', function(e) {
             e.preventDefault();
-            bvSelectedAttachment = null;
-            $('#bv-cd-attachment-id').val('');
-            $('#bv-cd-file-info').hide();
-            $('#bv-cd-upload-report').prop('disabled', true);
-            $('#bv-cd-clear-file').hide();
+            bvSelectedFile = null;
+            document.getElementById('bv-cd-report-file').value = '';
+            document.getElementById('bv-cd-file-preview').style.display = 'none';
+            document.getElementById('bv-cd-upload-report').disabled = true;
+            document.getElementById('bv-cd-upload-status').textContent = '';
         });
 
-        // Upload report — sends attachment_id (no file data), shows progress bar
+        // Step 2: Upload with real progress bar via XMLHttpRequest
         $(document).on('click', '#bv-cd-upload-report', function(e) {
             e.preventDefault();
-            try {
-                var $btn = $(this);
-                var pid = $btn.data('project-id');
-                var attachmentId = $('#bv-cd-attachment-id').val();
-                var titleEl = document.getElementById('bv-cd-report-title');
-                var statusEl = document.getElementById('bv-cd-upload-status');
-                var $progressWrap = $('#bv-cd-upload-progress');
-                var $progressBar = $('#bv-cd-progress-bar');
-                var $progressText = $('#bv-cd-progress-text');
 
-                if (!titleEl) return;
-                var title = titleEl.value.trim();
-                if (!title) { alert('Please enter a report title first.'); titleEl.focus(); return; }
-                if (!attachmentId) { alert('Please select a file first.'); return; }
+            var titleEl = document.getElementById('bv-cd-report-title');
+            var statusEl = document.getElementById('bv-cd-upload-status');
+            var step1 = document.getElementById('bv-cd-upload-step1');
+            var step2 = document.getElementById('bv-cd-upload-step2');
+            var progressBar = document.getElementById('bv-cd-progress-bar');
+            var progressText = document.getElementById('bv-cd-progress-text');
 
-                // Disable UI, show progress
-                $btn.prop('disabled', true).text('Uploading...');
-                $('#bv-cd-select-file').prop('disabled', true);
-                $('#bv-cd-clear-file').hide();
-                $progressWrap.show();
-                $progressBar.css('width', '0%');
-                $progressText.textContent = 'Saving report...';
-                if (statusEl) statusEl.textContent = '';
-
-                // Animate progress bar (the actual save is fast, but the visual helps)
-                var progress = 0;
-                var progressTimer = setInterval(function() {
-                    if (progress < 80) { progress += Math.random() * 15; if (progress > 80) progress = 80; }
-                    $progressBar.css('width', Math.min(progress, 90) + '%');
-                    $progressText.textContent = 'Saving report... ' + Math.round(progress) + '%';
-                }, 200);
-
-                $.ajax({
-                    url: bv_cd.ajax_url,
-                    type: 'POST',
-                    dataType: 'json',
-                    data: {
-                        action: 'bv_cd_save_report_from_media',
-                        nonce: bv_cd.nonce,
-                        project_id: pid,
-                        attachment_id: attachmentId,
-                        title: title
-                    },
-                    success: function(r) {
-                        clearInterval(progressTimer);
-                        $progressBar.css('width', '100%');
-                        $progressText.textContent = 'Done!';
-                        if (r && r.success) {
-                            setTimeout(function() { location.reload(); }, 600);
-                        } else {
-                            $btn.prop('disabled', false).text('Upload Report');
-                            $('#bv-cd-select-file').prop('disabled', false);
-                            alert('Upload failed: ' + ((r && r.data) ? r.data : 'Unknown error'));
-                        }
-                    },
-                    error: function(xhr, status, err) {
-                        clearInterval(progressTimer);
-                        $btn.prop('disabled', false).text('Upload Report');
-                        $('#bv-cd-select-file').prop('disabled', false);
-                        $progressWrap.hide();
-                        alert('Upload failed: ' + (err || status || 'Unknown error'));
-                    }
-                });
-            } catch(err) {
-                console.error('[BV Upload Error]', err);
-                alert('Upload error: ' + err.message);
+            var title = titleEl ? titleEl.value.trim() : '';
+            if (!title) {
+                alert('Please enter a report title first.');
+                if (titleEl) titleEl.focus();
+                return;
             }
+            if (!bvSelectedFile) {
+                alert('Please select a file first.');
+                return;
+            }
+
+            var projectId = this.getAttribute('data-project-id');
+
+            // Switch to step 2 UI
+            step1.style.display = 'none';
+            step2.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressText.textContent = 'Preparing upload...';
+
+            // Build FormData
+            var formData = new FormData();
+            formData.append('file', bvSelectedFile);
+            formData.append('title', title);
+            formData.append('project_id', projectId);
+
+            // XMLHttpRequest for real progress tracking
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', bv_cd.rest_url, true);
+            xhr.setRequestHeader('X-WP-Nonce', bv_cd.rest_nonce);
+
+            // Real upload progress
+            xhr.upload.addEventListener('progress', function(evt) {
+                if (evt.lengthComputable) {
+                    var pct = Math.round((evt.loaded / evt.total) * 100);
+                    progressBar.style.width = pct + '%';
+                    progressText.textContent = 'Uploading... ' + pct + '% (' + bvFormatBytes(evt.loaded) + ' / ' + bvFormatBytes(evt.total) + ')';
+                }
+            });
+
+            xhr.addEventListener('load', function() {
+                progressBar.style.width = '100%';
+                try {
+                    var response = JSON.parse(xhr.responseText);
+                    if (xhr.status >= 200 && xhr.status < 300 && response.success) {
+                        progressText.textContent = response.data || 'Upload complete! Reloading...';
+                        progressText.style.color = '#22c55e';
+                        setTimeout(function() { location.reload(); }, 1200);
+                    } else {
+                        // Server returned an error
+                        step2.style.display = 'none';
+                        step1.style.display = 'block';
+                        var errMsg = (response && response.data) ? response.data : ('Server error (HTTP ' + xhr.status + ')');
+                        statusEl.textContent = 'Error: ' + errMsg;
+                        statusEl.style.color = '#dc2626';
+                    }
+                } catch(parseErr) {
+                    // Could not parse JSON — show raw response snippet
+                    step2.style.display = 'none';
+                    step1.style.display = 'block';
+                    var snippet = xhr.responseText ? xhr.responseText.substring(0, 200) : '(empty response)';
+                    statusEl.textContent = 'Error: Unexpected server response (HTTP ' + xhr.status + '): ' + snippet;
+                    statusEl.style.color = '#dc2626';
+                }
+            });
+
+            xhr.addEventListener('error', function() {
+                step2.style.display = 'none';
+                step1.style.display = 'block';
+                statusEl.textContent = 'Error: Network error — the connection was interrupted. Please try again.';
+                statusEl.style.color = '#dc2626';
+            });
+
+            xhr.addEventListener('abort', function() {
+                step2.style.display = 'none';
+                step1.style.display = 'block';
+                statusEl.textContent = 'Upload cancelled.';
+                statusEl.style.color = '#dc2626';
+            });
+
+            xhr.send(formData);
         });
 
         // Deliver report
