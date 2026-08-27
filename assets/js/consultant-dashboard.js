@@ -263,7 +263,7 @@
 
                 // Show uploading state
                 $btn.prop('disabled', true).text('Uploading...');
-                if (statusEl) statusEl.text('Please wait...');
+                if (statusEl) statusEl.textContent = 'Please wait...';
 
                 var fd = new FormData();
                 fd.append('file', fileInput.files[0]);
@@ -272,7 +272,7 @@
 
                 var uploadDone = function(success, msg) {
                     $btn.prop('disabled', false).text('Upload Report');
-                    if (statusEl) statusEl.text('');
+                    if (statusEl) statusEl.textContent = '';
                     if (success) {
                         alert('Report uploaded successfully!');
                         location.reload();
