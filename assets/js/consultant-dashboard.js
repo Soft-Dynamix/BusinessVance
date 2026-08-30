@@ -452,6 +452,25 @@
             }, error: function() { alert('Request failed.'); $btn.prop('disabled', false).text('✓ Deliver & Notify'); } });
         });
 
+        // Delete report
+        $(document).on('click', '.bv-cd-delete-report', function() {
+            var $btn = $(this);
+            var rid = $btn.data('report-id');
+            bvCdConfirm({
+                icon: '🗑',
+                title: 'Delete This Report?',
+                danger: true,
+                okText: 'Delete Permanently',
+                body: '<p style="margin:8px 0;color:#666;">This will <strong>permanently delete</strong> the report file and its database record. This cannot be undone.</p>',
+                onConfirm: function() {
+                    $btn.prop('disabled', true).text('Deleting...');
+                    $.ajax({ url: bv_cd.ajax_url, type: 'POST', dataType: 'json', data: { action: 'bv_cd_delete_report', nonce: bv_cd.nonce, report_id: rid }, success: function(r) {
+                        if (r.success) { location.reload(); } else { alert(r.data || 'Error'); $btn.prop('disabled', false).text('🗑 Delete'); }
+                    }, error: function() { alert('Request failed.'); $btn.prop('disabled', false).text('🗑 Delete'); } });
+                }
+            });
+        });
+
         // Reset project (v2.7.43: styled modal #11)
         $(document).on('click', '#bv-cd-reset-project', function() {
             var $btn = $(this);

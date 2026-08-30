@@ -2,6 +2,18 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.83] - 2026-08-30
+### Added
+- **Delete report button** on consultant dashboard — red "🗑 Delete" button on every report with confirmation modal. Deletes the file from disk, database record, and activity log entries.
+- **`build_branded_email()` helper** — reusable HTML email template method with company logo/header, primary color, CTA button, and branded footer. Used by all notification emails.
+### Changed
+- **Client portal report download** now shows a spinner and "Preparing download..." text on the button while the file is being fetched, instead of appearing unresponsive.
+- **All client notification emails now use branded HTML template** (was plain text):
+  - New report uploaded notification (chunked upload endpoint)
+  - Report delivered & notified (deliver & notify button)
+  - New message from consultant notification
+- Email template uses company logo (from settings) in the header banner, primary color for the CTA button, and consistent professional footer.
+
 ## [2.7.82] - 2026-08-30
 ### Fixed
 - **413 Request Entity Too Large — chunked base64 upload** — The server (nginx) has a request body size limit. Base64 encoding makes files ~33% larger, exceeding this limit. Solution: the base64 data is now split into chunks of 250,000 characters (~188KB decoded each) and sent as separate JSON POST requests. Each chunk is well under any reasonable server limit.

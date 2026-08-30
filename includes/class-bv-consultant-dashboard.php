@@ -43,6 +43,7 @@ class BV_Consultant_Dashboard {
         add_action( 'wp_ajax_bv_cd_save_report_from_media', array( $this, 'ajax_save_report_from_media' ) );
         add_action( 'wp_ajax_bv_cd_deliver_report', array( $this, 'ajax_deliver_report' ) );
         add_action( 'wp_ajax_bv_cd_deliver_notify_report', array( $this, 'ajax_deliver_notify_report' ) );
+        add_action( 'wp_ajax_bv_cd_delete_report', array( $this, 'ajax_delete_report' ) );
         add_action( 'wp_ajax_bv_cd_send_message', array( $this, 'ajax_send_message' ) );
         add_action( 'wp_ajax_bv_cd_add_note', array( $this, 'ajax_add_note' ) );
         add_action( 'wp_ajax_bv_cd_update_internal_notes', array( $this, 'ajax_update_internal_notes' ) );
@@ -397,10 +398,14 @@ class BV_Consultant_Dashboard {
                 }
 
                 $subject = 'New Report Uploaded: ' . $title;
-                $body = "Hello {$project->client_name},\n\n";
-                $body .= "A new report \"{$title}\" for project {$project->project_number} has been uploaded by your consultant and is now ready for download.\n\n";
-                $body .= "Please log in to your client portal to view and download the report:\n{$portal_url}\n\n";
-                $body .= "Best regards,\n{$company_name}";
+                $msg_text = "A new report \"{$title}\" for project {$project->project_number} has been uploaded by your consultant and is now ready for download.";
+                $body = $this->build_branded_email(
+                    'Hello ' . $project->client_name . ',',
+                    $msg_text,
+                    'Go to My Project Portal',
+                    $portal_url,
+                    $settings
+                );
 
                 $from_email = $settings['consultant_email'] ?? get_option( 'admin_email' );
                 $preferred_from = ! empty( $settings['email_address'] ) ? $settings['email_address'] : '';
@@ -409,7 +414,7 @@ class BV_Consultant_Dashboard {
                     'company_name' => $company_name,
                     'from_email'   => $preferred_from,
                     'reply_to_email' => $from_email,
-                    'content_type' => 'text/plain',
+                    'content_type' => 'text/html',
                 ));
 
                 BV_Settings::start_bv_email( BV_Settings::$last_resolved_from, $company_name );
@@ -734,6 +739,90 @@ class BV_Consultant_Dashboard {
         } else {
             wp_send_json_error( 'Failed to send email. Please check your mail configuration.' );
         }
+    }
+
+    /**
+     * Build a branded HTML email body with company header, content, CTA, and footer.
+     * Reusable for all notification emails sent to clients.
+     *
+     * @since 2.7.83
+     * @param string $greeting       e.g. "Hello John,"
+     * @param string $message_body   The main message content (plain text — will be wrapped in HTML).
+     * @param string $cta_text       Text for the call-to-action button, or empty for no button.
+     * @param string $cta_url        URL for the CTA button.
+     * @param array  $extra_settings Optional settings array. Defaults to BV_Settings::get_settings().
+     * @return string HTML email body.
+     */
+    private function build_branded_email( $greeting, $message_body, $cta_text = '', $cta_url = '', $extra_settings = array() ) {
+        $settings      = ! empty( $extra_settings ) ? $extra_settings : BV_Settings::get_settings();
+        $company_name  = $settings['company_name'] ?? 'BusinessVance';
+        $primary_color = $settings['primary_color'] ?? '#1a1a2e';
+        $logo_url      = $settings['logo_url'] ?? '';
+        $portal_url    = $settings['portal_url'] ?? '';
+        if ( empty( $portal_url ) ) {
+            $portal_page = get_page_by_path( 'client-portal' );
+            $portal_url   = $portal_page ? get_permalink( $portal_page ) : site_url();
+        }
+        if ( empty( $cta_url ) ) {
+            $cta_url = $portal_url;
+        }
+
+        // Convert plain text newlines to <br>
+        $html_body = nl2br( esc_html( $message_body ) );
+
+        // Header content
+        if ( ! empty( $logo_url ) ) {
+            $header_content = '<img src="' . esc_url( $logo_url ) . '" alt="' . esc_attr( $company_name ) . '" width="120" style="display:block;" />';
+        } else {
+            $header_content = '<span style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.5px;">' . esc_html( $company_name ) . '</span>';
+        }
+
+        $email = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head><body style="margin:0;padding:0;background-color:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,\'Helvetica Neue\',Arial,sans-serif;">'
+        . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6;min-height:100%;padding:32px 16px;">'
+        . '<tr><td align="center">'
+
+        // Header banner
+        . '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;margin:0 auto;">'
+        . '<tr><td bgcolor="' . esc_attr( $primary_color ) . '" style="background-color:' . esc_attr( $primary_color ) . ';padding:28px 32px;text-align:center;">'
+        . $header_content
+        . '</td></tr>'
+
+        // Main content
+        . '<tr><td style="background-color:#ffffff;padding:40px 32px;">'
+
+        // Greeting
+        . '<p style="margin:0 0 16px;font-size:20px;font-weight:700;color:#111827;">' . $greeting . '</p>'
+
+        // Body message
+        . '<div style="font-size:15px;color:#374151;line-height:1.6;margin-bottom:24px;">' . $html_body . '</div>'
+
+        // CTA button
+        . ( ! empty( $cta_text )
+            ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">'
+              . '<tr><td align="center" style="padding:0;">'
+              . '<table role="presentation" cellpadding="0" cellspacing="0" border="0">'
+              . '<tr><td style="background-color:' . esc_attr( $primary_color ) . ';border-radius:6px;padding:0;">'
+              . '<a href="' . esc_url( $cta_url ) . '" target="_blank" style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;"><font color="#ffffff" style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif;font-size:15px;font-weight:700;">' . esc_html( $cta_text ) . '</font></a>'
+              . '</td></tr></table>'
+              . '</td></tr>'
+              . '<tr><td align="center" style="padding:0;">'
+              . '<p style="margin:0;font-size:12px;color:#999999;">If the button doesn\'t work, paste this link: <a href="' . esc_url( $cta_url ) . '" style="color:#2563EB;word-break:break-all;text-decoration:underline;">' . esc_html( $cta_url ) . '</a></p>'
+              . '</td></tr></table>'
+            : '' )
+
+        . '</td></tr>' // End main content
+
+        // Footer
+        . '<tr><td style="background-color:#ffffff;padding:24px 32px 32px;border-top:1px solid #e5e7eb;text-align:center;">'
+        . '<p style="margin:0 0 4px;font-size:13px;color:#777777;">If you have any questions, feel free to reply to this email.</p>'
+        . '<p style="margin:0;font-size:13px;color:#999999;">Best regards,<br><strong style="color:#555555;">' . esc_html( $company_name ) . '</strong></p>'
+        . '</td></tr>'
+
+        . '</table>' // End 600px wrapper
+        . '</td></tr></table>' // End outer
+        . '</body></html>';
+
+        return $email;
     }
 
     /**
@@ -1737,6 +1826,7 @@ class BV_Consultant_Dashboard {
                         <?php else : ?>
                         <span style="color:#27AE60;">✓ Delivered</span>
                         <?php endif; ?>
+                        <button class="button button-small bv-cd-delete-report" data-report-id="<?php echo $r->id; ?>" data-project-id="<?php echo $project_id; ?>" style="color:#dc2626;margin-left:4px;">🗑 Delete</button>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -2219,6 +2309,38 @@ class BV_Consultant_Dashboard {
     }
 
     /**
+     * Delete a report (file + DB record + activity log).
+     *
+     * @since 2.7.83
+     */
+    public function ajax_delete_report() {
+        check_ajax_referer( 'bv_consultant_dashboard', 'nonce' );
+        if ( ! current_user_can( self::CAP ) ) wp_send_json_error( 'Unauthorized' );
+
+        global $wpdb;
+        $rid = absint( $_POST['report_id'] );
+        $report = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}bv_project_reports WHERE id = %d", $rid ) );
+        if ( ! $report ) wp_send_json_error( 'Report not found' );
+
+        // Delete file from disk
+        if ( ! empty( $report->filepath ) && file_exists( $report->filepath ) ) {
+            unlink( $report->filepath );
+        }
+
+        // Delete DB records
+        $wpdb->delete( $wpdb->prefix . 'bv_project_reports', array( 'id' => $rid ), array( '%d' ) );
+        $wpdb->delete( $wpdb->prefix . 'bv_activity_log', array( 'entity_type' => 'report', 'entity_id' => $rid ), array( '%s', '%d' ) );
+
+        // Log deletion
+        $wpdb->insert( $wpdb->prefix . 'bv_activity_log', array(
+            'project_id' => $report->project_id, 'entity_type' => 'report', 'entity_id' => 0,
+            'action' => 'deleted', 'description' => "Report deleted: {$report->title}", 'metadata' => '', 'user_id' => get_current_user_id(),
+        ), array( '%d','%s','%d','%s','%s','%s','%d' ) );
+
+        wp_send_json_success( 'Report deleted' );
+    }
+
+    /**
      * Save report from a WordPress Media Library attachment (no file data in POST).
      * The file was already uploaded via wp.media uploader which bypasses WAF 403.
      *
@@ -2314,10 +2436,14 @@ class BV_Consultant_Dashboard {
             }
 
             $subject = 'Your Report is Ready: ' . $report->title;
-            $body = "Hello {$report->client_name},\n\n";
-            $body .= "Your report \"{$report->title}\" for project {$report->project_number} is now ready for download.\n\n";
-            $body .= "Please log in to your client portal to view and download the report:\n{$portal_url}\n\n";
-            $body .= "Best regards,\n{$company_name}";
+            $msg_text = "Your report \"{$report->title}\" for project {$report->project_number} is now ready for download.";
+            $body = $this->build_branded_email(
+                'Hello ' . $report->client_name . ',',
+                $msg_text,
+                'Go to My Project Portal',
+                $portal_url,
+                $settings
+            );
 
             $from_email = $settings['consultant_email'] ?? get_option( 'admin_email' );
             $preferred_from = ! empty( $settings['email_address'] ) ? $settings['email_address'] : '';
@@ -2326,7 +2452,7 @@ class BV_Consultant_Dashboard {
                 'company_name' => $company_name,
                 'from_email'   => $preferred_from,
                 'reply_to_email' => $from_email,
-                'content_type' => 'text/plain',
+                'content_type' => 'text/html',
             ));
 
             BV_Settings::start_bv_email( BV_Settings::$last_resolved_from, $company_name );
@@ -2392,12 +2518,21 @@ class BV_Consultant_Dashboard {
             $subject
         );
 
-        // Build body
-        $body = $settings['email_message_to_client_body'] ?? '';
-        $body = str_replace(
+        // Build body (user-configured template)
+        $body_text = $settings['email_message_to_client_body'] ?? '';
+        $body_text = str_replace(
             array( '{client_name}', '{sender_name}', '{project_number}', '{message}', '{portal_url}', '{company_name}' ),
             array( $project->client_name, $sender_name, $project->project_number, $message, $portal_url, $company_name ),
-            $body
+            $body_text
+        );
+
+        // Wrap in branded HTML template
+        $body = $this->build_branded_email(
+            'Hello ' . $project->client_name . ',',
+            $body_text,
+            'Go to My Project Portal',
+            $portal_url,
+            $settings
         );
 
         $from_email = $settings['consultant_email'] ?? get_option( 'admin_email' );
@@ -2407,7 +2542,7 @@ class BV_Consultant_Dashboard {
             'company_name'      => $company_name,
             'from_email'        => $preferred_from,
             'reply_to_email'    => $from_email,
-            'content_type'      => 'text/plain',
+            'content_type'      => 'text/html',
             'notification_type' => 'client-new-message',
         ));
 

@@ -73,6 +73,7 @@
     .bv-progress-fill { height: 100%; background: linear-gradient(90deg, var(--bv-secondary), var(--bv-primary)); border-radius: 10px; transition: width 0.6s ease; position: relative; }
     .bv-progress-fill::after { content: ""; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent); animation: shimmer 2s infinite; }
     @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+    @keyframes bv-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
     /* Steps Indicator */
     .bv-steps { display: flex; justify-content: space-between; margin-top: 20px; padding: 0 8px; }

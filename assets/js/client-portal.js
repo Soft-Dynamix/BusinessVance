@@ -124,7 +124,19 @@
     // Reports & Messages
     // ============================================
     window.bv_download_report = function(reportId) {
-        window.location.href = bv_portal.ajax_url + '?action=bv_portal_download_report&nonce=' + bv_portal.nonce + '&report_id=' + encodeURIComponent(reportId);
+        var $btn = $('[onclick="bv_download_report(' + reportId + ')"]');
+        var originalText = $btn.html();
+        $btn.prop('disabled', true).html('<span class="bv-spinner-inline" style="display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:bv-spin 0.6s linear infinite;vertical-align:middle;margin-right:6px;"></span>Preparing download...');
+        // Use a hidden iframe to trigger the download so we can show feedback
+        var iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = bv_portal.ajax_url + '?action=bv_portal_download_report&nonce=' + bv_portal.nonce + '&report_id=' + encodeURIComponent(reportId);
+        document.body.appendChild(iframe);
+        // Re-enable button after a delay (file should have started downloading by then)
+        setTimeout(function() {
+            $btn.prop('disabled', false).html(originalText);
+            document.body.removeChild(iframe);
+        }, 5000);
     };
 
     window.bv_send_message = function(projectId) {
