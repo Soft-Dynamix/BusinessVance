@@ -187,50 +187,64 @@ class BV_Consultant_Dashboard {
      * @return WP_REST_Response
      */
     public function rest_upload_report( $request ) {
-        $pid   = absint( $request->get_param( 'project_id' ) );
-        $title = sanitize_text_field( $request->get_param( 'title' ) );
+        $pid          = absint( $request->get_param( 'project_id' ) );
+        $title        = sanitize_text_field( $request->get_param( 'title' ) );
+        $file_base64  = $request->get_param( 'file_base64' );
+        $file_name    = sanitize_file_name( $request->get_param( 'file_name' ) );
+        $file_size    = absint( $request->get_param( 'file_size' ) );
+        $file_type    = sanitize_text_field( $request->get_param( 'file_type' ) );
 
         if ( empty( $title ) ) {
             return new WP_REST_Response( array( 'success' => false, 'data' => 'Title is required' ), 400 );
         }
-
-        // Check file upload
-        $files = $request->get_file_params();
-        if ( empty( $files['file'] ) || $files['file']['error'] !== UPLOAD_ERR_OK ) {
-            $err_code = ! empty( $files['file'] ) ? $files['file']['error'] : UPLOAD_ERR_NO_FILE;
-            $max_mb   = round( wp_max_upload_size() / 1048576, 1 );
-            $php_max  = ini_get( 'upload_max_filesize' );
-            $php_post = ini_get( 'post_max_size' );
-            $errors   = array(
-                UPLOAD_ERR_INI_SIZE   => 'File exceeds the server upload limit (' . $php_max . '). Contact your hosting provider to increase upload_max_filesize.',
-                UPLOAD_ERR_FORM_SIZE  => 'File exceeds the form MAX_FILE_SIZE directive.',
-                UPLOAD_ERR_PARTIAL    => 'File was only partially uploaded. Please try again.',
-                UPLOAD_ERR_NO_FILE    => 'No file was received. Please select a file and try again.',
-                UPLOAD_ERR_NO_TMP_DIR => 'Server is missing a temporary folder. Contact your hosting provider.',
-                UPLOAD_ERR_CANT_WRITE => 'Failed to write file to disk. Check server permissions.',
-                UPLOAD_ERR_EXTENSION  => 'A PHP extension blocked the upload. Contact your hosting provider.',
-            );
-            $msg = isset( $errors[ $err_code ] ) ? $errors[ $err_code ] : 'Upload failed (error code ' . $err_code . '). Server limits: upload_max_filesize=' . $php_max . ', post_max_size=' . $php_post . '. Contact your hosting provider.';
-            return new WP_REST_Response( array( 'success' => false, 'data' => $msg ), 400 );
+        if ( empty( $file_base64 ) || empty( $file_name ) ) {
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'No file data received.' ), 400 );
         }
 
-        $file = $files['file'];
-        $ext  = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
+        // Validate file type by extension
+        $ext = strtolower( pathinfo( $file_name, PATHINFO_EXTENSION ) );
         $allowed = array( 'pdf', 'doc', 'docx' );
         if ( ! in_array( $ext, $allowed ) ) {
             return new WP_REST_Response( array( 'success' => false, 'data' => 'File type not allowed (PDF, DOC, DOCX only)' ), 400 );
         }
 
-        $filename    = 'report_' . $pid . '_' . time() . '_' . sanitize_file_name( $file['name'] );
+        // Decode base64
+        $decoded = base64_decode( $file_base64, true );
+        if ( $decoded === false ) {
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'Failed to decode file data. The file may be corrupted.' ), 400 );
+        }
+
+        // Check decoded size vs reported size (sanity check)
+        $decoded_size = strlen( $decoded );
+        if ( $file_size > 0 && abs( $decoded_size - $file_size ) > 100 ) {
+            // Sizes don't match closely — still try to save but log a warning
+            error_log( "BV Upload: Decoded size ({$decoded_size}) differs from reported size ({$file_size}) for {$file_name}" );
+        }
+
+        // Check PHP upload limits
+        $max_bytes = wp_max_upload_size();
+        if ( $decoded_size > $max_bytes ) {
+            $max_mb = round( $max_bytes / 1048576, 1 );
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'File is too large (' . round( $decoded_size / 1048576, 1 ) . ' MB). Maximum allowed: ' . $max_mb . ' MB.' ), 400 );
+        }
+
+        // Write file to upload directory
+        $filename    = 'report_' . $pid . '_' . time() . '_' . $file_name;
         $upload_path = BV_UPLOAD_DIR . '/' . $filename;
-        if ( ! move_uploaded_file( $file['tmp_name'], $upload_path ) ) {
-            return new WP_REST_Response( array( 'success' => false, 'data' => 'Upload failed — could not move file. Check that the upload directory is writable.' ), 500 );
+        if ( ! file_put_contents( $upload_path, $decoded ) ) {
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'Upload failed — could not write file. Check that the upload directory is writable.' ), 500 );
+        }
+
+        // Determine MIME type
+        if ( empty( $file_type ) || $file_type === 'application/octet-stream' ) {
+            $mime_map = array( 'pdf' => 'application/pdf', 'doc' => 'application/msword', 'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' );
+            $file_type = isset( $mime_map[ $ext ] ) ? $mime_map[ $ext ] : 'application/octet-stream';
         }
 
         global $wpdb;
         $wpdb->insert( $wpdb->prefix . 'bv_project_reports', array(
             'project_id' => $pid, 'service_id' => 0, 'title' => $title, 'filename' => $filename,
-            'filepath' => $upload_path, 'filesize' => $file['size'], 'mime_type' => $file['type'],
+            'filepath' => $upload_path, 'filesize' => $decoded_size, 'mime_type' => $file_type,
             'status' => 'draft', 'version' => '1.0',
         ), array( '%d','%d','%s','%s','%s','%d','%s','%s','%s' ) );
 

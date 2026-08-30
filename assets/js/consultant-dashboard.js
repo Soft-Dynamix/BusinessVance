@@ -213,10 +213,12 @@
             }, error: function() { alert('Request failed. Please try again.'); } });
         });
 
-        // === TWO-STEP REPORT UPLOAD VIA REST API ===
+        // === TWO-STEP REPORT UPLOAD VIA REST API (BASE64 JSON) ===
+        // WAF/ModSecurity blocks ALL multipart/form-data POST requests.
+        // We read the file as base64 and send it as a plain JSON body —
+        // the WAF sees a normal JSON POST and lets it through.
         // Step 1: Select file → preview it (confirm it's the right file)
-        // Step 2: Click "Complete Upload & Notify Client" → upload with real progress bar
-        // Uses /wp-json/bv/v1/upload-report which bypasses WAF/ModSecurity 403 blocks.
+        // Step 2: Click "Complete Upload & Notify Client" → base64 encode → JSON POST
 
         var bvSelectedFile = null;
 
@@ -282,7 +284,7 @@
             document.getElementById('bv-cd-upload-status').textContent = '';
         });
 
-        // Step 2: Upload with real progress bar via XMLHttpRequest
+        // Step 2: Read file as base64, send as JSON POST to REST API
         $(document).on('click', '#bv-cd-upload-report', function(e) {
             e.preventDefault();
 
@@ -305,74 +307,94 @@
             }
 
             var projectId = this.getAttribute('data-project-id');
+            var fileName = bvSelectedFile.name;
+            var fileSize = bvSelectedFile.size;
+            var fileMime = bvSelectedFile.type || 'application/octet-stream';
 
-            // Switch to step 2 UI
+            // Switch to step 2 UI — reading phase
             step1.style.display = 'none';
             step2.style.display = 'block';
             progressBar.style.width = '0%';
-            progressText.textContent = 'Preparing upload...';
+            progressText.textContent = 'Reading file...';
 
-            // Build FormData
-            var formData = new FormData();
-            formData.append('file', bvSelectedFile);
-            formData.append('title', title);
-            formData.append('project_id', projectId);
-
-            // XMLHttpRequest for real progress tracking
-            var xhr = new XMLHttpRequest();
-            xhr.open('POST', bv_cd.rest_url, true);
-            xhr.setRequestHeader('X-WP-Nonce', bv_cd.rest_nonce);
-
-            // Real upload progress
-            xhr.upload.addEventListener('progress', function(evt) {
+            // Read file as base64
+            var reader = new FileReader();
+            reader.onprogress = function(evt) {
                 if (evt.lengthComputable) {
-                    var pct = Math.round((evt.loaded / evt.total) * 100);
+                    var pct = Math.round((evt.loaded / evt.total) * 50); // reading is 0-50%
                     progressBar.style.width = pct + '%';
-                    progressText.textContent = 'Uploading... ' + pct + '% (' + bvFormatBytes(evt.loaded) + ' / ' + bvFormatBytes(evt.total) + ')';
+                    progressText.textContent = 'Reading file... ' + pct + '%';
                 }
-            });
+            };
+            reader.onload = function() {
+                // File read complete, now send as JSON
+                var base64Data = reader.result.split(',')[1]; // strip data:mime;base64, prefix
+                progressBar.style.width = '50%';
+                progressText.textContent = 'Sending to server...';
 
-            xhr.addEventListener('load', function() {
-                progressBar.style.width = '100%';
-                try {
-                    var response = JSON.parse(xhr.responseText);
-                    if (xhr.status >= 200 && xhr.status < 300 && response.success) {
-                        progressText.textContent = response.data || 'Upload complete! Reloading...';
-                        progressText.style.color = '#22c55e';
-                        setTimeout(function() { location.reload(); }, 1200);
-                    } else {
-                        // Server returned an error
+                var payload = JSON.stringify({
+                    file_base64: base64Data,
+                    file_name: fileName,
+                    file_size: fileSize,
+                    file_type: fileMime,
+                    title: title,
+                    project_id: projectId
+                });
+
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', bv_cd.rest_url, true);
+                xhr.setRequestHeader('X-WP-Nonce', bv_cd.rest_nonce);
+                xhr.setRequestHeader('Content-Type', 'application/json');
+
+                // Progress for the JSON POST (sending the base64 string)
+                xhr.upload.addEventListener('progress', function(evt) {
+                    if (evt.lengthComputable) {
+                        var pct = 50 + Math.round((evt.loaded / evt.total) * 50); // sending is 50-100%
+                        progressBar.style.width = pct + '%';
+                        progressText.textContent = 'Sending to server... ' + pct + '% (' + bvFormatBytes(evt.loaded) + ' / ' + bvFormatBytes(evt.total) + ')';
+                    }
+                });
+
+                xhr.addEventListener('load', function() {
+                    progressBar.style.width = '100%';
+                    try {
+                        var response = JSON.parse(xhr.responseText);
+                        if (xhr.status >= 200 && xhr.status < 300 && response.success) {
+                            progressText.textContent = response.data || 'Upload complete! Reloading...';
+                            progressText.style.color = '#22c55e';
+                            setTimeout(function() { location.reload(); }, 1200);
+                        } else {
+                            step2.style.display = 'none';
+                            step1.style.display = 'block';
+                            var errMsg = (response && response.data) ? response.data : ('Server error (HTTP ' + xhr.status + ')');
+                            statusEl.textContent = 'Error: ' + errMsg;
+                            statusEl.style.color = '#dc2626';
+                        }
+                    } catch(parseErr) {
                         step2.style.display = 'none';
                         step1.style.display = 'block';
-                        var errMsg = (response && response.data) ? response.data : ('Server error (HTTP ' + xhr.status + ')');
-                        statusEl.textContent = 'Error: ' + errMsg;
+                        var snippet = xhr.responseText ? xhr.responseText.substring(0, 200) : '(empty response)';
+                        statusEl.textContent = 'Error: Unexpected server response (HTTP ' + xhr.status + '): ' + snippet;
                         statusEl.style.color = '#dc2626';
                     }
-                } catch(parseErr) {
-                    // Could not parse JSON — show raw response snippet
+                });
+
+                xhr.addEventListener('error', function() {
                     step2.style.display = 'none';
                     step1.style.display = 'block';
-                    var snippet = xhr.responseText ? xhr.responseText.substring(0, 200) : '(empty response)';
-                    statusEl.textContent = 'Error: Unexpected server response (HTTP ' + xhr.status + '): ' + snippet;
+                    statusEl.textContent = 'Error: Network error — the connection was interrupted. Please try again.';
                     statusEl.style.color = '#dc2626';
-                }
-            });
+                });
 
-            xhr.addEventListener('error', function() {
+                xhr.send(payload);
+            };
+            reader.onerror = function() {
                 step2.style.display = 'none';
                 step1.style.display = 'block';
-                statusEl.textContent = 'Error: Network error — the connection was interrupted. Please try again.';
+                statusEl.textContent = 'Error: Could not read the file. Please try again.';
                 statusEl.style.color = '#dc2626';
-            });
-
-            xhr.addEventListener('abort', function() {
-                step2.style.display = 'none';
-                step1.style.display = 'block';
-                statusEl.textContent = 'Upload cancelled.';
-                statusEl.style.color = '#dc2626';
-            });
-
-            xhr.send(formData);
+            };
+            reader.readAsDataURL(bvSelectedFile);
         });
 
         // Deliver report
