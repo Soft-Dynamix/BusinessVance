@@ -213,14 +213,15 @@
             }, error: function() { alert('Request failed. Please try again.'); } });
         });
 
-        // === TWO-STEP REPORT UPLOAD VIA REST API (BASE64 JSON) ===
-        // WAF/ModSecurity blocks ALL multipart/form-data POST requests.
-        // We read the file as base64 and send it as a plain JSON body —
-        // the WAF sees a normal JSON POST and lets it through.
+        // === TWO-STEP REPORT UPLOAD — CHUNKED BASE64 JSON ===
+        // WAF blocks multipart/form-data. Server limits request body size (413).
+        // Solution: read file as base64, split into small chunks (~250KB each),
+        // send each as a separate JSON POST. Three phases: start → chunk... → finish.
         // Step 1: Select file → preview it (confirm it's the right file)
-        // Step 2: Click "Complete Upload & Notify Client" → base64 encode → JSON POST
+        // Step 2: Click "Complete Upload & Notify Client" → chunked upload with progress
 
         var bvSelectedFile = null;
+        var BV_CHUNK_SIZE = 250000; // base64 chars per chunk (~188KB decoded, well under server limits)
 
         // Format bytes to human readable
         function bvFormatBytes(bytes) {
@@ -237,6 +238,30 @@
             if (ext === 'pdf') return '📕';
             if (ext === 'doc' || ext === 'docx') return '📘';
             return '📄';
+        }
+
+        // Send a JSON POST and return a promise
+        function bvJsonPost(url, nonce, data) {
+            return new Promise(function(resolve, reject) {
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', url, true);
+                xhr.setRequestHeader('X-WP-Nonce', nonce);
+                xhr.setRequestHeader('Content-Type', 'application/json');
+                xhr.addEventListener('load', function() {
+                    try {
+                        var resp = JSON.parse(xhr.responseText);
+                        if (xhr.status >= 200 && xhr.status < 300 && resp.success) {
+                            resolve(resp);
+                        } else {
+                            reject({ status: xhr.status, data: (resp && resp.data) ? resp.data : xhr.responseText.substring(0, 200) });
+                        }
+                    } catch(e) {
+                        reject({ status: xhr.status, data: 'Unexpected response (HTTP ' + xhr.status + '): ' + xhr.responseText.substring(0, 150) });
+                    }
+                });
+                xhr.addEventListener('error', function() { reject({ status: 0, data: 'Network error' }); });
+                xhr.send(JSON.stringify(data));
+            });
         }
 
         // Step 1a: File selection — show preview
@@ -284,7 +309,7 @@
             document.getElementById('bv-cd-upload-status').textContent = '';
         });
 
-        // Step 2: Read file as base64, send as JSON POST to REST API
+        // Step 2: Chunked upload with progress
         $(document).on('click', '#bv-cd-upload-report', function(e) {
             e.preventDefault();
 
@@ -311,82 +336,93 @@
             var fileSize = bvSelectedFile.size;
             var fileMime = bvSelectedFile.type || 'application/octet-stream';
 
-            // Switch to step 2 UI — reading phase
+            // Switch to step 2 UI
             step1.style.display = 'none';
             step2.style.display = 'block';
             progressBar.style.width = '0%';
             progressText.textContent = 'Reading file...';
+            progressText.style.color = '#64748b';
 
             // Read file as base64
             var reader = new FileReader();
             reader.onprogress = function(evt) {
                 if (evt.lengthComputable) {
-                    var pct = Math.round((evt.loaded / evt.total) * 50); // reading is 0-50%
+                    var pct = Math.round((evt.loaded / evt.total) * 10); // reading is 0-10%
                     progressBar.style.width = pct + '%';
                     progressText.textContent = 'Reading file... ' + pct + '%';
                 }
             };
             reader.onload = function() {
-                // File read complete, now send as JSON
-                var base64Data = reader.result.split(',')[1]; // strip data:mime;base64, prefix
-                progressBar.style.width = '50%';
-                progressText.textContent = 'Sending to server...';
+                var base64Full = reader.result.split(',')[1]; // strip data:mime;base64, prefix
+                var totalChunks = Math.ceil(base64Full.length / BV_CHUNK_SIZE);
+                progressBar.style.width = '10%';
+                progressText.textContent = 'Sending chunk 1 of ' + totalChunks + '...';
 
-                var payload = JSON.stringify({
-                    file_base64: base64Data,
+                // Phase 1: START — send first chunk with metadata
+                var firstChunk = base64Full.substring(0, BV_CHUNK_SIZE);
+                bvJsonPost(bv_cd.rest_url, bv_cd.rest_nonce, {
+                    upload_action: 'start',
+                    chunk_base64: firstChunk,
                     file_name: fileName,
                     file_size: fileSize,
                     file_type: fileMime,
                     title: title,
-                    project_id: projectId
-                });
+                    project_id: projectId,
+                    total_chunks: totalChunks
+                }).then(function(startResp) {
+                    var uploadId = startResp.upload_id;
+                    var chunksSent = 1;
 
-                var xhr = new XMLHttpRequest();
-                xhr.open('POST', bv_cd.rest_url, true);
-                xhr.setRequestHeader('X-WP-Nonce', bv_cd.rest_nonce);
-                xhr.setRequestHeader('Content-Type', 'application/json');
+                    // Phase 2: Send remaining chunks sequentially
+                    function sendNextChunk() {
+                        if (chunksSent >= totalChunks) {
+                            // Phase 3: FINISH
+                            progressText.textContent = 'Finalizing upload...';
+                            bvJsonPost(bv_cd.rest_url, bv_cd.rest_nonce, {
+                                upload_action: 'finish',
+                                upload_id: uploadId
+                            }).then(function(finalResp) {
+                                progressBar.style.width = '100%';
+                                progressText.textContent = finalResp.data || 'Upload complete! Reloading...';
+                                progressText.style.color = '#22c55e';
+                                setTimeout(function() { location.reload(); }, 1200);
+                            }).catch(function(err) {
+                                step2.style.display = 'none';
+                                step1.style.display = 'block';
+                                statusEl.textContent = 'Error finalizing: ' + (err.data || 'Unknown error');
+                                statusEl.style.color = '#dc2626';
+                            });
+                            return;
+                        }
 
-                // Progress for the JSON POST (sending the base64 string)
-                xhr.upload.addEventListener('progress', function(evt) {
-                    if (evt.lengthComputable) {
-                        var pct = 50 + Math.round((evt.loaded / evt.total) * 50); // sending is 50-100%
+                        var chunk = base64Full.substring(chunksSent * BV_CHUNK_SIZE, (chunksSent + 1) * BV_CHUNK_SIZE);
+                        var pct = 10 + Math.round((chunksSent / totalChunks) * 85); // 10% to 95%
                         progressBar.style.width = pct + '%';
-                        progressText.textContent = 'Sending to server... ' + pct + '% (' + bvFormatBytes(evt.loaded) + ' / ' + bvFormatBytes(evt.total) + ')';
-                    }
-                });
+                        progressText.textContent = 'Sending chunk ' + (chunksSent + 1) + ' of ' + totalChunks + '...';
 
-                xhr.addEventListener('load', function() {
-                    progressBar.style.width = '100%';
-                    try {
-                        var response = JSON.parse(xhr.responseText);
-                        if (xhr.status >= 200 && xhr.status < 300 && response.success) {
-                            progressText.textContent = response.data || 'Upload complete! Reloading...';
-                            progressText.style.color = '#22c55e';
-                            setTimeout(function() { location.reload(); }, 1200);
-                        } else {
+                        bvJsonPost(bv_cd.rest_url, bv_cd.rest_nonce, {
+                            upload_action: 'chunk',
+                            upload_id: uploadId,
+                            chunk_base64: chunk
+                        }).then(function() {
+                            chunksSent++;
+                            sendNextChunk();
+                        }).catch(function(err) {
                             step2.style.display = 'none';
                             step1.style.display = 'block';
-                            var errMsg = (response && response.data) ? response.data : ('Server error (HTTP ' + xhr.status + ')');
-                            statusEl.textContent = 'Error: ' + errMsg;
+                            statusEl.textContent = 'Error on chunk ' + (chunksSent + 1) + ': ' + (err.data || 'Unknown error');
                             statusEl.style.color = '#dc2626';
-                        }
-                    } catch(parseErr) {
-                        step2.style.display = 'none';
-                        step1.style.display = 'block';
-                        var snippet = xhr.responseText ? xhr.responseText.substring(0, 200) : '(empty response)';
-                        statusEl.textContent = 'Error: Unexpected server response (HTTP ' + xhr.status + '): ' + snippet;
-                        statusEl.style.color = '#dc2626';
+                        });
                     }
-                });
 
-                xhr.addEventListener('error', function() {
+                    sendNextChunk();
+
+                }).catch(function(err) {
                     step2.style.display = 'none';
                     step1.style.display = 'block';
-                    statusEl.textContent = 'Error: Network error — the connection was interrupted. Please try again.';
+                    statusEl.textContent = 'Error: ' + (err.data || 'Could not start upload.');
                     statusEl.style.color = '#dc2626';
                 });
-
-                xhr.send(payload);
             };
             reader.onerror = function() {
                 step2.style.display = 'none';

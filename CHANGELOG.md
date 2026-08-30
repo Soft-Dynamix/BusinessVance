@@ -2,6 +2,18 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.82] - 2026-08-30
+### Fixed
+- **413 Request Entity Too Large — chunked base64 upload** — The server (nginx) has a request body size limit. Base64 encoding makes files ~33% larger, exceeding this limit. Solution: the base64 data is now split into chunks of 250,000 characters (~188KB decoded each) and sent as separate JSON POST requests. Each chunk is well under any reasonable server limit.
+### Changed
+- **REST endpoint now uses three-phase chunked upload**:
+  - `upload_action=start` — validates metadata, creates temp file with first chunk, returns `upload_id`
+  - `upload_action=chunk` — appends decoded chunk data to temp file
+  - `upload_action=finish` — validates assembled file, moves to final location, creates DB records, notifies client
+- **Progress bar** now shows chunk progress: "Sending chunk 3 of 12..." with percentage
+- **Upload metadata** stored in WordPress transients (1-hour expiry) during upload session
+- **Temp files** prefixed with `.tmp_` for easy cleanup
+
 ## [2.7.81] - 2026-08-30
 ### Fixed
 - **Report upload WAF 403 — base64 JSON bypass** — The server WAF/ModSecurity blocks ALL `multipart/form-data` POST requests regardless of URL path (admin-ajax.php, async-upload.php, AND /wp-json/...). Solution: the file is now read client-side as base64 using `FileReader.readAsDataURL()`, then sent as a plain `application/json` POST body. The WAF sees a normal JSON API call and lets it through. The PHP endpoint decodes the base64 and writes the file using `file_put_contents()`.

@@ -182,65 +182,190 @@ class BV_Consultant_Dashboard {
      * Identical logic to ajax_upload_report() but accessible via /wp-json/bv/v1/upload-report
      * to bypass server-level WAF/ModSecurity 403 blocks on admin-ajax.php.
      *
-     * @since 2.7.79
+     * @since 2.7.79 REST upload, 2.7.81 base64 JSON, 2.7.82 chunked
      * @param WP_REST_Request $request
      * @return WP_REST_Response
      */
     public function rest_upload_report( $request ) {
-        $pid          = absint( $request->get_param( 'project_id' ) );
-        $title        = sanitize_text_field( $request->get_param( 'title' ) );
-        $file_base64  = $request->get_param( 'file_base64' );
-        $file_name    = sanitize_file_name( $request->get_param( 'file_name' ) );
-        $file_size    = absint( $request->get_param( 'file_size' ) );
-        $file_type    = sanitize_text_field( $request->get_param( 'file_type' ) );
+        $action = $request->get_param( 'upload_action' );
+
+        // Phase 1: START — validate metadata, create temp file, write first chunk
+        if ( $action === 'start' ) {
+            return $this->upload_start( $request );
+        }
+
+        // Phase 2: CHUNK — append data to existing temp file
+        if ( $action === 'chunk' ) {
+            return $this->upload_chunk( $request );
+        }
+
+        // Phase 3: FINISH — finalize upload, create DB records, notify
+        if ( $action === 'finish' ) {
+            return $this->upload_finish( $request );
+        }
+
+        return new WP_REST_Response( array( 'success' => false, 'data' => 'Missing upload_action parameter.' ), 400 );
+    }
+
+    /**
+     * Phase 1: Start a chunked upload.
+     */
+    private function upload_start( $request ) {
+        $pid         = absint( $request->get_param( 'project_id' ) );
+        $title       = sanitize_text_field( $request->get_param( 'title' ) );
+        $file_name   = sanitize_file_name( $request->get_param( 'file_name' ) );
+        $file_size   = absint( $request->get_param( 'file_size' ) );
+        $file_type   = sanitize_text_field( $request->get_param( 'file_type' ) );
+        $total_chunks = absint( $request->get_param( 'total_chunks' ) );
+        $chunk_b64   = $request->get_param( 'chunk_base64' );
 
         if ( empty( $title ) ) {
-            return new WP_REST_Response( array( 'success' => false, 'data' => 'Title is required' ), 400 );
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'Title is required.' ), 400 );
         }
-        if ( empty( $file_base64 ) || empty( $file_name ) ) {
-            return new WP_REST_Response( array( 'success' => false, 'data' => 'No file data received.' ), 400 );
+        if ( empty( $file_name ) ) {
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'No file name received.' ), 400 );
+        }
+        if ( empty( $chunk_b64 ) ) {
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'No file data in first chunk.' ), 400 );
         }
 
-        // Validate file type by extension
+        // Validate file type
         $ext = strtolower( pathinfo( $file_name, PATHINFO_EXTENSION ) );
         $allowed = array( 'pdf', 'doc', 'docx' );
         if ( ! in_array( $ext, $allowed ) ) {
-            return new WP_REST_Response( array( 'success' => false, 'data' => 'File type not allowed (PDF, DOC, DOCX only)' ), 400 );
-        }
-
-        // Decode base64
-        $decoded = base64_decode( $file_base64, true );
-        if ( $decoded === false ) {
-            return new WP_REST_Response( array( 'success' => false, 'data' => 'Failed to decode file data. The file may be corrupted.' ), 400 );
-        }
-
-        // Check decoded size vs reported size (sanity check)
-        $decoded_size = strlen( $decoded );
-        if ( $file_size > 0 && abs( $decoded_size - $file_size ) > 100 ) {
-            // Sizes don't match closely — still try to save but log a warning
-            error_log( "BV Upload: Decoded size ({$decoded_size}) differs from reported size ({$file_size}) for {$file_name}" );
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'File type not allowed (PDF, DOC, DOCX only).' ), 400 );
         }
 
         // Check PHP upload limits
         $max_bytes = wp_max_upload_size();
-        if ( $decoded_size > $max_bytes ) {
+        if ( $file_size > $max_bytes ) {
             $max_mb = round( $max_bytes / 1048576, 1 );
-            return new WP_REST_Response( array( 'success' => false, 'data' => 'File is too large (' . round( $decoded_size / 1048576, 1 ) . ' MB). Maximum allowed: ' . $max_mb . ' MB.' ), 400 );
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'File is too large (' . round( $file_size / 1048576, 1 ) . ' MB). Maximum: ' . $max_mb . ' MB.' ), 400 );
         }
 
-        // Write file to upload directory
-        $filename    = 'report_' . $pid . '_' . time() . '_' . $file_name;
+        // Create unique upload ID and temp file
+        $upload_id = 'bv_' . $pid . '_' . time() . '_' . wp_generate_password( 8, false );
+        $temp_path = BV_UPLOAD_DIR . '/.tmp_' . $upload_id;
+
+        // Decode first chunk and write
+        $decoded = base64_decode( $chunk_b64, true );
+        if ( $decoded === false ) {
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'Failed to decode first chunk.' ), 400 );
+        }
+        if ( file_put_contents( $temp_path, $decoded ) === false ) {
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'Could not create temp file. Check upload directory is writable.' ), 500 );
+        }
+
+        // Store upload metadata in a transient (valid for 1 hour)
+        set_transient( 'bv_upload_' . $upload_id, array(
+            'project_id'   => $pid,
+            'title'        => $title,
+            'file_name'    => $file_name,
+            'file_size'    => $file_size,
+            'file_type'    => $file_type,
+            'total_chunks' => $total_chunks,
+            'temp_path'    => $temp_path,
+            'chunks_done'  => 1,
+        ), HOUR_IN_SECONDS );
+
+        return new WP_REST_Response( array(
+            'success'   => true,
+            'data'      => 'Started',
+            'upload_id' => $upload_id,
+        ), 200 );
+    }
+
+    /**
+     * Phase 2: Receive and append a chunk.
+     */
+    private function upload_chunk( $request ) {
+        $upload_id = sanitize_text_field( $request->get_param( 'upload_id' ) );
+        $chunk_b64 = $request->get_param( 'chunk_base64' );
+
+        if ( empty( $upload_id ) || empty( $chunk_b64 ) ) {
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'Missing upload_id or chunk data.' ), 400 );
+        }
+
+        $meta = get_transient( 'bv_upload_' . $upload_id );
+        if ( ! $meta ) {
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'Upload session expired or not found. Please start over.' ), 400 );
+        }
+
+        // Decode and append
+        $decoded = base64_decode( $chunk_b64, true );
+        if ( $decoded === false ) {
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'Failed to decode chunk.' ), 400 );
+        }
+
+        if ( file_put_contents( $meta['temp_path'], $decoded, FILE_APPEND ) === false ) {
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'Failed to write chunk. Disk may be full.' ), 500 );
+        }
+
+        // Update progress in transient
+        $meta['chunks_done']++;
+        set_transient( 'bv_upload_' . $upload_id, $meta, HOUR_IN_SECONDS );
+
+        return new WP_REST_Response( array(
+            'success'      => true,
+            'data'         => 'Chunk received',
+            'chunks_done'  => $meta['chunks_done'],
+            'total_chunks' => $meta['total_chunks'],
+        ), 200 );
+    }
+
+    /**
+     * Phase 3: Finalize — validate assembled file, create DB record, notify client.
+     */
+    private function upload_finish( $request ) {
+        $upload_id = sanitize_text_field( $request->get_param( 'upload_id' ) );
+
+        if ( empty( $upload_id ) ) {
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'Missing upload_id.' ), 400 );
+        }
+
+        $meta = get_transient( 'bv_upload_' . $upload_id );
+        if ( ! $meta ) {
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'Upload session expired or not found. Please start over.' ), 400 );
+        }
+
+        // Check all chunks received
+        if ( $meta['chunks_done'] < $meta['total_chunks'] ) {
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'Not all chunks received (' . $meta['chunks_done'] . '/' . $meta['total_chunks'] . '). Please try again.' ), 400 );
+        }
+
+        $pid = $meta['project_id'];
+        $title = $meta['title'];
+        $file_name = $meta['file_name'];
+        $temp_path = $meta['temp_path'];
+
+        // Validate assembled file
+        if ( ! file_exists( $temp_path ) ) {
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'Temp file missing. Please try again.' ), 500 );
+        }
+
+        $decoded_size = filesize( $temp_path );
+        if ( $decoded_size === 0 ) {
+            @unlink( $temp_path );
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'Uploaded file is empty (0 bytes).' ), 400 );
+        }
+
+        // Move to final location
+        $filename = 'report_' . $pid . '_' . time() . '_' . $file_name;
         $upload_path = BV_UPLOAD_DIR . '/' . $filename;
-        if ( ! file_put_contents( $upload_path, $decoded ) ) {
-            return new WP_REST_Response( array( 'success' => false, 'data' => 'Upload failed — could not write file. Check that the upload directory is writable.' ), 500 );
+        if ( ! rename( $temp_path, $upload_path ) ) {
+            @unlink( $temp_path );
+            return new WP_REST_Response( array( 'success' => false, 'data' => 'Failed to save file. Check upload directory permissions.' ), 500 );
         }
 
         // Determine MIME type
+        $ext = strtolower( pathinfo( $file_name, PATHINFO_EXTENSION ) );
+        $file_type = $meta['file_type'];
         if ( empty( $file_type ) || $file_type === 'application/octet-stream' ) {
             $mime_map = array( 'pdf' => 'application/pdf', 'doc' => 'application/msword', 'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' );
             $file_type = isset( $mime_map[ $ext ] ) ? $mime_map[ $ext ] : 'application/octet-stream';
         }
 
+        // Create database records
         global $wpdb;
         $wpdb->insert( $wpdb->prefix . 'bv_project_reports', array(
             'project_id' => $pid, 'service_id' => 0, 'title' => $title, 'filename' => $filename,
@@ -254,6 +379,9 @@ class BV_Consultant_Dashboard {
             'project_id' => $pid, 'entity_type' => 'report', 'entity_id' => $report_id,
             'action' => 'uploaded', 'description' => "Report uploaded: {$title}", 'metadata' => '', 'user_id' => get_current_user_id(),
         ), array( '%d','%s','%d','%s','%s','%s','%d' ) );
+
+        // Clean up transient
+        delete_transient( 'bv_upload_' . $upload_id );
 
         // Send email notification to client
         $notified = false;
@@ -291,8 +419,8 @@ class BV_Consultant_Dashboard {
         }
 
         return new WP_REST_Response( array(
-            'success'  => true,
-            'data'     => 'Report uploaded' . ( $notified ? ' and client notified' : '' ),
+            'success'   => true,
+            'data'      => 'Report uploaded' . ( $notified ? ' and client notified' : '' ),
             'report_id' => $report_id,
         ), 200 );
     }
