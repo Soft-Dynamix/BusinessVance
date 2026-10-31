@@ -2,6 +2,14 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.88] - 2026-08-31
+### Changed
+- **Renamed the two destination picker card labels** for clarity:
+  - "Client Portal" → **"Business Report Portal"**
+  - "LMS Dashboard" → **"Study Dashboard"**
+- Updated the CTA buttons to match: "Open Business Report Portal →" and "Open Study Dashboard →"
+- Updated the branded welcome email sent after registration to use the new terminology ("From your Business Report Portal you can…" and the CTA button "Go to My Business Report Portal")
+
 ## [2.7.87] - 2026-08-31
 ### Changed
 - **Removed logo from the destination picker header banner** — the brand logo that previously sat above the "Welcome back" heading has been removed, leaving a clean gradient banner with just the heading and subtitle. The brand identity is now carried by the two card logos (BusinessVance / StudyVance) below.

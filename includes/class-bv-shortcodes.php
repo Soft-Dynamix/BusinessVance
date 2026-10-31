@@ -227,14 +227,14 @@ class BV_Shortcodes {
             /* translators: 1: first name, 2: company name */
             esc_html__( 'Welcome to %2$s! Your account has been created successfully.', 'businessvance-services-manager' ) . "\n\n" .
             esc_html__( 'You can now sign in anytime using your email address (%3$s) and the password you chose.', 'businessvance-services-manager' ) . "\n\n" .
-            esc_html__( 'From your client portal you can track project progress, upload documents, sign agreements, and download completed reports.', 'businessvance-services-manager' ),
+            esc_html__( 'From your Business Report Portal you can track project progress, upload documents, sign agreements, and download completed reports.', 'businessvance-services-manager' ),
             $first_name, $company_name, $email
         );
 
         $body = $this->build_branded_email(
             sprintf( /* translators: %s: first name */ esc_html__( 'Hello %s,', 'businessvance-services-manager' ), $first_name ),
             $message,
-            esc_html__( 'Go to My Client Portal', 'businessvance-services-manager' ),
+            esc_html__( 'Go to My Business Report Portal', 'businessvance-services-manager' ),
             $portal_url,
             $settings
         );
@@ -1208,10 +1208,10 @@ class BV_Shortcodes {
                                 <div class="bv-pick-dest-icon">
                                     <img src="<?php echo esc_url( BV_PLUGIN_URL . 'assets/img/businessvance-logo.png' ); ?>" alt="BusinessVance" />
                                 </div>
-                                <span class="bv-pick-dest-label"><?php esc_html_e( 'Client Portal', 'businessvance-services-manager' ); ?></span>
+                                <span class="bv-pick-dest-label"><?php esc_html_e( 'Business Report Portal', 'businessvance-services-manager' ); ?></span>
                                 <h3>BusinessVance</h3>
                                 <p><?php esc_html_e( 'Business consulting services — manage your projects, sign agreements, upload required documents, and download completed reports from your consultant.', 'businessvance-services-manager' ); ?></p>
-                                <span class="bv-pick-dest-cta"><?php esc_html_e( 'Open BusinessVance Portal', 'businessvance-services-manager' ); ?> →</span>
+                                <span class="bv-pick-dest-cta"><?php esc_html_e( 'Open Business Report Portal', 'businessvance-services-manager' ); ?> →</span>
                             </div>
                         </a>
                         <?php endif; ?>
@@ -1223,10 +1223,10 @@ class BV_Shortcodes {
                                 <div class="bv-pick-dest-icon">
                                     <img src="<?php echo esc_url( BV_PLUGIN_URL . 'assets/img/studyvance-logo.png' ); ?>" alt="StudyVance" />
                                 </div>
-                                <span class="bv-pick-dest-label"><?php esc_html_e( 'LMS Dashboard', 'businessvance-services-manager' ); ?></span>
+                                <span class="bv-pick-dest-label"><?php esc_html_e( 'Study Dashboard', 'businessvance-services-manager' ); ?></span>
                                 <h3>StudyVance</h3>
                                 <p><?php esc_html_e( 'Online learning platform — access your courses, lessons, quizzes, study materials, and track your learning progress.', 'businessvance-services-manager' ); ?></p>
-                                <span class="bv-pick-dest-cta"><?php esc_html_e( 'Open StudyVance Dashboard', 'businessvance-services-manager' ); ?> →</span>
+                                <span class="bv-pick-dest-cta"><?php esc_html_e( 'Open Study Dashboard', 'businessvance-services-manager' ); ?> →</span>
                             </div>
                         </a>
                         <?php endif; ?>
