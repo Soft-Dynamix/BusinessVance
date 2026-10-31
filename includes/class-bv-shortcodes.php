@@ -1056,21 +1056,31 @@ class BV_Shortcodes {
                     transform: translateY(-2px);
                 }
                 .bv-pick-dest-icon {
-                    width: 56px;
-                    height: 56px;
+                    width: 64px;
+                    height: 64px;
                     border-radius: 14px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     margin: 0 auto 14px;
+                    background: #ffffff;
+                    border: 1px solid #e5e7eb;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+                    overflow: hidden;
+                }
+                .bv-pick-dest-icon img {
+                    max-width: 80%;
+                    max-height: 80%;
+                    width: auto;
+                    height: auto;
+                    object-fit: contain;
+                    display: block;
                 }
                 .bv-pick-dest.bv-pick-portal .bv-pick-dest-icon {
-                    background: <?php echo esc_attr( $primary_color ); ?>12;
-                    color: <?php echo esc_attr( $primary_color ); ?>;
+                    border-color: <?php echo esc_attr( $primary_color ); ?>33;
                 }
                 .bv-pick-dest.bv-pick-lms .bv-pick-dest-icon {
-                    background: #f59e0b12;
-                    color: #b45309;
+                    border-color: #f59e0b33;
                 }
                 .bv-pick-dest h3 {
                     margin: 0 0 8px;
@@ -1145,7 +1155,7 @@ class BV_Shortcodes {
                         <?php if ( $portal_url ) : ?>
                         <a href="<?php echo esc_url( $portal_url ); ?>" class="bv-pick-dest bv-pick-portal">
                             <div class="bv-pick-dest-icon">
-                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                                <img src="<?php echo esc_url( BV_PLUGIN_URL . 'assets/img/businessvance-logo.png' ); ?>" alt="BusinessVance" />
                             </div>
                             <h3><?php esc_html_e( 'Client Portal', 'businessvance-services-manager' ); ?></h3>
                             <p><?php esc_html_e( 'View projects, upload documents, and track your service progress.', 'businessvance-services-manager' ); ?></p>
@@ -1156,7 +1166,7 @@ class BV_Shortcodes {
                         <?php if ( $tutor_url ) : ?>
                         <a href="<?php echo esc_url( $tutor_url ); ?>" class="bv-pick-dest bv-pick-lms">
                             <div class="bv-pick-dest-icon">
-                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                                <img src="<?php echo esc_url( BV_PLUGIN_URL . 'assets/img/studyvance-logo.png' ); ?>" alt="StudyVance" />
                             </div>
                             <h3><?php esc_html_e( 'LMS Dashboard', 'businessvance-services-manager' ); ?></h3>
                             <p><?php esc_html_e( 'Access your courses, lessons, quizzes, and learning materials.', 'businessvance-services-manager' ); ?></p>

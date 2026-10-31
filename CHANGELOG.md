@@ -2,6 +2,13 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.85] - 2026-08-31
+### Changed
+- **Destination picker cards now show the actual brand logos** instead of generic SVG icons:
+  - **Client Portal** card → BusinessVance logo (`assets/img/businessvance-logo.png`)
+  - **LMS Dashboard** card → StudyVance logo (`assets/img/studyvance-logo.png`)
+- Icon container restyled to display logos cleanly: white background, subtle border and shadow, larger 64×64 size, and `object-fit: contain` so logos of any aspect ratio (square or portrait) fit perfectly without distortion. Each card retains its brand-colored border accent (blue for portal, amber for LMS).
+
 ## [2.7.84] - 2026-08-31
 ### Fixed
 - **"Create an account" went to a login screen** — the link auto-detected to the WooCommerce My Account page, which shows only a login form when "Allow customers to create an account on the My account page" is disabled (the WooCommerce default). The link now opens a branded registration form built into the plugin — no WooCommerce setting required.
