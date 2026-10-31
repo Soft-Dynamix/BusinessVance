@@ -2,6 +2,19 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.86] - 2026-08-31
+### Changed
+- **Destination picker cards redesigned for clarity and presence:**
+  - **Bigger logos** — icon container upsized from 64×64 to 120×120 (100×100 on mobile) so the BusinessVance and StudyVance logos are clearly visible and recognizable
+  - **Brand names as the card titles** — cards now read "BusinessVance" and "StudyVance" in large bold text (22px, weight 800), with "Client Portal" and "LMS Dashboard" shown as small uppercase labels above each title
+  - **Clearer descriptions** of what each platform does:
+    - BusinessVance: "Business consulting services — manage your projects, sign agreements, upload required documents, and download completed reports from your consultant."
+    - StudyVance: "Online learning platform — access your courses, lessons, quizzes, study materials, and track your learning progress."
+  - **Pill-shaped CTA buttons** that fill with the brand color on hover ("Open BusinessVance Portal →" / "Open StudyVance Dashboard →")
+  - **Top accent strip** on each card in the brand gradient (blue/teal for BusinessVance, amber/orange for StudyVance) for instant visual differentiation
+  - Wider picker container (880px) gives the cards room to breathe on desktop, with a clean stacked layout on mobile (≤600px)
+  - Larger description text (14px, up from 13px) with improved line height for readability
+
 ## [2.7.85] - 2026-08-31
 ### Changed
 - **Destination picker cards now show the actual brand logos** instead of generic SVG icons:

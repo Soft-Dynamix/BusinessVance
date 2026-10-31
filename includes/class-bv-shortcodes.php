@@ -987,7 +987,7 @@ class BV_Shortcodes {
             ?>
             <style>
                 .bv-pick-wrap {
-                    max-width: 620px;
+                    max-width: 880px;
                     margin: 40px auto;
                     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                 }
@@ -1037,70 +1037,112 @@ class BV_Shortcodes {
                 }
                 .bv-pick-destinations {
                     display: flex;
-                    gap: 16px;
-                    padding: 24px;
+                    gap: 20px;
+                    padding: 28px;
                 }
                 .bv-pick-dest {
                     flex: 1;
-                    border: 2px solid #e5e7eb;
-                    border-radius: 12px;
-                    padding: 24px 20px;
+                    position: relative;
+                    border: 1.5px solid #e5e7eb;
+                    border-radius: 14px;
+                    padding: 0 0 24px;
                     text-align: center;
                     text-decoration: none;
                     transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
                     display: block;
+                    overflow: hidden;
+                    background: #fff;
                 }
                 .bv-pick-dest:hover {
                     border-color: <?php echo esc_attr( $primary_color ); ?>;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-                    transform: translateY(-2px);
+                    box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+                    transform: translateY(-3px);
+                }
+                /* Top accent strip — brand color */
+                .bv-pick-dest-accent {
+                    height: 6px;
+                    width: 100%;
+                }
+                .bv-pick-dest.bv-pick-portal .bv-pick-dest-accent {
+                    background: linear-gradient(90deg, <?php echo esc_attr( $primary_color ); ?> 0%, <?php echo esc_attr( $secondary_color ); ?> 100%);
+                }
+                .bv-pick-dest.bv-pick-lms .bv-pick-dest-accent {
+                    background: linear-gradient(90deg, #f59e0b 0%, #d97706 100%);
+                }
+                .bv-pick-dest-body {
+                    padding: 24px 22px 0;
                 }
                 .bv-pick-dest-icon {
-                    width: 64px;
-                    height: 64px;
-                    border-radius: 14px;
+                    width: 120px;
+                    height: 120px;
+                    border-radius: 18px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    margin: 0 auto 14px;
+                    margin: 0 auto 18px;
                     background: #ffffff;
                     border: 1px solid #e5e7eb;
-                    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
                     overflow: hidden;
                 }
                 .bv-pick-dest-icon img {
-                    max-width: 80%;
-                    max-height: 80%;
+                    max-width: 86%;
+                    max-height: 86%;
                     width: auto;
                     height: auto;
                     object-fit: contain;
                     display: block;
                 }
-                .bv-pick-dest.bv-pick-portal .bv-pick-dest-icon {
-                    border-color: <?php echo esc_attr( $primary_color ); ?>33;
-                }
-                .bv-pick-dest.bv-pick-lms .bv-pick-dest-icon {
-                    border-color: #f59e0b33;
-                }
-                .bv-pick-dest h3 {
-                    margin: 0 0 8px;
-                    font-size: 16px;
+                .bv-pick-dest-label {
+                    display: block;
+                    font-size: 11px;
                     font-weight: 700;
+                    letter-spacing: 1.5px;
+                    text-transform: uppercase;
+                    margin: 0 0 6px;
+                    color: #9ca3af;
+                }
+                .bv-pick-dest.bv-pick-portal .bv-pick-dest-label { color: <?php echo esc_attr( $primary_color ); ?>; }
+                .bv-pick-dest.bv-pick-lms .bv-pick-dest-label { color: #b45309; }
+                .bv-pick-dest h3 {
+                    margin: 0 0 12px;
+                    font-size: 22px;
+                    font-weight: 800;
+                    color: #111827;
+                    line-height: 1.2;
                 }
                 .bv-pick-dest p {
-                    margin: 0 0 16px;
-                    font-size: 13px;
-                    color: #6b7280;
-                    line-height: 1.5;
+                    margin: 0 0 20px;
+                    font-size: 14px;
+                    color: #4b5563;
+                    line-height: 1.6;
                 }
-                .bv-pick-dest.bv-pick-portal h3 { color: <?php echo esc_attr( $primary_color ); ?>; }
-                .bv-pick-dest.bv-pick-lms h3 { color: #b45309; }
-                .bv-pick-dest .bv-pick-arrow {
-                    font-size: 13px;
+                .bv-pick-dest-cta {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-size: 14px;
                     font-weight: 600;
+                    padding: 10px 22px;
+                    border-radius: 999px;
+                    transition: background 0.2s, color 0.2s, transform 0.15s;
                 }
-                .bv-pick-dest.bv-pick-portal .bv-pick-arrow { color: <?php echo esc_attr( $primary_color ); ?>; }
-                .bv-pick-dest.bv-pick-lms .bv-pick-arrow { color: #b45309; }
+                .bv-pick-dest.bv-pick-portal .bv-pick-dest-cta {
+                    background: <?php echo esc_attr( $primary_color ); ?>12;
+                    color: <?php echo esc_attr( $primary_color ); ?>;
+                }
+                .bv-pick-dest.bv-pick-portal:hover .bv-pick-dest-cta {
+                    background: <?php echo esc_attr( $primary_color ); ?>;
+                    color: #fff;
+                }
+                .bv-pick-dest.bv-pick-lms .bv-pick-dest-cta {
+                    background: #f59e0b1a;
+                    color: #b45309;
+                }
+                .bv-pick-dest.bv-pick-lms:hover .bv-pick-dest-cta {
+                    background: #d97706;
+                    color: #fff;
+                }
                 .bv-pick-footer {
                     text-align: center;
                     padding: 0 24px 24px;
@@ -1130,8 +1172,10 @@ class BV_Shortcodes {
                     width: 16px;
                     height: 16px;
                 }
-                @media (max-width: 500px) {
-                    .bv-pick-destinations { flex-direction: column; gap: 12px; }
+                @media (max-width: 600px) {
+                    .bv-pick-destinations { flex-direction: column; gap: 16px; padding: 20px; }
+                    .bv-pick-dest-icon { width: 100px; height: 100px; }
+                    .bv-pick-dest h3 { font-size: 20px; }
                 }
             </style>
 
@@ -1154,23 +1198,31 @@ class BV_Shortcodes {
                     <div class="bv-pick-destinations">
                         <?php if ( $portal_url ) : ?>
                         <a href="<?php echo esc_url( $portal_url ); ?>" class="bv-pick-dest bv-pick-portal">
-                            <div class="bv-pick-dest-icon">
-                                <img src="<?php echo esc_url( BV_PLUGIN_URL . 'assets/img/businessvance-logo.png' ); ?>" alt="BusinessVance" />
+                            <div class="bv-pick-dest-accent"></div>
+                            <div class="bv-pick-dest-body">
+                                <div class="bv-pick-dest-icon">
+                                    <img src="<?php echo esc_url( BV_PLUGIN_URL . 'assets/img/businessvance-logo.png' ); ?>" alt="BusinessVance" />
+                                </div>
+                                <span class="bv-pick-dest-label"><?php esc_html_e( 'Client Portal', 'businessvance-services-manager' ); ?></span>
+                                <h3>BusinessVance</h3>
+                                <p><?php esc_html_e( 'Business consulting services — manage your projects, sign agreements, upload required documents, and download completed reports from your consultant.', 'businessvance-services-manager' ); ?></p>
+                                <span class="bv-pick-dest-cta"><?php esc_html_e( 'Open BusinessVance Portal', 'businessvance-services-manager' ); ?> →</span>
                             </div>
-                            <h3><?php esc_html_e( 'Client Portal', 'businessvance-services-manager' ); ?></h3>
-                            <p><?php esc_html_e( 'View projects, upload documents, and track your service progress.', 'businessvance-services-manager' ); ?></p>
-                            <span class="bv-pick-arrow"><?php esc_html_e( 'Open Portal →', 'businessvance-services-manager' ); ?></span>
                         </a>
                         <?php endif; ?>
 
                         <?php if ( $tutor_url ) : ?>
                         <a href="<?php echo esc_url( $tutor_url ); ?>" class="bv-pick-dest bv-pick-lms">
-                            <div class="bv-pick-dest-icon">
-                                <img src="<?php echo esc_url( BV_PLUGIN_URL . 'assets/img/studyvance-logo.png' ); ?>" alt="StudyVance" />
+                            <div class="bv-pick-dest-accent"></div>
+                            <div class="bv-pick-dest-body">
+                                <div class="bv-pick-dest-icon">
+                                    <img src="<?php echo esc_url( BV_PLUGIN_URL . 'assets/img/studyvance-logo.png' ); ?>" alt="StudyVance" />
+                                </div>
+                                <span class="bv-pick-dest-label"><?php esc_html_e( 'LMS Dashboard', 'businessvance-services-manager' ); ?></span>
+                                <h3>StudyVance</h3>
+                                <p><?php esc_html_e( 'Online learning platform — access your courses, lessons, quizzes, study materials, and track your learning progress.', 'businessvance-services-manager' ); ?></p>
+                                <span class="bv-pick-dest-cta"><?php esc_html_e( 'Open StudyVance Dashboard', 'businessvance-services-manager' ); ?> →</span>
                             </div>
-                            <h3><?php esc_html_e( 'LMS Dashboard', 'businessvance-services-manager' ); ?></h3>
-                            <p><?php esc_html_e( 'Access your courses, lessons, quizzes, and learning materials.', 'businessvance-services-manager' ); ?></p>
-                            <span class="bv-pick-arrow"><?php esc_html_e( 'Open Dashboard →', 'businessvance-services-manager' ); ?></span>
                         </a>
                         <?php endif; ?>
                     </div>
