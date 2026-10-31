@@ -2,6 +2,13 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.87] - 2026-08-31
+### Changed
+- **Removed logo from the destination picker header banner** — the brand logo that previously sat above the "Welcome back" heading has been removed, leaving a clean gradient banner with just the heading and subtitle. The brand identity is now carried by the two card logos (BusinessVance / StudyVance) below.
+- **Switched all login/registration/picker pages to the Inter font family** (loaded from Google Fonts). Inter is the modern industry-standard font for SaaS dashboards — significantly cleaner and more legible than the previous `'Segoe UI', Tahoma, Geneva, Verdana` stack.
+- **Polished the picker header typography**: heading bumped to 26px / weight 800 with tight letter-spacing for a more modern look, subtitle increased to 15px at 90% opacity for better readability, and padding rebalanced (40px top / 32px bottom) for visual rhythm.
+- Font-smoothing hints (`-webkit-font-smoothing: antialiased`) added to all three wrappers for crisp rendering on macOS/iOS.
+
 ## [2.7.86] - 2026-08-31
 ### Changed
 - **Destination picker cards redesigned for clarity and presence:**

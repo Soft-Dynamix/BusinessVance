@@ -466,6 +466,16 @@ class BV_Shortcodes {
             }
             wp_add_inline_style( 'bv-frontend-css', $dynamic_css );
         }
+
+        // Load Inter font on the [bv_login_page] (login/register/destination picker)
+        if ( is_a( $post, 'WP_Post' ) && has_shortcode( $post->post_content, 'bv_login_page' ) ) {
+            wp_enqueue_style(
+                'bv-inter-font',
+                'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap',
+                array(),
+                null
+            );
+        }
     }
 
     /**
@@ -989,7 +999,9 @@ class BV_Shortcodes {
                 .bv-pick-wrap {
                     max-width: 880px;
                     margin: 40px auto;
-                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                    -webkit-font-smoothing: antialiased;
+                    -moz-osx-font-smoothing: grayscale;
                 }
                 .bv-pick-success {
                     display: flex;
@@ -1015,25 +1027,21 @@ class BV_Shortcodes {
                 }
                 .bv-pick-header {
                     background: linear-gradient(135deg, <?php echo esc_attr( $primary_color ); ?> 0%, <?php echo esc_attr( $secondary_color ); ?> 100%);
-                    padding: 32px 28px 28px;
+                    padding: 40px 28px 32px;
                     text-align: center;
-                }
-                .bv-pick-logo {
-                    max-height: 60px;
-                    max-width: 200px;
-                    margin-bottom: 16px;
-                    border-radius: 4px;
                 }
                 .bv-pick-header h2 {
                     margin: 0;
-                    font-size: 22px;
-                    font-weight: 700;
+                    font-size: 26px;
+                    font-weight: 800;
                     color: #fff;
+                    letter-spacing: -0.02em;
                 }
                 .bv-pick-header p {
-                    margin: 8px 0 0;
-                    font-size: 14px;
-                    color: rgba(255,255,255,0.85);
+                    margin: 10px 0 0;
+                    font-size: 15px;
+                    color: rgba(255,255,255,0.9);
+                    font-weight: 400;
                 }
                 .bv-pick-destinations {
                     display: flex;
@@ -1188,9 +1196,6 @@ class BV_Shortcodes {
                 <?php endif; ?>
                 <div class="bv-pick-card">
                     <div class="bv-pick-header">
-                        <?php if ( $logo_url ) : ?>
-                            <img src="<?php echo esc_url( $logo_url ); ?>" alt="" class="bv-pick-logo" />
-                        <?php endif; ?>
                         <h2><?php echo esc_html( $title ); ?></h2>
                         <p><?php esc_html_e( 'Where would you like to go?', 'businessvance-services-manager' ); ?></p>
                     </div>
@@ -1272,7 +1277,9 @@ class BV_Shortcodes {
                 .bv-reg-wrap {
                     max-width: 440px;
                     margin: 40px auto;
-                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                    -webkit-font-smoothing: antialiased;
+                    -moz-osx-font-smoothing: grayscale;
                 }
                 .bv-reg-card {
                     background: #fff;
@@ -1500,7 +1507,9 @@ class BV_Shortcodes {
             .bv-login-wrap {
                 max-width: 440px;
                 margin: 40px auto;
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
             }
             .bv-login-card {
                 background: #fff;
