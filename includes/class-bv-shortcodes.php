@@ -28,6 +28,9 @@ class BV_Shortcodes {
         // Logout endpoint: ?bv_logout=1 — for use in nav menus
         add_action( 'init', array( $this, 'handle_logout_endpoint' ) );
 
+        // Registration form handler (POSTs from [bv_login_page] ?register=1)
+        add_action( 'init', array( $this, 'handle_registration' ), 20 );
+
         // Role-based login redirect (priority 100 — consultant filter at 99999 overrides for consultants)
         add_filter( 'woocommerce_login_redirect', array( $this, 'bv_login_redirect' ), 100, 2 );
         add_filter( 'login_redirect', array( $this, 'bv_login_redirect' ), 100, 2 );
@@ -53,6 +56,284 @@ class BV_Shortcodes {
             wp_safe_redirect( $login_url );
             exit;
         }
+    }
+
+    /**
+     * Resolve the BV login page URL.
+     *
+     * @since 2.7.84
+     * @return string
+     */
+    private function get_login_page_url() {
+        $page = get_page_by_path( 'bv-login' );
+        if ( $page ) {
+            return get_permalink( $page->ID );
+        }
+        // Fallback: look for any page containing the login shortcode
+        $found = get_posts( array(
+            'post_type'      => 'page',
+            'posts_per_page' => 1,
+            'post_status'    => 'publish',
+            's'              => '[bv_login_page]',
+        ) );
+        if ( ! empty( $found ) ) {
+            return get_permalink( $found[0]->ID );
+        }
+        return home_url( '/bv-login/' );
+    }
+
+    /**
+     * Handle registration form submission from [bv_login_page] ?register=1.
+     *
+     * Creates the account (WooCommerce "customer" role when WC is active),
+     * sends a branded welcome email, auto-logs the user in, and redirects
+     * to the login page which then shows the destination picker.
+     *
+     * @since 2.7.84
+     */
+    public function handle_registration() {
+        if ( empty( $_POST['bv_register_source'] ) ) {
+            return;
+        }
+
+        $login_url    = $this->get_login_page_url();
+        $register_url = add_query_arg( 'register', '1', $login_url );
+
+        /**
+         * Redirect back to the registration form with an error code,
+         * preserving the entered first name / last name / email.
+         */
+        $fail = function ( $error_code ) use ( $register_url ) {
+            wp_safe_redirect( add_query_arg( array_filter( array(
+                'bv_reg_error' => $error_code,
+                'fn'           => isset( $_POST['first_name'] ) ? sanitize_text_field( wp_unslash( $_POST['first_name'] ) ) : '',
+                'ln'           => isset( $_POST['last_name'] ) ? sanitize_text_field( wp_unslash( $_POST['last_name'] ) ) : '',
+                'em'           => isset( $_POST['email'] ) ? sanitize_email( wp_unslash( $_POST['email'] ) ) : '',
+            ) ), $register_url ) );
+            exit;
+        };
+
+        // Security: nonce check
+        if ( ! isset( $_POST['bv_register_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['bv_register_nonce'] ) ), 'bv_register' ) ) {
+            $fail( 'security' );
+        }
+
+        // Honeypot: real users never see/fill this field. Bots get a fake success.
+        if ( ! empty( $_POST['bv_hp_website'] ) ) {
+            wp_safe_redirect( $login_url );
+            exit;
+        }
+
+        // Already logged in? Nothing to register.
+        if ( is_user_logged_in() ) {
+            wp_safe_redirect( $login_url );
+            exit;
+        }
+
+        $first_name = isset( $_POST['first_name'] ) ? sanitize_text_field( wp_unslash( $_POST['first_name'] ) ) : '';
+        $last_name  = isset( $_POST['last_name'] ) ? sanitize_text_field( wp_unslash( $_POST['last_name'] ) ) : '';
+        $email      = isset( $_POST['email'] ) ? sanitize_email( wp_unslash( $_POST['email'] ) ) : '';
+        $password   = isset( $_POST['password'] ) ? (string) wp_unslash( $_POST['password'] ) : '';
+        $confirm    = isset( $_POST['password_confirm'] ) ? (string) wp_unslash( $_POST['password_confirm'] ) : '';
+
+        // Validation
+        if ( empty( $first_name ) ) {
+            $fail( 'first_name' );
+        }
+        if ( empty( $email ) || ! is_email( $email ) ) {
+            $fail( 'email_invalid' );
+        }
+        if ( email_exists( $email ) ) {
+            $fail( 'email_exists' );
+        }
+        if ( strlen( $password ) < 8 ) {
+            $fail( 'password_length' );
+        }
+        if ( $password !== $confirm ) {
+            $fail( 'password_mismatch' );
+        }
+
+        // Generate a unique username from the email local part
+        $username = sanitize_user( current( explode( '@', $email ) ), true );
+        if ( strlen( $username ) < 3 ) {
+            $username = 'client_' . wp_generate_password( 6, false );
+        }
+        $base_username = $username;
+        $suffix = 1;
+        while ( username_exists( $username ) ) {
+            $username = $base_username . $suffix;
+            $suffix++;
+        }
+
+        // Use the "customer" role when WooCommerce is active (consistent with checkout accounts)
+        $role = class_exists( 'WooCommerce' ) ? 'customer' : 'subscriber';
+
+        $user_id = wp_insert_user( array(
+            'user_login'   => $username,
+            'user_email'   => $email,
+            'user_pass'    => $password,
+            'first_name'   => $first_name,
+            'last_name'    => $last_name,
+            'display_name' => trim( $first_name . ' ' . $last_name ),
+            'role'         => $role,
+        ) );
+
+        if ( is_wp_error( $user_id ) ) {
+            $fail( 'create_failed' );
+        }
+
+        // Hide the WP admin bar on the front-end for clients (explicit meta —
+        // passing a string 'false' to wp_insert_user is truthy and won't work)
+        update_user_meta( $user_id, 'show_admin_bar_front', 'false' );
+
+        // Send branded welcome email
+        $this->send_welcome_email( $user_id, $email, $first_name );
+
+        /**
+         * Fires after a client account is created via the [bv_login_page] registration form.
+         *
+         * @since 2.7.84
+         * @param int    $user_id   New user ID.
+         * @param string $email     New user email.
+         */
+        do_action( 'bv_client_registered', (int) $user_id, $email );
+
+        // Auto-login and land on the destination picker with a success banner
+        wp_set_current_user( $user_id );
+        wp_set_auth_cookie( $user_id, true );
+        wp_safe_redirect( add_query_arg( 'bv_registered', '1', $login_url ) );
+        exit;
+    }
+
+    /**
+     * Send the branded welcome email after successful registration.
+     *
+     * @since 2.7.84
+     * @param int    $user_id    User ID.
+     * @param string $email      User email.
+     * @param string $first_name First name for the greeting.
+     */
+    private function send_welcome_email( $user_id, $email, $first_name ) {
+        $settings      = BV_Settings::get_settings();
+        $company_name  = $settings['company_name'] ?? 'BusinessVance';
+        $portal_url    = $settings['portal_url'] ?? '';
+
+        if ( empty( $portal_url ) ) {
+            $portal_page = get_page_by_path( 'client-portal' );
+            $portal_url  = $portal_page ? get_permalink( $portal_page->ID ) : site_url();
+        }
+
+        $message = sprintf(
+            /* translators: 1: first name, 2: company name */
+            esc_html__( 'Welcome to %2$s! Your account has been created successfully.', 'businessvance-services-manager' ) . "\n\n" .
+            esc_html__( 'You can now sign in anytime using your email address (%3$s) and the password you chose.', 'businessvance-services-manager' ) . "\n\n" .
+            esc_html__( 'From your client portal you can track project progress, upload documents, sign agreements, and download completed reports.', 'businessvance-services-manager' ),
+            $first_name, $company_name, $email
+        );
+
+        $body = $this->build_branded_email(
+            sprintf( /* translators: %s: first name */ esc_html__( 'Hello %s,', 'businessvance-services-manager' ), $first_name ),
+            $message,
+            esc_html__( 'Go to My Client Portal', 'businessvance-services-manager' ),
+            $portal_url,
+            $settings
+        );
+
+        $from_email   = $settings['consultant_email'] ?? get_option( 'admin_email' );
+        $preferred_from = ! empty( $settings['email_address'] ) ? $settings['email_address'] : '';
+        $headers = BV_Settings::build_email_headers( array(
+            'to_email'     => $email,
+            'company_name' => $company_name,
+            'from_email'   => $preferred_from,
+            'reply_to_email' => $from_email,
+            'content_type' => 'text/html',
+            'notification_type' => 'welcome',
+        ) );
+
+        $subject = sprintf( /* translators: %s: company name */ esc_html__( 'Welcome to %s', 'businessvance-services-manager' ), $company_name );
+
+        BV_Settings::start_bv_email( BV_Settings::$last_resolved_from, $company_name );
+        wp_mail( $email, $subject, $body, $headers );
+        BV_Settings::end_bv_email();
+    }
+
+    /**
+     * Build a branded HTML email (matches the consultant dashboard template).
+     *
+     * @since 2.7.84
+     * @param string $greeting      Greeting line, e.g. "Hello John,".
+     * @param string $message_body  Plain-text body (newlines become <br>).
+     * @param string $cta_text      CTA button label ('' to hide).
+     * @param string $cta_url       CTA button URL.
+     * @param array  $extra_settings Pre-fetched settings (optional).
+     * @return string HTML email body.
+     */
+    private function build_branded_email( $greeting, $message_body, $cta_text = '', $cta_url = '', $extra_settings = array() ) {
+        $settings      = ! empty( $extra_settings ) ? $extra_settings : BV_Settings::get_settings();
+        $company_name  = $settings['company_name'] ?? 'BusinessVance';
+        $primary_color = $settings['primary_color'] ?? '#1a1a2e';
+        $logo_url      = $settings['logo_url'] ?? '';
+
+        if ( empty( $cta_url ) ) {
+            $cta_url = site_url();
+        }
+
+        // Convert plain text newlines to <br>
+        $html_body = nl2br( esc_html( $message_body ) );
+
+        // Header content
+        if ( ! empty( $logo_url ) ) {
+            $header_content = '<img src="' . esc_url( $logo_url ) . '" alt="' . esc_attr( $company_name ) . '" width="120" style="display:block;" />';
+        } else {
+            $header_content = '<span style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.5px;">' . esc_html( $company_name ) . '</span>';
+        }
+
+        $email = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head><body style="margin:0;padding:0;background-color:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,\'Helvetica Neue\',Arial,sans-serif;">'
+        . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6;min-height:100%;padding:32px 16px;">'
+        . '<tr><td align="center">'
+
+        // Header banner
+        . '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;margin:0 auto;">'
+        . '<tr><td bgcolor="' . esc_attr( $primary_color ) . '" style="background-color:' . esc_attr( $primary_color ) . ';padding:28px 32px;text-align:center;">'
+        . $header_content
+        . '</td></tr>'
+
+        // Main content
+        . '<tr><td style="background-color:#ffffff;padding:40px 32px;">'
+
+        // Greeting
+        . '<p style="margin:0 0 16px;font-size:20px;font-weight:700;color:#111827;">' . $greeting . '</p>'
+
+        // Body message
+        . '<div style="font-size:15px;color:#374151;line-height:1.6;margin-bottom:24px;">' . $html_body . '</div>'
+
+        // CTA button
+        . ( ! empty( $cta_text )
+            ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">'
+              . '<tr><td align="center" style="padding:0;">'
+              . '<table role="presentation" cellpadding="0" cellspacing="0" border="0">'
+              . '<tr><td style="background-color:' . esc_attr( $primary_color ) . ';border-radius:6px;padding:0;">'
+              . '<a href="' . esc_url( $cta_url ) . '" target="_blank" style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;"><font color="#ffffff" style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif;font-size:15px;font-weight:700;">' . esc_html( $cta_text ) . '</font></a>'
+              . '</td></tr></table>'
+              . '</td></tr>'
+              . '<tr><td align="center" style="padding:0;">'
+              . '<p style="margin:0;font-size:12px;color:#999999;">If the button doesn\'t work, paste this link: <a href="' . esc_url( $cta_url ) . '" style="color:#2563EB;word-break:break-all;text-decoration:underline;">' . esc_html( $cta_url ) . '</a></p>'
+              . '</td></tr></table>'
+            : '' )
+
+        . '</td></tr>' // End main content
+
+        // Footer
+        . '<tr><td style="background-color:#ffffff;padding:24px 32px 32px;border-top:1px solid #e5e7eb;text-align:center;">'
+        . '<p style="margin:0 0 4px;font-size:13px;color:#777777;">If you have any questions, feel free to reply to this email.</p>'
+        . '<p style="margin:0;font-size:13px;color:#999999;">Best regards,<br><strong style="color:#555555;">' . esc_html( $company_name ) . '</strong></p>'
+        . '</td></tr>'
+
+        . '</table>' // End 600px wrapper
+        . '</td></tr></table>' // End outer
+        . '</body></html>';
+
+        return $email;
     }
 
     /**
@@ -620,15 +901,27 @@ class BV_Shortcodes {
     /**
      * Branded login page shortcode [bv_login_page]
      *
-     * Two-step flow:
-     *  1. Not logged in → shows a clean WooCommerce login form
-     *  2. After login → shows a destination picker with two cards:
+     * Three states:
+     *  1. Not logged in (default) → shows a clean login form
+     *  2. Not logged in + ?register=1 → shows a branded registration form
+     *     (creates a WooCommerce "customer" account, sends a branded welcome
+     *     email, auto-logs the user in)
+     *  3. Logged in → shows a destination picker with two cards:
      *     - Client Portal (URL from admin settings: portal_url)
      *     - LMS Dashboard (URL from admin settings: tutor_dashboard_url)
+     *     Shows an "Account created successfully!" banner after registration
+     *     (?bv_registered=1).
+     *
+     * The "Create an account" link in the login footer points to ?register=1
+     * on this page (or the register_url shortcode attribute when provided).
      *
      * Consultant Dashboard is completely separate (wp-admin) and NOT shown here.
      *
      * @since 2.7.61
+     * @since 2.7.84 Added built-in registration form (?register=1) — the link
+     *               previously went to WooCommerce My Account, which shows only
+     *               a login form when "enable registration on My Account" is
+     *               off (the WooCommerce default).
      * @return string HTML output
      */
     public function render_login_page( $atts ) {
@@ -644,12 +937,16 @@ class BV_Shortcodes {
         $logo_url        = $settings['logo_url'] ?? '';
         $register_url    = $atts['register_url'];
 
-        // Auto-detect registration URL (WooCommerce My Account)
-        if ( empty( $register_url ) && function_exists( 'wc_get_page_permalink' ) ) {
-            $my_account = wc_get_page_permalink( 'myaccount' );
-            if ( $my_account ) {
-                $register_url = $my_account;
-            }
+        // Resolve the registration URL.
+        // Priority: explicit register_url shortcode attribute > our own branded
+        // registration form (?register=1 on this page — always available).
+        // NOTE: we deliberately no longer fall back to the WooCommerce My Account
+        // page, because when "Allow customers to create an account on the My
+        // account page" is disabled (the WooCommerce default) that page shows
+        // only a login form — which is how "Create an account" ended up on a
+        // login screen.
+        if ( empty( $register_url ) ) {
+            $register_url = add_query_arg( 'register', '1', get_permalink() ?: home_url( '/' ) );
         }
 
         // Resolve portal URL
@@ -684,6 +981,7 @@ class BV_Shortcodes {
             $user    = wp_get_current_user();
             $title   = $atts['title'] ?: sprintf( esc_html__( 'Welcome back, %s', 'businessvance-services-manager' ), $user->first_name ?: $user->display_name );
             $current_page = $_SERVER['REQUEST_URI'] ?? '';
+            $just_registered = isset( $_GET['bv_registered'] ) && $_GET['bv_registered'] === '1';
 
             ob_start();
             ?>
@@ -692,6 +990,22 @@ class BV_Shortcodes {
                     max-width: 620px;
                     margin: 40px auto;
                     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                }
+                .bv-pick-success {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    background: #f0fdf4;
+                    border: 1px solid #bbf7d0;
+                    color: #15803d;
+                    padding: 14px 18px;
+                    border-radius: 10px;
+                    margin-bottom: 16px;
+                    font-size: 14px;
+                    font-weight: 600;
+                }
+                .bv-pick-success svg {
+                    flex-shrink: 0;
                 }
                 .bv-pick-card {
                     background: #fff;
@@ -812,6 +1126,12 @@ class BV_Shortcodes {
             </style>
 
             <div class="bv-pick-wrap">
+                <?php if ( $just_registered ) : ?>
+                    <div class="bv-pick-success" role="status">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        <?php esc_html_e( 'Account created successfully! Welcome aboard.', 'businessvance-services-manager' ); ?>
+                    </div>
+                <?php endif; ?>
                 <div class="bv-pick-card">
                     <div class="bv-pick-header">
                         <?php if ( $logo_url ) : ?>
@@ -851,6 +1171,250 @@ class BV_Shortcodes {
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                             <?php esc_html_e( 'Log Out', 'businessvance-services-manager' ); ?>
                         </a>
+                    </div>
+                </div>
+            </div>
+            <?php
+            return ob_get_clean();
+        }
+
+        // ---- Not logged in + ?register=1: show registration form ----
+        if ( isset( $_GET['register'] ) && $_GET['register'] === '1' ) {
+            $title    = esc_html__( 'Create Your Account', 'businessvance-services-manager' );
+            $subtitle = esc_html__( 'Sign up to access your client portal and courses.', 'businessvance-services-manager' );
+
+            // Friendly error messages from the registration handler
+            $reg_errors = array(
+                'security'          => esc_html__( 'Your session expired. Please try again.', 'businessvance-services-manager' ),
+                'first_name'        => esc_html__( 'Please enter your first name.', 'businessvance-services-manager' ),
+                'email_invalid'     => esc_html__( 'Please enter a valid email address.', 'businessvance-services-manager' ),
+                'email_exists'      => esc_html__( 'An account with this email already exists. Please sign in instead.', 'businessvance-services-manager' ),
+                'password_length'   => esc_html__( 'Password must be at least 8 characters long.', 'businessvance-services-manager' ),
+                'password_mismatch' => esc_html__( 'Passwords do not match.', 'businessvance-services-manager' ),
+                'create_failed'     => esc_html__( 'We couldn\'t create your account. Please try again or contact support.', 'businessvance-services-manager' ),
+            );
+            $reg_error_code   = isset( $_GET['bv_reg_error'] ) ? sanitize_key( wp_unslash( $_GET['bv_reg_error'] ) ) : '';
+            $reg_error_message = $reg_error_code && isset( $reg_errors[ $reg_error_code ] ) ? $reg_errors[ $reg_error_code ] : '';
+
+            // Preserve entered values after an error redirect
+            $prefill_fn = isset( $_GET['fn'] ) ? sanitize_text_field( wp_unslash( $_GET['fn'] ) ) : '';
+            $prefill_ln = isset( $_GET['ln'] ) ? sanitize_text_field( wp_unslash( $_GET['ln'] ) ) : '';
+            $prefill_em = isset( $_GET['em'] ) ? sanitize_email( wp_unslash( $_GET['em'] ) ) : '';
+
+            // Link back to the plain login form (same page, no query args)
+            $login_clean_url = get_permalink() ?: home_url( '/' );
+
+            ob_start();
+            ?>
+            <style>
+                .bv-reg-wrap {
+                    max-width: 440px;
+                    margin: 40px auto;
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                }
+                .bv-reg-card {
+                    background: #fff;
+                    border-radius: 16px;
+                    box-shadow: 0 4px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+                    overflow: hidden;
+                }
+                .bv-reg-header {
+                    background: linear-gradient(135deg, <?php echo esc_attr( $primary_color ); ?> 0%, <?php echo esc_attr( $secondary_color ); ?> 100%);
+                    padding: 32px 28px 28px;
+                    text-align: center;
+                }
+                .bv-reg-logo {
+                    max-height: 60px;
+                    max-width: 200px;
+                    margin-bottom: 16px;
+                    border-radius: 4px;
+                }
+                .bv-reg-header h2 {
+                    margin: 0;
+                    font-size: 22px;
+                    font-weight: 700;
+                    color: #fff;
+                }
+                .bv-reg-header p {
+                    margin: 8px 0 0;
+                    font-size: 14px;
+                    color: rgba(255,255,255,0.85);
+                }
+                .bv-reg-body {
+                    padding: 32px 28px 8px;
+                }
+                .bv-reg-form .bv-reg-row {
+                    display: flex;
+                    gap: 12px;
+                }
+                .bv-reg-form .bv-reg-row .bv-reg-field {
+                    flex: 1;
+                }
+                .bv-reg-form .bv-reg-field {
+                    margin-bottom: 18px;
+                }
+                .bv-reg-form .bv-reg-field label {
+                    display: block;
+                    margin-bottom: 6px;
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: #374151;
+                }
+                .bv-reg-form .bv-reg-field label .bv-reg-optional {
+                    font-weight: 400;
+                    color: #9ca3af;
+                }
+                .bv-reg-form .bv-reg-field input {
+                    width: 100%;
+                    padding: 12px 14px;
+                    border: 1.5px solid #d1d5db;
+                    border-radius: 8px;
+                    font-size: 15px;
+                    transition: border-color 0.2s, box-shadow 0.2s;
+                    box-sizing: border-box;
+                    outline: none;
+                }
+                .bv-reg-form .bv-reg-field input:focus {
+                    border-color: <?php echo esc_attr( $primary_color ); ?>;
+                    box-shadow: 0 0 0 3px rgba(0,43,92,0.1);
+                }
+                .bv-reg-hint {
+                    margin: -10px 0 18px;
+                    font-size: 12px;
+                    color: #9ca3af;
+                }
+                .bv-reg-submit {
+                    width: 100%;
+                    padding: 13px;
+                    background: linear-gradient(135deg, <?php echo esc_attr( $primary_color ); ?> 0%, <?php echo esc_attr( $secondary_color ); ?> 100%);
+                    color: #fff;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 15px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: opacity 0.2s, transform 0.1s;
+                }
+                .bv-reg-submit:hover {
+                    opacity: 0.9;
+                }
+                .bv-reg-submit:active {
+                    transform: scale(0.98);
+                }
+                .bv-reg-footer {
+                    text-align: center;
+                    padding: 16px 28px 28px;
+                    font-size: 14px;
+                    color: #6b7280;
+                }
+                .bv-reg-footer a {
+                    color: <?php echo esc_attr( $primary_color ); ?>;
+                    text-decoration: none;
+                    font-weight: 600;
+                }
+                .bv-reg-footer a:hover {
+                    text-decoration: underline;
+                }
+                .bv-reg-error {
+                    background: #fef2f2;
+                    border: 1px solid #fecaca;
+                    color: #dc2626;
+                    padding: 12px 16px;
+                    border-radius: 8px;
+                    margin-bottom: 20px;
+                    font-size: 14px;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+                .bv-reg-error a {
+                    color: #dc2626;
+                    font-weight: 600;
+                    text-decoration: underline;
+                }
+                .bv-reg-hp {
+                    position: absolute !important;
+                    left: -9999px !important;
+                    height: 1px;
+                    width: 1px;
+                    overflow: hidden;
+                }
+                @media (max-width: 480px) {
+                    .bv-reg-form .bv-reg-row {
+                        flex-direction: column;
+                        gap: 0;
+                    }
+                }
+            </style>
+
+            <div class="bv-reg-wrap">
+                <div class="bv-reg-card">
+                    <div class="bv-reg-header">
+                        <?php if ( $logo_url ) : ?>
+                            <img src="<?php echo esc_url( $logo_url ); ?>" alt="" class="bv-reg-logo" />
+                        <?php endif; ?>
+                        <h2><?php echo esc_html( $title ); ?></h2>
+                        <p><?php echo esc_html( $subtitle ); ?></p>
+                    </div>
+
+                    <div class="bv-reg-body">
+                        <?php if ( $reg_error_message ) : ?>
+                            <div class="bv-reg-error" role="alert">
+                                <span>&#9888;</span>
+                                <span><?php echo $reg_error_message; ?>
+                                <?php if ( $reg_error_code === 'email_exists' ) : ?>
+                                    <a href="<?php echo esc_url( $login_clean_url ); ?>"><?php esc_html_e( 'Sign in', 'businessvance-services-manager' ); ?></a>
+                                <?php endif; ?>
+                                </span>
+                            </div>
+                        <?php endif; ?>
+
+                        <form method="post" class="bv-reg-form" novalidate>
+                            <?php wp_nonce_field( 'bv_register', 'bv_register_nonce' ); ?>
+                            <input type="hidden" name="bv_register_source" value="1" />
+
+                            <!-- Honeypot: hidden from humans, tempting for bots -->
+                            <div class="bv-reg-hp" aria-hidden="true">
+                                <label for="bv_hp_website">Website</label>
+                                <input type="text" id="bv_hp_website" name="bv_hp_website" tabindex="-1" autocomplete="off" />
+                            </div>
+
+                            <div class="bv-reg-row">
+                                <div class="bv-reg-field">
+                                    <label for="bv_reg_first_name"><?php esc_html_e( 'First name', 'businessvance-services-manager' ); ?> *</label>
+                                    <input type="text" name="first_name" id="bv_reg_first_name" autocomplete="given-name" value="<?php echo esc_attr( $prefill_fn ); ?>" required />
+                                </div>
+                                <div class="bv-reg-field">
+                                    <label for="bv_reg_last_name"><?php esc_html_e( 'Last name', 'businessvance-services-manager' ); ?> <span class="bv-reg-optional">(<?php esc_html_e( 'optional', 'businessvance-services-manager' ); ?>)</span></label>
+                                    <input type="text" name="last_name" id="bv_reg_last_name" autocomplete="family-name" value="<?php echo esc_attr( $prefill_ln ); ?>" />
+                                </div>
+                            </div>
+
+                            <div class="bv-reg-field">
+                                <label for="bv_reg_email"><?php esc_html_e( 'Email address', 'businessvance-services-manager' ); ?> *</label>
+                                <input type="email" name="email" id="bv_reg_email" autocomplete="email" value="<?php echo esc_attr( $prefill_em ); ?>" required />
+                            </div>
+
+                            <div class="bv-reg-field">
+                                <label for="bv_reg_password"><?php esc_html_e( 'Password', 'businessvance-services-manager' ); ?> *</label>
+                                <input type="password" name="password" id="bv_reg_password" autocomplete="new-password" minlength="8" required />
+                            </div>
+                            <p class="bv-reg-hint"><?php esc_html_e( 'Minimum 8 characters.', 'businessvance-services-manager' ); ?></p>
+
+                            <div class="bv-reg-field">
+                                <label for="bv_reg_password_confirm"><?php esc_html_e( 'Confirm password', 'businessvance-services-manager' ); ?> *</label>
+                                <input type="password" name="password_confirm" id="bv_reg_password_confirm" autocomplete="new-password" minlength="8" required />
+                            </div>
+
+                            <button type="submit" name="bv_register_submit" value="1" class="bv-reg-submit">
+                                <?php esc_html_e( 'Create Account', 'businessvance-services-manager' ); ?>
+                            </button>
+                        </form>
+                    </div>
+
+                    <div class="bv-reg-footer">
+                        <?php esc_html_e( 'Already have an account?', 'businessvance-services-manager' ); ?>
+                        <a href="<?php echo esc_url( $login_clean_url ); ?>"><?php esc_html_e( 'Sign In', 'businessvance-services-manager' ); ?></a>
                     </div>
                 </div>
             </div>

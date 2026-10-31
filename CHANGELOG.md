@@ -2,6 +2,20 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.84] - 2026-08-31
+### Fixed
+- **"Create an account" went to a login screen** — the link auto-detected to the WooCommerce My Account page, which shows only a login form when "Allow customers to create an account on the My account page" is disabled (the WooCommerce default). The link now opens a branded registration form built into the plugin — no WooCommerce setting required.
+### Added
+- **Built-in registration form** on the `[bv_login_page]` page (`?register=1`), styled identically to the login card: first name, last name (optional), email, password, and confirm-password fields with inline validation and friendly error banners. Entered values are preserved after an error.
+- **Automatic account creation** with the WooCommerce "customer" role (falls back to "subscriber" when WooCommerce is inactive). Unique usernames are generated from the email address.
+- **Branded welcome email** sent after registration — same HTML template as all other client emails (logo header, primary-color CTA button, professional footer) with a "Go to My Client Portal" button.
+- **Auto-login after registration** — the new client is signed in immediately and lands on the destination picker with a green "Account created successfully!" banner.
+- **Spam protection**: nonce verification plus a hidden honeypot field (bots get a silent fake-success redirect, no account created).
+- **`bv_client_registered` action hook** fires after successful registration for integrations.
+- "Already have an account? Sign In" link on the registration form switches back to the login form.
+### Changed
+- The `register_url` shortcode attribute still works as an explicit override, but the automatic fallback is now the built-in `?register=1` form instead of WooCommerce My Account.
+
 ## [2.7.83] - 2026-08-30
 ### Added
 - **Delete report button** on consultant dashboard — red "🗑 Delete" button on every report with confirmation modal. Deletes the file from disk, database record, and activity log entries.
