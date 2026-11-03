@@ -253,6 +253,36 @@
     .bv-q-saving { color: #6b7280; font-size: 14px; font-style: italic; }
     .bv-q-saved { color: #059669; font-size: 14px; font-weight: 600; }
     .bv-q-error { color: #DC2626; font-size: 14px; font-weight: 600; }
+    .bv-q-info { color: #2563eb; font-size: 14px; font-weight: 600; }
+
+    /* v2.7.89: Autosave indicator pill — sits at the top of the form */
+    .bv-q-autosave-pill {
+        display: inline-block;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 5px 12px;
+        border-radius: 999px;
+        background: #f3f4f6;
+        color: #6b7280;
+        margin-bottom: 14px;
+        transition: background 0.2s, color 0.2s;
+        min-height: 24px;
+    }
+    .bv-q-autosave-pill:empty { display: none; }
+    .bv-q-autosave-pill.bv-q-as-saving {
+        background: #fef3c7;
+        color: #92400e;
+    }
+    .bv-q-autosave-pill.bv-q-as-saved {
+        background: #d1fae5;
+        color: #065f46;
+    }
+    .bv-q-autosave-pill.bv-q-as-error {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+    .bv-q-retry { cursor: pointer; }
+    .bv-q-retry:hover { opacity: 0.9; }
 
     /* Questionnaire Responsive */
     @media (max-width: 768px) {

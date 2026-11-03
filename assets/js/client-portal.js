@@ -834,6 +834,9 @@
             project_id: projectId
         }, function(r) {
             if (r.success) {
+                // v2.7.89: also clear the local backup so reset is truly clean
+                try { localStorage.removeItem('bv_q_backup_' + projectId); } catch(e) {}
+                try { sessionStorage.removeItem('bv_q_autosave_' + projectId); } catch(e) {}
                 $('#bv-q-status').html('<span class="bv-q-saved">&#10003; ' + bvEscapeHtml(r.data || 'Reset complete') + '</span>');
                 setTimeout(function() { window.location.reload(); }, 800);
             } else {
@@ -847,5 +850,358 @@
             $('.bv-reset-modal-cancel').prop('disabled', false);
         });
     });
+
+    // ============================================
+    // v2.7.89: Questionnaire safety net
+    //   - localStorage backup on every input (survives crashes / refreshes)
+    //   - silent autosave to server every 60s
+    //   - restore from backup on page load (with prompt)
+    //   - nonce keepalive every 5 min
+    //   - beforeunload warning when there are unsaved changes
+    //   - keep form data + add Retry button on save error
+    // ============================================
+    var bvQForm = $('#bv-questionnaire-form');
+    if (bvQForm.length) {
+        var bvProjectId = bvQForm.data('project-id');
+        var bvBackupKey = 'bv_q_backup_' + bvProjectId;
+        var bvAutosaveKey = 'bv_q_autosave_' + bvProjectId;
+        var bvLastSavedSig = null;     // signature of the last successfully-saved state
+        var bvDirty = false;            // true if there are unsaved changes since the last backup
+        var bvAutosaveInFlight = false; // prevent overlapping autosave requests
+        var bvKeepaliveTimer = null;
+        var bvAutosaveTimer = null;
+
+        // Build a compact snapshot of the current form state for localStorage.
+        // Reuses the existing bvCollectField() helper so all field types
+        // (text, textarea, radio, checkbox, select, signature, file-metadata,
+        // repeatable, address, etc.) are captured exactly the same way the
+        // server would receive them.
+        function bvSnapshotForm() {
+            var responses = {};
+            if (typeof window.tinyMCE !== 'undefined' && window.tinyMCE.activeEditor) {
+                window.tinyMCE.triggerSave();
+            }
+            var qids = {};
+            bvQForm.find('input[name^="q_"]:not([type="file"]), select[name^="q_"], textarea[name^="q_"]').each(function() {
+                var qid = bvExtractQid($(this).attr('name'));
+                if (qid) qids[qid] = true;
+            });
+            for (var qid in qids) {
+                var val = bvCollectField(bvQForm, qid);
+                if (val !== undefined && val !== '') responses[qid] = val;
+            }
+            // Hidden single-file + multifile metadata (server file refs)
+            bvQForm.find('input.bv-q-file-data, input.bv-q-multifile-data').each(function() {
+                var $h = $(this);
+                var qid = $h.data('qid');
+                if (qid && $h.val()) responses[qid] = $h.val();
+            });
+            // Signature canvases → data URL
+            bvQForm.find('.bv-q-signature-canvas').each(function() {
+                var canvas = this;
+                var qid = $(canvas).data('qid');
+                if (qid && canvas.toDataURL) {
+                    var blank = document.createElement('canvas');
+                    blank.width = canvas.width;
+                    blank.height = canvas.height;
+                    if (canvas.toDataURL() !== blank.toDataURL()) {
+                        responses[qid] = canvas.toDataURL('image/png');
+                    }
+                }
+            });
+            return responses;
+        }
+
+        // Compute a cheap hash of the snapshot so we can detect "no change"
+        // and skip redundant autosaves.
+        function bvSnapshotSig(responses) {
+            try { return JSON.stringify(responses); } catch(e) { return ''; }
+        }
+
+        // Persist the current form state to localStorage (instant, offline-safe).
+        function bvBackupLocal() {
+            var snap = bvSnapshotForm();
+            var sig = bvSnapshotSig(snap);
+            if (sig === bvLastSavedSig) {
+                bvDirty = false;
+                return;
+            }
+            try {
+                localStorage.setItem(bvBackupKey, JSON.stringify({
+                    ts: Date.now(),
+                    data: snap
+                }));
+                bvDirty = false;
+            } catch(e) {
+                // Quota exceeded or storage disabled — non-fatal; the server
+                // autosave is still the primary safety net.
+            }
+        }
+
+        // Apply a previously-saved snapshot back into the form fields.
+        function bvRestoreFromSnapshot(responses) {
+            if (!responses || typeof responses !== 'object') return;
+            for (var qid in responses) {
+                var val = responses[qid];
+                // text / textarea / select-one
+                bvQForm.find('[name="q_' + qid + '"]').each(function() {
+                    var $el = $(this);
+                    var type = $el.attr('type');
+                    if (type === 'radio') {
+                        $el.prop('checked', $el.val() === val);
+                    } else if (type === 'checkbox') {
+                        // val may be an array (checkbox group) or a JSON string
+                        var arr = Array.isArray(val) ? val : (function(){ try { return JSON.parse(val); } catch(e) { return [val]; } })();
+                        if (!Array.isArray(arr)) arr = [arr];
+                        $el.prop('checked', arr.indexOf($el.val()) !== -1);
+                    } else {
+                        $el.val(val);
+                    }
+                });
+                // Hidden file metadata
+                bvQForm.find('input.bv-q-file-data[data-qid="' + qid + '"], input.bv-q-multifile-data[data-qid="' + qid + '"]').val(val);
+                // Other-option text field
+                bvQForm.find('#q_' + qid + '_other_text').each(function() {
+                    // val for "other" text is stored separately in post_meta; we
+                    // only restore when the parent value is '__other__'
+                    if (val === '__other__') {
+                        $(this).show();
+                    }
+                });
+                // Signature canvas — restore drawing
+                bvQForm.find('.bv-q-signature-canvas[data-qid="' + qid + '"]').each(function() {
+                    if (typeof val === 'string' && val.indexOf('data:image/png;base64,') === 0) {
+                        var img = new Image();
+                        var canvas = this;
+                        img.onload = function() {
+                            var ctx = canvas.getContext('2d');
+                            ctx.clearRect(0, 0, canvas.width, canvas.height);
+                            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        };
+                        img.src = val;
+                    }
+                });
+            }
+        }
+
+        // ---- Status helpers (declared early so the restore-on-load IIFE below can use them) ----
+        var $bvStatusEl = $('#bv-q-status');
+        function bvShowStatus(type, msg, timeoutMs) {
+            var cls = type === 'error' ? 'bv-q-error' : (type === 'info' ? 'bv-q-info' : 'bv-q-saved');
+            $bvStatusEl.html('<span class="' + cls + '">' + bvEscapeHtml(msg) + '</span>');
+            if (timeoutMs) {
+                setTimeout(function() {
+                    if ($bvStatusEl.find('.' + cls).length) $bvStatusEl.empty();
+                }, timeoutMs);
+            }
+        }
+
+        // On page load: check for a previous backup and offer to restore.
+        // This fires after the server-rendered form (with any saved draft) is
+        // in the DOM, so the user can choose between the server draft and
+        // their more recent local backup.
+        (function bvMaybeRestore() {
+            var raw = null;
+            try { raw = localStorage.getItem(bvBackupKey); } catch(e) { return; }
+            if (!raw) return;
+            var parsed;
+            try { parsed = JSON.parse(raw); } catch(e) { return; }
+            if (!parsed || !parsed.data) return;
+            // Compare local backup to what's currently in the form. If they
+            // match, no restore needed. If they differ, prompt the user.
+            var currentSig = bvSnapshotSig(bvSnapshotForm());
+            var backupSig = bvSnapshotSig(parsed.data);
+            if (currentSig === backupSig) {
+                // Local backup matches the server-rendered state — clear it.
+                try { localStorage.removeItem(bvBackupKey); } catch(e) {}
+                return;
+            }
+            // There IS a meaningful difference. Prompt the user.
+            var msg = (bv_portal.i18n && bv_portal.i18n.restore_prompt) || 'We found unsaved answers from your previous session. Restore them?';
+            if (window.confirm(msg)) {
+                bvRestoreFromSnapshot(parsed.data);
+                bvShowStatus('info', 'Previous session restored.');
+            } else {
+                // User chose to discard — clear the local backup so it stops prompting.
+                try { localStorage.removeItem(bvBackupKey); } catch(e) {}
+            }
+        })();
+
+        // ---- Autosave indicator pill (top of the form) ----
+        var $bvAutosavePill = $('<span class="bv-q-autosave-pill" />').text('');
+        bvQForm.prepend($bvAutosavePill);
+
+        function bvUpdateAutosavePill(state, extra) {
+            // state: 'idle' | 'saving' | 'saved' | 'error'
+            $bvAutosavePill.removeClass('bv-q-as-saving bv-q-as-saved bv-q-as-error');
+            if (state === 'saving') {
+                $bvAutosavePill.addClass('bv-q-as-saving').html('&#8987; ' + (extra || 'Saving…'));
+            } else if (state === 'saved') {
+                $bvAutosavePill.addClass('bv-q-as-saved').html('&#10003; ' + (extra || 'Saved'));
+            } else if (state === 'error') {
+                $bvAutosavePill.addClass('bv-q-as-error').html('&#9888; ' + (extra || 'Autosave failed'));
+            } else {
+                $bvAutosavePill.html('');
+            }
+        }
+
+        // ---- Silent server autosave (uses the existing draft endpoint) ----
+        function bvAutosaveToServer() {
+            if (bvAutosaveInFlight) return;
+            var snap = bvSnapshotForm();
+            var sig = bvSnapshotSig(snap);
+            // Nothing to save / nothing changed since the last save
+            if (sig === bvLastSavedSig) return;
+            if ($.isEmptyObject(snap)) return; // empty form — nothing to save
+            bvAutosaveInFlight = true;
+            bvUpdateAutosavePill('saving');
+            $.post(bv_portal.ajax_url, {
+                action: 'bv_portal_submit_questionnaire',
+                nonce: bv_portal.nonce,
+                project_id: bvProjectId,
+                is_draft: '1',
+                responses: snap
+            }, function(r) {
+                bvAutosaveInFlight = false;
+                if (r.success) {
+                    bvLastSavedSig = sig;
+                    // Also stash a tiny marker in sessionStorage so we know
+                    // the server has accepted at least one autosave this session.
+                    try { sessionStorage.setItem(bvAutosaveKey, String(Date.now())); } catch(e) {}
+                    var ts = new Date();
+                    var hh = String(ts.getHours()).padStart(2, '0');
+                    var mm = String(ts.getMinutes()).padStart(2, '0');
+                    bvUpdateAutosavePill('saved', 'Saved ' + hh + ':' + mm);
+                    // Auto-clear the pill after 6 seconds so it doesn't linger
+                    setTimeout(function() {
+                        if ($bvAutosavePill.hasClass('bv-q-as-saved')) bvUpdateAutosavePill('idle');
+                    }, 6000);
+                } else {
+                    bvUpdateAutosavePill('error', bv_portal.i18n && bv_portal.i18n.autosave_failed ? 'Save failed — keeping local backup' : 'Save failed — local backup active');
+                    // Local backup is still being taken on every input, so
+                    // the user's work is safe even if the server autosave fails.
+                }
+            }).fail(function() {
+                bvAutosaveInFlight = false;
+                bvUpdateAutosavePill('error', 'Network error — local backup active');
+            });
+        }
+
+        // ---- Keepalive: refresh the nonce periodically ----
+        function bvKeepalive() {
+            $.post(bv_portal.ajax_url, {
+                action: 'bv_portal_keepalive',
+                nonce: bv_portal.nonce
+            }, function(r) {
+                if (r.success && r.data && r.data.nonce) {
+                    bv_portal.nonce = r.data.nonce; // refresh the stored nonce
+                }
+            }).fail(function() {
+                // Non-fatal — the next autosave attempt will surface a real
+                // network error if the server is truly unreachable.
+            });
+        }
+
+        // ---- Wire up input → local backup (debounced 800ms) ----
+        var bvBackupTimer = null;
+        bvQForm.on('input change', 'input, select, textarea', function() {
+            bvDirty = true;
+            if (bvBackupTimer) clearTimeout(bvBackupTimer);
+            bvBackupTimer = setTimeout(bvBackupLocal, 800);
+        });
+        // Signatures emit custom events when the user finishes a stroke —
+        // we listen on the wrapper and run the backup.
+        bvQForm.on('pointerup mouseup touchend', '.bv-q-signature-canvas', function() {
+            bvDirty = true;
+            if (bvBackupTimer) clearTimeout(bvBackupTimer);
+            bvBackupTimer = setTimeout(bvBackupLocal, 800);
+        });
+
+        // ---- Start the autosave + keepalive timers ----
+        var autosaveIntervalMs = (parseInt(bv_portal.autosave_interval, 10) || 60) * 1000;
+        var keepaliveIntervalMs = (parseInt(bv_portal.keepalive_interval, 10) || 300) * 1000;
+        // First autosave after 30s (so we capture early changes), then every 60s.
+        setTimeout(bvAutosaveToServer, 30000);
+        bvAutosaveTimer = setInterval(bvAutosaveToServer, autosaveIntervalMs);
+        bvKeepaliveTimer = setInterval(bvKeepalive, keepaliveIntervalMs);
+
+        // Take a backup right now (in case the user leaves immediately).
+        bvLastSavedSig = bvSnapshotSig(bvSnapshotForm());
+
+        // ---- beforeunload: warn if there are unsaved changes ----
+        $(window).on('beforeunload', function(e) {
+            if (bvDirty) {
+                var msg = (bv_portal.i18n && bv_portal.i18n.unsaved_warning) || 'You have unsaved answers. Are you sure you want to leave?';
+                e.originalEvent.returnValue = msg;
+                return msg;
+            }
+        });
+
+        // Clear the beforeunload warning after a successful manual save,
+        // so a normal "Save Questionnaire" doesn't trip the prompt.
+        $(document).on('bv-questionnaire-saved', function() {
+            bvDirty = false;
+            try { localStorage.removeItem(bvBackupKey); } catch(e) {}
+            bvLastSavedSig = bvSnapshotSig(bvSnapshotForm());
+        });
+
+        // ---- Enhanced error handling on manual save ----
+        // Wrap the existing bvSubmitResponses() so a network failure keeps the
+        // form data intact (the original code already keeps the fields, but
+        // the user might panic and refresh) and adds a Retry button.
+        var bvOriginalSubmit = bvSubmitResponses;
+        bvSubmitResponses = function(projectId, responses, $btns, origTexts, isDraft) {
+            $btns.each(function(i) { $(this).prop('disabled', true); });
+            // Take a local backup BEFORE the save attempt — if the server is
+            // unreachable, the user's work is still safe in localStorage.
+            try {
+                localStorage.setItem(bvBackupKey, JSON.stringify({
+                    ts: Date.now(),
+                    data: responses
+                }));
+            } catch(e) {}
+            $.post(bv_portal.ajax_url, {
+                action: 'bv_portal_submit_questionnaire',
+                nonce: bv_portal.nonce,
+                project_id: projectId,
+                responses: responses,
+                is_draft: isDraft ? '1' : undefined
+            }, function(r) {
+                $btns.each(function(i) { $(this).text(origTexts[i]).prop('disabled', false); });
+                if (r.success) {
+                    if (isDraft) {
+                        $('#bv-q-status').html('<span class="bv-q-saved" style="color:#f59e0b;">&#128190; ' + bvEscapeHtml(r.data || 'Draft saved') + '</span>');
+                    } else {
+                        $('#bv-q-status').html('<span class="bv-q-saved">&#10003; ' + bvEscapeHtml(r.data || 'Saved') + '</span>');
+                    }
+                    bvDirty = false;
+                    try { localStorage.removeItem(bvBackupKey); } catch(e) {}
+                    bvLastSavedSig = bvSnapshotSig(bvSnapshotForm());
+                    $(document).triggerHandler('bv-questionnaire-saved');
+                } else {
+                    $('#bv-q-status').html('<span class="bv-q-error">' + bvEscapeHtml(r.data || 'Error saving') + '</span>');
+                }
+            }).fail(function(xhr) {
+                $btns.each(function(i) { $(this).text(origTexts[i]).prop('disabled', false); });
+                // The form data is STILL in the fields — DO NOT clear anything.
+                // Show a clear, reassuring message with a retry button.
+                var msg = 'Network error. Your answers are safe on this device.';
+                var retry = ' <a href="#" class="bv-q-retry" style="color:#fff;background:#dc2626;padding:6px 14px;border-radius:6px;margin-left:8px;text-decoration:none;font-weight:600;">Retry save</a>';
+                $('#bv-q-status').html('<span class="bv-q-error">' + bvEscapeHtml(msg) + '</span>' + retry);
+                bvUpdateAutosavePill('error', 'Last save failed');
+            });
+        };
+
+        // Delegated Retry button — re-triggers the standard submit flow so
+        // all the file-upload + collection logic runs again.
+        $(document).on('click', '.bv-q-retry', function(e) {
+            e.preventDefault();
+            $('#bv-q-status').empty();
+            // Re-use whichever button the user originally clicked. If we
+            // can't tell, default to "Save Questionnaire" (final submit).
+            var $form = $('#bv-questionnaire-form');
+            bvPrepareAndSubmit($form, false);
+        });
+    }
 
 })(jQuery);

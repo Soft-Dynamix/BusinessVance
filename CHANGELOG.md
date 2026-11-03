@@ -2,6 +2,22 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.89] - 2026-11-03
+### Fixed — Critical: Questionnaire data loss on save failure
+- **Clients filling in long questionnaires no longer lose their answers when the save fails.** Previously, if a client spent 30+ minutes on a questionnaire and then clicked "Save Questionnaire" or "Save Draft", a network error / expired nonce / WAF block would show "Network error. Please try again." and the data would be lost on the next page refresh. This is now impossible — data is protected at three levels.
+### Added — Three-layer data safety net
+1. **localStorage backup on every keystroke** (debounced 800ms) — the full form state (all field types: text, textarea, radio, checkbox, select, signatures, file metadata) is saved to the browser's localStorage, keyed per project. Survives page crashes, refreshes, accidental closes, and even full browser restarts. Cleared only after a successful save.
+2. **Silent server autosave every 60 seconds** — the form is submitted as a draft to the server using the existing draft endpoint. A subtle "Saved HH:MM" pill at the top of the form shows the last successful autosave time (like Google Docs). First autosave fires after 30 seconds, then every 60 seconds. Skips when nothing has changed.
+3. **Restore-on-reload prompt** — when a client returns to a questionnaire page and the browser has a local backup that differs from the server-rendered form, they get a confirm dialog: "We found unsaved answers from your previous session. Restore them?" Clicking OK restores all fields (including signature drawings) from the backup.
+### Added — Nonce / session protection
+- **Nonce lifetime extended from 24 hours to 7 days** (via the `nonce_life` filter) so a client can leave a questionnaire open overnight and still save successfully the next day.
+- **New `bv_portal_keepalive` endpoint** — a lightweight AJAX ping that returns a fresh nonce. Called every 5 minutes by the client to keep the stored nonce current indefinitely (belt-and-suspenders on top of the extended lifetime). Also serves as a heartbeat to detect server/network issues early.
+### Changed — Better error UX
+- **Form data is NEVER cleared on a save error** — the fields stay exactly as the user left them. The previous "Network error. Please try again." is replaced with a reassuring message: "Network error. Your answers are safe on this device." plus a red **"Retry save"** button that re-submits the form without requiring the user to re-enter anything.
+- **`beforeunload` warning** — if a client tries to leave the page (close tab, navigate away, refresh) with unsaved changes, the browser shows a "You have unsaved answers. Are you sure you want to leave?" confirmation.
+- **Reset Questionnaire** now also clears the local backup and autosave marker so a reset is truly clean.
+- Localized strings (`bv_portal.i18n`) added for all new user-facing messages, ready for translation.
+
 ## [2.7.88] - 2026-08-31
 ### Changed
 - **Renamed the two destination picker card labels** for clarity:

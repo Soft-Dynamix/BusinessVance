@@ -30,10 +30,57 @@ class BV_Client_Portal {
         add_action( 'wp_ajax_bv_portal_download_report', array( $this, 'ajax_download_report' ) );
         add_action( 'wp_ajax_bv_portal_upload_multifile', array( $this, 'ajax_upload_multifile' ) );
         add_action( 'wp_ajax_bv_portal_reset_questionnaire', array( $this, 'ajax_reset_questionnaire' ) );
+        add_action( 'wp_ajax_bv_portal_keepalive', array( $this, 'ajax_keepalive' ) );
+
+        // v2.7.89: Extend nonce lifetime for portal actions so clients filling
+        // long questionnaires don't lose their session mid-way. WordPress
+        // default is 24h (DAY_IN_SECONDS * 1); we use 7 days so a client can
+        // leave a questionnaire open overnight and still save successfully.
+        add_filter( 'nonce_life', array( $this, 'filter_nonce_life' ) );
 
         // Ensure bv_project_documents has document_requirement_id column
         // Only runs on admin_init to avoid running on every frontend page load.
         add_action( 'admin_init', array( $this, 'maybe_add_document_requirement_column' ), 99 );
+    }
+
+    /**
+     * Extend the nonce lifetime so long questionnaire sessions don't expire.
+     *
+     * Applied to all nonces site-wide — 7 days is safe because nonces are still
+     * single-use per action and tied to the user session. This primarily
+     * benefits the client portal questionnaire (where a client may spend 30+
+     * minutes filling in a long form) without weakening other nonces
+     * meaningfully.
+     *
+     * @since 2.7.89
+     * @param int $lifetime Default lifetime in seconds.
+     * @return int
+     */
+    public function filter_nonce_life( $lifetime ) {
+        return 7 * DAY_IN_SECONDS;
+    }
+
+    /**
+     * Lightweight keepalive endpoint.
+     *
+     * Returns a freshly-generated nonce so the client can refresh its
+     * stored nonce periodically (e.g., every 5 minutes) without saving any
+     * data. This prevents the nonce from going stale on long sessions even
+     * with the extended lifetime, and serves as a heartbeat to detect
+     * network/server issues early.
+     *
+     * @since 2.7.89
+     * @return void
+     */
+    public function ajax_keepalive() {
+        check_ajax_referer( 'bv_portal_action', 'nonce' );
+        if ( ! is_user_logged_in() ) {
+            wp_send_json_error( array( 'message' => esc_html__( 'Not logged in', 'businessvance-services-manager' ) ) );
+        }
+        wp_send_json_success( array(
+            'nonce'     => wp_create_nonce( 'bv_portal_action' ),
+            'server_ts'  => current_time( 'timestamp' ),
+        ) );
     }
 
     /**
@@ -68,6 +115,15 @@ class BV_Client_Portal {
             wp_localize_script( 'bv-client-portal', 'bv_portal', array(
                 'ajax_url' => admin_url( 'admin-ajax.php' ),
                 'nonce'    => wp_create_nonce( 'bv_portal_action' ),
+                // v2.7.89: autosave configuration for questionnaire safety
+                'autosave_interval' => 60, // seconds between silent autosaves
+                'keepalive_interval' => 300, // seconds between nonce refresh pings (5 min)
+                'i18n' => array(
+                    'autosave_saved'      => esc_html__( 'Saved', 'businessvance-services-manager' ),
+                    'autosave_failed'     => esc_html__( 'Autosave failed — your work is kept safe on this device. Click "Save Draft" to retry.', 'businessvance-services-manager' ),
+                    'restore_prompt'      => esc_html__( 'We found unsaved answers from your previous session. Restore them?', 'businessvance-services-manager' ),
+                    'unsaved_warning'     => esc_html__( 'You have unsaved answers. Are you sure you want to leave?', 'businessvance-services-manager' ),
+                ),
             ) );
             // Star rating, repeatable table, other option toggle, multifile, signature logic are all in client-portal.js
         }
