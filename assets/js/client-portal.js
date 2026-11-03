@@ -1172,7 +1172,14 @@
                     if (isDraft) {
                         $('#bv-q-status').html('<span class="bv-q-saved" style="color:#f59e0b;">&#128190; ' + bvEscapeHtml(r.data || 'Draft saved') + '</span>');
                     } else {
-                        $('#bv-q-status').html('<span class="bv-q-saved">&#10003; ' + bvEscapeHtml(r.data || 'Saved') + '</span>');
+                        // v2.7.90: Show the completion modal for a successful FINAL submit.
+                        // Drafts still show the inline status (so the user can keep editing).
+                        $('#bv-q-complete-modal').css('display', 'flex').attr('aria-hidden', 'false');
+                        // Lock the form behind the modal so the user can't accidentally re-edit
+                        // a submitted questionnaire while the modal is up.
+                        bvQForm.find('input, select, textarea, button').prop('disabled', true);
+                        // Keep the small inline status too (so screen-reader users get a cue)
+                        $('#bv-q-status').html('<span class="bv-q-saved">&#10003; ' + bvEscapeHtml(r.data || 'Questionnaire submitted') + '</span>');
                     }
                     bvDirty = false;
                     try { localStorage.removeItem(bvBackupKey); } catch(e) {}
@@ -1201,6 +1208,13 @@
             // can't tell, default to "Save Questionnaire" (final submit).
             var $form = $('#bv-questionnaire-form');
             bvPrepareAndSubmit($form, false);
+        });
+
+        // v2.7.90: Dismiss the completion modal when the X is clicked.
+        // (Form stays disabled — a submitted questionnaire shouldn't be re-edited.)
+        $(document).on('click', '#bv-q-complete-close', function(e) {
+            e.preventDefault();
+            $('#bv-q-complete-modal').css('display', 'none').attr('aria-hidden', 'true');
         });
     }
 

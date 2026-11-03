@@ -1818,6 +1818,48 @@ class BV_Client_Portal {
                         </div>
                     </div>
                 </div>
+
+                <!-- v2.7.90: Questionnaire Completion Modal -->
+                <div class="bv-q-complete-overlay" id="bv-q-complete-modal" style="display:none;">
+                    <div class="bv-q-complete-modal">
+                        <div class="bv-q-complete-check">
+                            <svg viewBox="0 0 52 52" width="64" height="64" aria-hidden="true">
+                                <circle cx="26" cy="26" r="25" fill="none" stroke="#10b981" stroke-width="2"/>
+                                <path fill="none" stroke="#10b981" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" d="M14 27 l8 8 l16 -18"/>
+                            </svg>
+                        </div>
+                        <h3><?php echo esc_html__( 'Questionnaire Submitted Successfully!', 'businessvance-services-manager' ); ?></h3>
+                        <p class="bv-q-complete-lead"><?php echo esc_html__( 'Your completed questionnaire has been sent to your assigned BusinessVance consultant for review.', 'businessvance-services-manager' ); ?></p>
+                        <div class="bv-q-complete-steps">
+                            <div class="bv-q-complete-step">
+                                <span class="bv-q-complete-step-icon">&#9993;</span>
+                                <div>
+                                    <strong><?php echo esc_html__( 'Check your emails', 'businessvance-services-manager' ); ?></strong>
+                                    <span><?php echo esc_html__( 'We\'ll email you with any progress, requests, or communication about your project.', 'businessvance-services-manager' ); ?></span>
+                                </div>
+                            </div>
+                            <div class="bv-q-complete-step">
+                                <span class="bv-q-complete-step-icon">&#128172;</span>
+                                <div>
+                                    <strong><?php echo esc_html__( 'Use the Messages tab', 'businessvance-services-manager' ); ?></strong>
+                                    <span><?php echo esc_html__( 'You can chat with your assigned consultant anytime via the Messages tab in your portal.', 'businessvance-services-manager' ); ?></span>
+                                </div>
+                            </div>
+                            <div class="bv-q-complete-step">
+                                <span class="bv-q-complete-step-icon">&#9203;</span>
+                                <div>
+                                    <strong><?php echo esc_html__( 'Wait for feedback', 'businessvance-services-manager' ); ?></strong>
+                                    <span><?php echo esc_html__( 'Your consultant will review your answers and respond. There\'s nothing more you need to do right now.', 'businessvance-services-manager' ); ?></span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bv-q-complete-actions">
+                            <a href="?project_id=<?php echo $project_id; ?>&tab=messages" class="bv-btn bv-btn-primary"><?php echo esc_html__( 'Go to Messages', 'businessvance-services-manager' ); ?></a>
+                            <a href="?project_id=<?php echo $project_id; ?>&tab=overview" class="bv-btn bv-btn-outline"><?php echo esc_html__( 'Back to Overview', 'businessvance-services-manager' ); ?></a>
+                        </div>
+                        <button type="button" class="bv-q-complete-close" id="bv-q-complete-close" aria-label="<?php esc_attr_e( 'Close', 'businessvance-services-manager' ); ?>">&times;</button>
+                    </div>
+                </div>
             </form>
             <?php endif; ?>
         </div>

@@ -2,6 +2,23 @@
 
 All notable changes to the BusinessVance Services Manager plugin.
 
+## [2.7.90] - 2026-11-03
+### Added — Questionnaire completion confirmation modal
+- **After a client clicks "Save Questionnaire", they now see a clear, branded completion modal** instead of just a tiny green status line. The previous "✓ Questionnaire saved successfully" was easy to miss and gave no guidance on what happens next.
+- The new modal confirms:
+  1. **"Questionnaire Submitted Successfully!"** with a large animated green checkmark
+  2. **"Your completed questionnaire has been sent to your assigned BusinessVance consultant for review."** — so the client knows it reached the consultant
+  3. A 3-step "What happens next" panel:
+     - 📧 **Check your emails** — "We'll email you with any progress, requests, or communication about your project."
+     - 💬 **Use the Messages tab** — "You can chat with your assigned consultant anytime via the Messages tab in your portal."
+     - ⏳ **Wait for feedback** — "Your consultant will review your answers and respond. There's nothing more you need to do right now."
+  4. Two clear CTA buttons: **"Go to Messages"** (primary, deep-links to the Messages tab) and **"Back to Overview"** (secondary)
+  5. An "X" close button for users who want to dismiss the modal
+- **The form is locked** while the modal is up so the client can't accidentally re-edit a submitted questionnaire.
+- **Draft saves** ("Save Draft & Continue Later") still show the small inline amber "💾 Draft saved" status — only the final submit triggers the completion modal, since drafts mean "I want to keep editing".
+- Animated entrance: the modal fades in, the checkmark pops with a spring, then slides into place — polished and reassuring.
+- Fully responsive (stacks single-column on mobile ≤520px).
+
 ## [2.7.89] - 2026-11-03
 ### Fixed — Critical: Questionnaire data loss on save failure
 - **Clients filling in long questionnaires no longer lose their answers when the save fails.** Previously, if a client spent 30+ minutes on a questionnaire and then clicked "Save Questionnaire" or "Save Draft", a network error / expired nonce / WAF block would show "Network error. Please try again." and the data would be lost on the next page refresh. This is now impossible — data is protected at three levels.
